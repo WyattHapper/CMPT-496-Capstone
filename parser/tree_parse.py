@@ -1,7 +1,10 @@
+"""!
+@file tree_parse.py
+@brief Library for parsing files using tree-sitter.
+@details Provides utility functions to traverse directories and convert source 
+code into Abstract Syntax Trees (AST) using the Tree-sitter library.
 """
-File: tree_parse.py
-Purpose: Library for parsing files using tree-sitter
-"""
+
 import tree_sitter_language_pack as tslp
 from tree_sitter import Parser, Tree
 from pathlib import Path
@@ -9,32 +12,35 @@ from dataclasses import dataclass
 
 @dataclass
 class CodeBundle:
+    """!
+    @brief Data container for a parsed source file.
+    @param path The pathlib.Path of the source file.
+    @param content The raw bytes of the file content.
+    @param tree The tree_sitter.Tree object resulting from the parse.
+    """
     path: Path
     content: bytes
     tree: Tree
 
-# parse file function
 def parse_file(filepath: Path, parser: Parser) -> CodeBundle:
-    """
-    :parse_file function: Parses given file in given language
-    :param filepath: Path - pathway to file you want to parse
-    :param parser: Parser - Initialized parser for the given language
-    :return: CodeBundle - dataclass containing path, bytes, and tree
+    """!
+    @brief Parses a specific file into a CodeBundle.
+    @param filepath Path object representing the file to be parsed.
+    @param parser An initialized tree_sitter.Parser instance for the target language.
+    @return A CodeBundle instance containing the file metadata and AST.
+    @exception TypeError Raised if inputs are not of the expected type.
+    @exception FileNotFoundError Raised if the provided filepath does not exist.
     """
     # Validate inputs
-    # Validate filepath is Path object
     if not isinstance(filepath, Path):
         raise TypeError(f"Expected 'filepath' to be a pathlib.Path, got {type(filepath).__name__}")
     
-    # Validate parser is Parser object
     if not isinstance(parser, Parser):
         raise TypeError(f"Expected 'parser' to be a tree_sitter.Parser, got {type(parser).__name__}")
     
-    # Validate path exists
     if not filepath.exists():
         raise FileNotFoundError(f"Source file not found: {filepath}")
     
-    # If all inputs valid
     # Parse file
     print(f"Parsing: {filepath}")
     code_bytes = filepath.read_bytes()
@@ -45,19 +51,19 @@ def parse_file(filepath: Path, parser: Parser) -> CodeBundle:
 
     return bundle
 
-# parse directory function
 def parse_dir(dirpath: str) -> list[CodeBundle]:
-    """
-    :parse_dir function: Parses given directory
-    :param dirpath: string - pathway to directory you want to parse
-    :return: list - List of CodeBundles
+    """!
+    @brief Recursively parses all C# files within a given directory.
+    @param dirpath String representing the path to the directory.
+    @return A list of CodeBundle objects for all discovered .cs files.
+    @exception TypeError Raised if dirpath is not a string.
+    @exception NotADirectoryError Raised if the provided path is not a directory.
     
-    NOTE: Currently hardcoded to c_sharp, may add additional functionality later
+    @note Currently hardcoded to C#, may add additional language support in the future.
     """
     # Validate inputs
-    # Validate dirpath is String object
     if not isinstance(dirpath, str):
-        raise TypeError(f"Exptected 'dirpath' to be a string, got {type(dirpath).__name__}")
+        raise TypeError(f"Expected 'dirpath' to be a string, got {type(dirpath).__name__}")
 
     # Create Path
     pathway = Path(dirpath)
