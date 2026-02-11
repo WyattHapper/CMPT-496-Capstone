@@ -64,10 +64,10 @@ def parse_dir(dirpath: str) -> list[CodeBundle]:
 
     # Validate pathway is valid path
     if not pathway.is_dir():
-        raise NotADirectoryError(f"The path {dir_path} is not a valid directory.")
+        raise NotADirectoryError(f"The path {dirpath} is not a valid directory.")
 
     # Create Parser
-    cs_lang = tslp.get_language("c_sharp")
+    cs_lang = tslp.get_language("csharp")
     parser = Parser(cs_lang)
     bundle_list = []
 
