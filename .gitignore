@@ -1,3 +1,4 @@
 # ignore target codebases
 /targetCodebases
 /my_chroma_data
+.env
