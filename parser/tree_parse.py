@@ -6,7 +6,7 @@ code into Abstract Syntax Trees (AST) using the Tree-sitter library.
 """
 
 import tree_sitter_language_pack as tslp
-from tree_sitter import Parser, Tree
+from tree_sitter import Parser, Tree, Node, Query, QueryCursor
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -21,6 +21,12 @@ class CodeBundle:
     path: Path
     content: bytes
     tree: Tree
+
+@dataclass
+class ChunkBundle:
+    path: Path
+    content: bytes
+    chunks: list[dict]
 
 def parse_file(filepath: Path, parser: Parser) -> CodeBundle:
     """!
@@ -83,3 +89,48 @@ def parse_dir(dirpath: str) -> list[CodeBundle]:
         bundle_list.append(bundle)
 
     return bundle_list
+
+def get_chunks(bundle: CodeBundle) -> ChunkBundle:
+    """
+    @brief Selects nodes from tree based on predefined query
+    """
+    # define S-expression queries
+    # method_declaration = class methods
+    # constructor_declaration = class constructor
+    # property_declaration = class properties
+    query_text = """
+        (method_declaration name: (identifier) @name) @chunk
+        (constructor_declaration name: (identifier) @name) @chunk
+        (property_declaration name: (identifier) @name) @chunk
+    """
+
+    # Prepare query
+    lang = bundle.tree.language
+    query = Query(lang, query_text)
+    cursor = QueryCursor(query)
+
+    # execute query
+    matches = cursor.matches(bundle.tree.root_node)
+
+    chunks = []
+
+    for pattern, captures in matches:
+        # matches is a list of tuples
+        chunk_node = captures.get("chunk")[0]
+        name_node = captures.get("name")[0]
+        chunks.append(name_node.text.decode("utf-8"))
+
+
+
+    return chunks
+
+def get_class_name(node: Node) -> str:
+    current = node.parent
+    while current:
+        if current.type == "class_declaration":
+            # class name stored in identifier child node
+            for child in current.children:
+                if child.type == "identifier":
+                    return child.text.decode("utf-8")
+        current = current.parent
+    return "Global"

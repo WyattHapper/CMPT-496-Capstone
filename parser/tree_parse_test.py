@@ -42,6 +42,21 @@ def test_parse():
     # Show total number of trees made
     print(f"\nTotal bundles verified: {len(bundles)}")
 
+def test_chunk():
+    """!
+    @brief Performs a test chunking on ConsoleTables.
+
+    @note The directory path may be different as targetCodebases is an ignored 
+    directory. Additionally, pathway must either be an absolute path or 
+    relative to the pwd of the terminal.
+    """
+    bundles = parse_dir("./targetCodebases/consoleTables/ConsoleTables")
+    for bundle in bundles:
+        chunks = get_chunks(bundle)
+        for chunk in chunks:
+            print(chunk)
+    return
+
 # Main entry point
 if __name__ == "__main__":
-    test_parse()
+    test_chunk()
