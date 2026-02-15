@@ -122,6 +122,10 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
         (property_declaration name: (identifier) @name) @chunk
     """
 
+    # extract namespace and imports
+    file_namespace = get_namespace(bundle.tree.root_node)
+    file_imports = "\n".join(get_imports(bundle.tree.root_node))
+
     # Prepare query
     lang = bundle.tree.language
     query = Query(lang, query_text)
@@ -161,7 +165,9 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
                 "type": chunk_node.type,
                 "start_line": chunk_node.start_point[0] + 1,
                 "end_line": chunk_node.end_point[0] + 1,
-                "language": bundle.language
+                "language": bundle.language,
+                "namespace": file_namespace,
+                "imports": file_imports # unlikely to have duplicates but just in case
             }
 
             chunks.append(chunk_info)
@@ -177,7 +183,9 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
             "type": "property_declaration",
             "start_line": None, # properties may be non-contiguous, so line numbers are not applicable
             "end_line": None,
-            "language": bundle.language
+            "language": bundle.language,
+            "namespace": file_namespace,
+            "imports": "\n".join(sorted(set(file_imports)))
         }
         chunks.append(chunk_info)    
 
@@ -216,3 +224,56 @@ def get_class_name(node: Node) -> str:
     
     # Reverse class_name list to get outermost class first and join with dot
     return ".".join(reversed(class_name))
+
+def get_namespace(root: Node) -> str:
+    """!
+    @brief Extracts the namespace(s) from a C# source file.
+    @details Scans the top-level children of the root node for traditional 
+    or file-scoped namespace declarations. Extracts the identifier or 
+    qualified name for each.
+    
+    @param root The tree_sitter.Node representing the root of the AST.
+    @return A string of comma-separated namespaces, or "Global" if none found.
+    @exception TypeError Raised if the input root is not a tree_sitter.Node.
+    """
+    # Validate input
+    if not isinstance(root, Node):
+        raise TypeError(f"Expected 'root' to be a tree_sitter.Node, got {type(root).__name__}")
+    
+    found_namespaces = []
+    # check children of root for namespace declarations
+    for child in root.children:
+        if child.type in ["namespace_declaration", "file_scoped_namespace_declaration"]:
+            # check for identifier or qualified_name child node
+            for sub in child.children:
+                if sub.type in ["identifier", "qualified_name"]:
+                    found_namespaces.append(sub.text.decode("utf-8"))
+                    break
+                    
+    if not found_namespaces:
+        return "Global"
+        
+    # Usually just one, but this handles the edge case
+    return ", ".join(found_namespaces)
+
+def get_imports(root: Node) -> list[str]:
+    """!
+    @brief Extracts all 'using' directives from the file root.
+    @details Identifies using_directive nodes and extracts their full text 
+    literal to preserve aliases and static imports.
+    
+    @param root The tree_sitter.Node representing the root of the AST.
+    @return A list of strings containing the raw 'using' statements.
+    @exception TypeError Raised if the input root is not a tree_sitter.Node.
+    """
+    # Validate input
+    if not isinstance(root, Node):
+        raise TypeError(f"Expected 'root' to be a tree_sitter.Node, got {type(root).__name__}")
+    
+    imports = []
+    # check children of root for using_directive
+    for child in root.children:
+        if child.type == "using_directive":
+            # Don't look for identifiers since using directives can be complex
+            imports.append(child.text.decode("utf-8"))
+    return imports
