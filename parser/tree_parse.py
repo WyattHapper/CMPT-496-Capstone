@@ -131,6 +131,7 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
     matches = cursor.matches(bundle.tree.root_node)
 
     chunks = []
+    properties = {}
 
     for pattern, captures in matches:
         # matches is a list of tuples
@@ -145,6 +146,13 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
             name_text = name_node.text.decode("utf-8")
             code_text = bundle.content[chunk_node.start_byte:chunk_node.end_byte].decode("utf-8")
 
+            # check if node is a property and store in dict for later retrieval
+            if chunk_node.type == "property_declaration":
+                if parent_class not in properties:
+                    properties[parent_class] = []
+                properties[parent_class].append(code_text)
+                continue # skip adding properties to chunks list for now
+
             chunk_info = {
                 "name": name_text,
                 "code": code_text,
@@ -157,6 +165,21 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
             }
 
             chunks.append(chunk_info)
+    
+    # Add properties to chunk list with associated class context
+    for class_name, props in properties.items():
+        merged_code = "\n".join(props)
+        chunk_info = {
+            "name": f"{class_name}_properties",
+            "code": merged_code,
+            "class": class_name,
+            "file": str(bundle.path),
+            "type": "property_declaration",
+            "start_line": None, # properties may be non-contiguous, so line numbers are not applicable
+            "end_line": None,
+            "language": bundle.language
+        }
+        chunks.append(chunk_info)    
 
     return chunks
 
