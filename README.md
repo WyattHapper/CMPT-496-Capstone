@@ -32,3 +32,13 @@ Download Python: [https://www.python.org/downloads/](https://www.python.org/down
 ```powershell
 deactivate
 ```
+
+## To Run First Graph of LanGraph
+
+1. **Make sure you are in the root directory:**
+The current working directory must be root of project (i.e. the directort extension ends in 'CMPT-496-Capstone')
+
+2. **Run the script:**
+```powershell
+python agent/agent.py  
+```
