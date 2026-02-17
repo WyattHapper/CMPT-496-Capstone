@@ -167,7 +167,7 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
                 "end_line": chunk_node.end_point[0] + 1,
                 "language": bundle.language,
                 "namespace": file_namespace,
-                "imports": file_imports # unlikely to have duplicates but just in case
+                "imports": file_imports 
             }
 
             chunks.append(chunk_info)
@@ -181,8 +181,8 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
             "class": class_name,
             "file": str(bundle.path),
             "type": "property_declaration",
-            "start_line": None, # properties may be non-contiguous, so line numbers are not applicable
-            "end_line": None,
+            "start_line": -1, # properties may be non-contiguous, so line numbers are not applicable
+            "end_line": -1,
             "language": bundle.language,
             "namespace": file_namespace,
             "imports": "\n".join(sorted(set(file_imports)))
