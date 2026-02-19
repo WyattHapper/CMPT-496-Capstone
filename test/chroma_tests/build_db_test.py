@@ -11,7 +11,7 @@ from pathlib import Path
 import chromadb
 import numpy as np
 
-def inspect_database(db_path: str, sample_count: int = 3, vector_preview: int = 10):
+def inspect_database(db_path: str, sample_count: int = 10, vector_preview: int = 10):
     """
     @brief Scans a local ChromaDB instance and prints a summary of its content.
     
@@ -72,7 +72,7 @@ if __name__ == "__main__":
     Expects one command line argument representing the database path.
     """
     if len(sys.argv) != 2:
-        print("Usage: python inspect_chromadb_with_vectors.py <path_to_vectorStores>")
+        print("Usage: python build_db_test.py <path_to_vectorStores>")
         sys.exit(1)
 
     db_path = sys.argv[1]

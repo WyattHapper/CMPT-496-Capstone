@@ -10,6 +10,38 @@ from tree_sitter import Parser, Tree, Node, Query, QueryCursor
 from pathlib import Path
 from dataclasses import dataclass
 
+# Create language dictionary to associate file extensions with tree-sitter
+# language packs and desired S-expression queries for chunk extraction.
+LANGUAGE_DICT = {
+    ".cs": {
+        "name": "csharp",
+        "query": """
+            (method_declaration name: (identifier) @name) @chunk
+            (constructor_declaration name: (identifier) @name) @chunk
+            (property_declaration name: (identifier) @name) @chunk
+        """,
+        "container_type": "class_declaration",
+        "property_type": "property_declaration",
+        "import_query": "(using_directive) @import",
+        "namespace_query": """
+            (namespace_declaration name: (_) @ns)
+            (file_scoped_namespace_declaration name: (_) @ns)
+        """
+    },
+    ".js": {
+        "name": "javascript",
+        "query": """
+            (function_declaration name: (identifier) @name) @chunk
+            (method_definition name: (property_identifier) @name) @chunk
+            (pair key: (property_identifier) @name) @chunk
+        """,
+        "container_type": "class_declaration",
+        "property_type": "pair",
+        "import_query": "(import_statement) @import",
+        "namespace_query": "" # JS has no namespaces, so this is left empty
+    }
+}
+
 @dataclass
 class CodeBundle:
     """!
@@ -59,8 +91,6 @@ def parse_dir(dirpath: str) -> list[CodeBundle]:
     @return A list of CodeBundle objects for all discovered .cs files.
     @exception TypeError Raised if dirpath is not a string.
     @exception NotADirectoryError Raised if the provided path is not a directory.
-    
-    @note Currently hardcoded to C#, may add additional language support in the future.
     """
     # Validate inputs
     if not isinstance(dirpath, str):
@@ -73,15 +103,23 @@ def parse_dir(dirpath: str) -> list[CodeBundle]:
     if not pathway.is_dir():
         raise NotADirectoryError(f"The path {dirpath} is not a valid directory.")
 
-    # Create Parser
-    cs_lang = tslp.get_language("csharp")
-    parser = Parser(cs_lang)
+    # Initialize all parsers
+    parsers = {}
+    for ext, lang_info in LANGUAGE_DICT.items():
+        lang = tslp.get_language(lang_info["name"])
+        lang_parser = Parser(lang)
+        parsers[ext] = lang_parser
+
     bundle_list = []
 
     # Parse all files
-    for file in pathway.rglob("*.cs"):
-        bundle = parse_file(file, parser, "csharp")
-        bundle_list.append(bundle)
+    extensions = LANGUAGE_DICT.keys()
+    for ext in extensions:
+        for filepath in pathway.rglob(f"*{ext}"):
+            code_bytes = filepath.read_bytes()
+            tree = parsers[ext].parse(code_bytes)
+            bundle = CodeBundle(path = filepath, content = code_bytes, tree = tree, language = LANGUAGE_DICT[ext]["name"])
+            bundle_list.append(bundle)
 
     return bundle_list
 
@@ -96,8 +134,6 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
     @return A list of dictionaries, each containing name, code, class, file, type, 
     line range, and language info.
     @exception TypeError Raised if the bundle or its internal attributes are of the incorrect type.
-    
-    @note This function specifically targets C# semantic structures (methods, constructors, properties).
     """
     # Validate CodeBundle attributes exist and are of the expected type
     if not isinstance(bundle, CodeBundle):
@@ -115,165 +151,127 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
     if not isinstance(bundle.language, str):
         raise TypeError(f"Expected 'bundle.language' to be a string, got {type(bundle.language).__name__}")
     
-    # define S-expression queries
-    query_text = """
-        (method_declaration name: (identifier) @name) @chunk
-        (constructor_declaration name: (identifier) @name) @chunk
-        (property_declaration name: (identifier) @name) @chunk
-    """
+    ext = bundle.path.suffix
+    config = LANGUAGE_DICT.get(ext)
 
-    # extract namespace and imports
-    file_namespace = get_namespace(bundle.tree.root_node)
-    file_imports = "\n".join(get_imports(bundle.tree.root_node))
+    # Validate that the file extension is supported
+    if not config: 
+        return []
 
-    # Prepare query
-    lang = bundle.tree.language
-    query = Query(lang, query_text)
+    # Extract File-Level Metadata
+    if config["namespace_query"] == "":
+        file_namespace = "N/A"
+    else:
+        namespaces = get_metadata_by_query(bundle.tree.root_node, config["name"], config["namespace_query"], "ns")
+        file_namespace = ", ".join(namespaces)
+    
+    if config["import_query"] == "":
+        file_imports = "N/A"
+    else:
+        imports = get_metadata_by_query(bundle.tree.root_node, config["name"], config["import_query"], "import")
+        file_imports = "\n".join(imports)
+
+    # xtract Chunks
+    query = Query(bundle.tree.language, config["query"])
     cursor = QueryCursor(query)
-
-    # execute query
     matches = cursor.matches(bundle.tree.root_node)
 
     chunks = []
-    properties = {}
+    grouped_properties = {}
 
     for pattern, captures in matches:
-        # matches is a list of tuples
         chunk_node = captures.get("chunk")[0]
         name_node = captures.get("name")[0]
 
         if chunk_node and name_node:
-            # Get parent class name by traversing up tree
-            parent_class = get_class_name(chunk_node)
-
-            # Extract text for name and code
-            name_text = name_node.text.decode("utf-8")
+            parent_container = get_container_name(chunk_node, config["container_type"])
             code_text = bundle.content[chunk_node.start_byte:chunk_node.end_byte].decode("utf-8")
+            
+            # Handle Property Grouping
+            if chunk_node.type == config["property_type"]:
+                if parent_container not in grouped_properties:
+                    grouped_properties[parent_container] = []
+                grouped_properties[parent_container].append(code_text)
+                continue
 
-            # check if node is a property and store in dict for later retrieval
-            if chunk_node.type == "property_declaration":
-                if parent_class not in properties:
-                    properties[parent_class] = []
-                properties[parent_class].append(code_text)
-                continue # skip adding properties to chunks list for now
-
-            chunk_info = {
-                "name": name_text,
+            # Standard Chunk Extraction
+            chunk = {
+                "name": name_node.text.decode("utf-8"),
                 "code": code_text,
-                "class": parent_class,
+                "container": parent_container,
                 "file": str(bundle.path),
                 "type": chunk_node.type,
                 "start_line": chunk_node.start_point[0] + 1,
-                "end_line": chunk_node.end_point[0] + 1,
+                "end_line": chunk_node.end_point[0] + 1, # Added end_line
                 "language": bundle.language,
                 "namespace": file_namespace,
-                "imports": file_imports 
+                "imports": file_imports
             }
+            chunks.append(chunk)
 
-            chunks.append(chunk_info)
-    
-    # Add properties to chunk list with associated class context
-    for class_name, props in properties.items():
-        merged_code = "\n".join(props)
-        chunk_info = {
-            "name": f"{class_name}_properties",
-            "code": merged_code,
-            "class": class_name,
+    # Add Grouped Properties
+    for container, props in grouped_properties.items():
+        chunk = {
+            "name": f"{container}_Properties",
+            "code": "\n".join(props),
+            "container": container,
             "file": str(bundle.path),
-            "type": "property_declaration",
-            "start_line": -1, # properties may be non-contiguous, so line numbers are not applicable
+            "type": "grouped_properties",
+            "start_line": -1,
             "end_line": -1,
             "language": bundle.language,
             "namespace": file_namespace,
-            "imports": "\n".join(sorted(set(file_imports)))
+            "imports": file_imports
         }
-        chunks.append(chunk_info)    
+        chunks.append(chunk)
 
     return chunks
-
-def get_class_name(node: Node) -> str:
+def get_container_name(node: Node, container_type: str) -> str:
     """!
-    @brief Identifies the parent class name for a given AST node.
+    @brief Identifies the parent container name for a given AST node.
     @details Traverses upward from the provided node through its ancestors 
-    until a 'class_declaration' node is found. It then extracts the text 
-    from the class's identifier child. For embedded classes, it concatenates
-    parent class names with a dot separator.
+    until a node of the specified container_type is found. It then extracts the text 
+    from the container's identifier child. For nested containers, it concatenates
+    parent container names with a dot separator.
     
     @param node The tree_sitter.Node to start the upward search from.
-    @return The name of the parent class as a string, or "Global" if no class is found.
+    @return The name of the parent container as a string, or "Global" if no container is found.
     @exception TypeError Raised if the input node is not a tree_sitter.Node instance.
     """
     # Validate input
     if not isinstance(node, Node):
         raise TypeError(f"Expected 'node' to be a tree_sitter.Node, got {type(node).__name__}")
     
-    class_name = []
+    containers = []
     current = node.parent
+    
     while current:
-        if current.type == "class_declaration":
-            # class name stored in identifier child node
+        if current.type == container_type:
+            # Look for the naming child (usually 'identifier' or 'property_identifier')
             for child in current.children:
-                if child.type == "identifier":
-                    # add class name to list
-                    class_name.append(child.text.decode("utf-8"))
+                if "identifier" in child.type:
+                    containers.append(child.text.decode("utf-8"))
                     break
         current = current.parent
     
-    if not class_name:
+    if not containers:
         return "Global"
     
-    # Reverse class_name list to get outermost class first and join with dot
-    return ".".join(reversed(class_name))
+    # return concatenated container names from outermost to innermost, dot separated
+    return ".".join(reversed(containers))
 
-def get_namespace(root: Node) -> str:
+def get_metadata_by_query(root: Node, lang: str, query_str: str, capture_name: str) -> list[str]:
     """!
-    @brief Extracts the namespace(s) from a C# source file.
-    @details Scans the top-level children of the root node for traditional 
-    or file-scoped namespace declarations. Extracts the identifier or 
-    qualified name for each.
-    
-    @param root The tree_sitter.Node representing the root of the AST.
-    @return A string of comma-separated namespaces, or "Global" if none found.
-    @exception TypeError Raised if the input root is not a tree_sitter.Node.
+    @brief Helper to extract text from a node using a specific query.
     """
-    # Validate input
-    if not isinstance(root, Node):
-        raise TypeError(f"Expected 'root' to be a tree_sitter.Node, got {type(root).__name__}")
+    if not query_str: 
+        raise ValueError("Query string cannot be empty.")
+    query = Query(tslp.get_language(lang), query_str)
+    cursor = QueryCursor(query)
+    matches = cursor.matches(root)
     
-    found_namespaces = []
-    # check children of root for namespace declarations
-    for child in root.children:
-        if child.type in ["namespace_declaration", "file_scoped_namespace_declaration"]:
-            # check for identifier or qualified_name child node
-            for sub in child.children:
-                if sub.type in ["identifier", "qualified_name"]:
-                    found_namespaces.append(sub.text.decode("utf-8"))
-                    break
-                    
-    if not found_namespaces:
-        return "Global"
-        
-    # Usually just one, but this handles the edge case
-    return ", ".join(found_namespaces)
-
-def get_imports(root: Node) -> list[str]:
-    """!
-    @brief Extracts all 'using' directives from the file root.
-    @details Identifies using_directive nodes and extracts their full text 
-    literal to preserve aliases and static imports.
-    
-    @param root The tree_sitter.Node representing the root of the AST.
-    @return A list of strings containing the raw 'using' statements.
-    @exception TypeError Raised if the input root is not a tree_sitter.Node.
-    """
-    # Validate input
-    if not isinstance(root, Node):
-        raise TypeError(f"Expected 'root' to be a tree_sitter.Node, got {type(root).__name__}")
-    
-    imports = []
-    # check children of root for using_directive
-    for child in root.children:
-        if child.type == "using_directive":
-            # Don't look for identifiers since using directives can be complex
-            imports.append(child.text.decode("utf-8"))
-    return imports
+    results = []
+    for _, captures in matches:
+        for node in captures.get(capture_name, []):
+            results.append(node.text.decode("utf-8").strip())
+    return results

@@ -54,15 +54,15 @@ def build_database(source_path: str) -> None:
         chunks = get_chunks(bundle)
         for i, chunk in enumerate(chunks):
             # Create unique ID for the chunk
-            unique_id = f"{chunk['file']}_{chunk['class']}_{chunk['name']}_{i}"
+            unique_id = f"{chunk['file']}_{chunk['container']}_{chunk['name']}_{i}"
 
             # Create string for embedder
-            embedded_string = f"Namespace: {chunk['namespace']}\nClass: {chunk['class']}\nType: {chunk['type']}\nCode: {chunk['code']}"
+            embedded_string = f"Namespace: {chunk['namespace']}\nContainer: {chunk['container']}\nType: {chunk['type']}\nCode: {chunk['code']}"
 
             # Prepare metadata
             metadata = {
                 "name": chunk["name"],
-                "class": chunk["class"],
+                "container": chunk["container"],
                 "file": chunk["file"],
                 "type": chunk["type"],
                 "start_line": chunk["start_line"],
