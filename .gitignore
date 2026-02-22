@@ -3,3 +3,6 @@
 /vectorStores
 /my_chroma_data
 .env
+__pycache__
+*.pyc
+.vscode/
