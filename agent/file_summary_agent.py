@@ -10,6 +10,7 @@ from structured_output.summary_output import SummaryOutput
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 import os
+import sys
 from pathlib import Path
 from collections import deque
 
@@ -127,6 +128,8 @@ class FileSummaryAgent:
         files = deque()
         acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css", ".yml", ".yaml"]
 
+        codebase_name = Path(state["directory_path"]).name
+
         # recursively loop through all files in the directory path
         for root, _, filenames in os.walk(state["directory_path"]):
             for f in filenames:
@@ -138,7 +141,8 @@ class FileSummaryAgent:
         # update the GraphState
         return {
             "files": files,
-            "total_number_of_files": len(files)
+            "total_number_of_files": len(files),
+            "codebase_name": codebase_name
         }
     
     def summarizer_node(self, state: GraphState):
@@ -188,12 +192,25 @@ class FileSummaryAgent:
         @return GraphState: Unmodified state passed to the next node.
         """
 
-        os.makedirs("./agent/file_summary_agent_output", exist_ok=True)
+        base_output_dir = "./agent/file_summary_agent_output"
+        
+        # 2. Append the codebase name to create a subdirectory
+        # state["codebase_name"] comes from the crawler node
+        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
+        
+        os.makedirs(codebase_subdir, exist_ok=True)
+
         summary_file = state['file_summary']
         file_name = str(state['current_file'])
-        file_name = "./agent/file_summary_agent_output/" + file_name.replace(".", "-") + ".json" 
-        with open(file_name, "w") as f:
+        
+        # 3. Create the full file path inside the subdirectory
+        # We still replace dots with hyphens to avoid double-extension confusion
+        safe_name = file_name.replace(".", "-") + ".json"
+        full_path = os.path.join(codebase_subdir, safe_name)
+
+        with open(full_path, "w") as f:
             f.write(summary_file.model_dump_json(indent=2))
+            
         return state
 
 
@@ -211,7 +228,10 @@ if __name__ == "__main__":
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
-    codebase = input("Enter the codebase to analyze: ")
+    if len(sys.argv) != 2:
+        print("Usage: python file_summary_agent.py <codebase_name>")
+        sys.exit(1)
+    codebase = sys.argv[1]
     directory_path = os.path.join(PROJECT_ROOT, "targetCodebases", codebase)
 
     agent = FileSummaryAgent()

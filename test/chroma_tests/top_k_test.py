@@ -1,5 +1,5 @@
 """
-@file test_chroma_retrieval.py
+@file top_k_test.py
 @brief Unit test to verify similarity search and top-k retrieval from ChromaDB.
 @details This script validates that the vector store can successfully perform 
          semantic search using the SentenceTransformer embedding function.

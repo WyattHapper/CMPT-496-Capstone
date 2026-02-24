@@ -1,5 +1,5 @@
 """
-@file inspect_chromadb_with_vectors.py
+@file build_db_test.py
 @brief Diagnostic utility to inspect ChromaDB collections and vector data.
 
 @note This script is AI generated and is only inteded for debugging and 
@@ -11,7 +11,7 @@ from pathlib import Path
 import chromadb
 import numpy as np
 
-def inspect_database(db_path: str, sample_count: int = 10, vector_preview: int = 10):
+def inspect_database(db_path: str, sample_count: int = 3, vector_preview: int = 10):
     """
     @brief Scans a local ChromaDB instance and prints a summary of its content.
     
@@ -55,7 +55,7 @@ def inspect_database(db_path: str, sample_count: int = 10, vector_preview: int =
         for i in range(min(sample_count, len(ids))):
             print(f"\nID: {ids[i]}")
             # Truncate document text for cleaner console output
-            print(f"Document: {docs[i][:100]}{'...' if len(docs[i]) > 100 else ''}")
+            print(f"Document: {docs[i][:300]}{'...' if len(docs[i]) > 300 else ''}")
             print(f"Metadata: {metadatas[i]}")
 
             if embeddings is not None:

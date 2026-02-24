@@ -31,5 +31,6 @@ class GraphState(TypedDict):
     directory_path: str
     files: Deque[str] 
     file_summary: SummaryOutput
+    codebase_name: str
     total_number_of_files: int
     current_file: str
