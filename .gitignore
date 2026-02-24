@@ -3,6 +3,7 @@
 /vectorStores
 /my_chroma_data
 .env
-__pycache__
-*.pyc
 .vscode/
+__pycache__/
+*.pyc
+agent/file_summary_agent_output/*.json

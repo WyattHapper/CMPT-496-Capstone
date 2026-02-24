@@ -40,5 +40,5 @@ The current working directory must be root of project (i.e. the directort extens
 
 2. **Run the script:**
 ```powershell
-python agent/agent.py  
+python .\agent\file_summary_agent.py 
 ```
