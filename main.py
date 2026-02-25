@@ -1,8 +1,9 @@
 """
 @file main.py
 @brief Central CLI entry point for the Codebase Analysis project.
-@details Provides a menu-driven interface to generate summaries, manage vector 
-databases, and preview indexed data.
+@details Provides a menu-driven interface to orchestrate the end-to-end 
+summarization pipeline, manage vector databases, and preview indexed source 
+code and summaries.
 """
 
 import os
@@ -14,12 +15,19 @@ from pathlib import Path
 def clear_screen():
     """
     @brief Clears the terminal screen for better readability.
+    @details Detects the operating system and issues the appropriate system 
+    command ('cls' for Windows, 'clear' for Unix-like systems).
     """
     os.system("cls" if os.name == "nt" else "clear")
 
 def create_summaries():
     """
-    @brief Generates summaries using the summary agent
+    @brief Orchestrates the full codebase analysis pipeline.
+    @details Executes three primary sub-processes in sequence:
+    1. Source code vectorization (src.build_database).
+    2. LLM-based summary generation (agent.file_summary_agent).
+    3. Summary vectorization (src.build_database_JSON).
+    @return None
     """
     clear_screen()
     codebase = Path(input("\nEnter the name of the codebase to analyze: ").strip()).resolve()
@@ -43,6 +51,11 @@ def create_summaries():
 def view_collections(db_type: str):
     """
     @brief Displays existing collections and allows the user to preview their contents.
+    @details Connects to the ChromaDB persistent client, filters collections 
+    based on the specified database type, and renders a formatted preview of 
+    the metadata and documents stored within.
+    @param db_type The type of database to view; expected values are 'summary' or 'source'.
+    @return None
     """
     clear_screen()
     db_dir = Path("vectorStores").resolve()
@@ -112,6 +125,12 @@ def view_collections(db_type: str):
     input("\nPress Enter to return to menu...")
 
 def main_menu():
+    """
+    @brief Main execution loop for the CLI.
+    @details Displays the primary menu and routes user input to the 
+    corresponding orchestration or viewing functions.
+    @return None
+    """
     while True:
         clear_screen()
         print("========================================")
