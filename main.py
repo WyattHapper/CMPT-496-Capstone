@@ -71,13 +71,43 @@ def view_collections(db_type: str):
         print(f"{i+1}. {col.name}")
         
     choice = input(f"\nSelect a number to preview (or 'b' to go back): ")
+    if choice.lower() == 'b':
+        return
     if choice.isdigit() and int(choice) <= len(relevant):
         target = relevant[int(choice)-1]
-        results = target.peek(limit=3) # Grab first 3 entries
+        results = target.peek(limit=5) # Preview 5 items
+        
+        print(f"\n{'='*60}")
+        print(f"PREVIEWING: {target.name}")
+        print(f"{'='*60}")
+
+        for i in range(len(results['ids'])):
+            meta = results['metadatas'][i]
+            doc = results['documents'][i]
             
-        print(f"\n--- Previewing: {target.name} ---")
-        for idx, doc in enumerate(results['documents']):
-            print(f"\n[{idx+1}] {doc[:600]}...") # Show first 600 chars
+            if db_type == "source":
+                # Layout for Source Code DB
+                print(f"\n[ENTRY {i+1}] {meta.get('name', 'N/A')}")
+                print(f"  File: {meta.get('file')}")
+                print(f"  Namespace: {meta.get('namespace')}")
+                print(f"  Lines: {meta.get('start_line')} - {meta.get('end_line')}")
+                print(f"  Type: {meta.get('type')}")
+                print(f"  Preview:\n    {doc.split('Code: ')[-1][:150].strip()}...")
+
+            else:
+                # Layout for Summary DB
+                entry_type = meta.get('type', 'Unknown').upper()
+                name = meta.get('name', meta.get('path'))
+                print(f"\n[{entry_type}] {name}")
+                if meta.get('parent'):
+                    print(f"  Parent Class: {meta.get('parent')}")
+                print(f"  Path: {meta.get('path')}")
+                
+                # Strip out the redundant labels for a cleaner description
+                clean_doc = doc.replace(f"File Path: {meta.get('path')}", "").strip()
+                print(f"  Summary: {clean_doc[:200]}...")
+
+            print(f"{'-'*30}")
         
     input("\nPress Enter to return to menu...")
 
