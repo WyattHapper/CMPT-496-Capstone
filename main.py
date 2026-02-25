@@ -31,7 +31,7 @@ def create_summaries():
     @return None
     """
     clear_screen()
-    codebase = Path(input("\nEnter the name of the codebase to analyze: ").strip()).resolve()
+    codebase = Path(input("\nEnter the path to the codebase to analyze: ").strip()).resolve()
     codebase_name = codebase.name
 
     start_time = time.perf_counter()
@@ -41,17 +41,26 @@ def create_summaries():
 
     print("Building vector database...")
     subprocess.run([sys.executable, "-m", "src.build_database", str(codebase)], text=True)
+
+    code_vectorization_time = time.perf_counter() - start_time
+    print(f"\nCode vectorization completed in {code_vectorization_time:.2f} seconds.\n")
     
     print("Generating summaries...")
     subprocess.run([sys.executable, "-m", "agent.file_summary_agent", str(codebase)], text=True)
 
-    print("Generating summary database...")
+    code_summary_time = time.perf_counter() - code_vectorization_time
+    print(f"\nSummary generation completed in {code_summary_time:.2f} seconds.\n")
+
+    print("Building summary database...")
     subprocess.run([sys.executable, "-m", "src.build_database_JSON", codebase_name], text=True)
+
+    summary_vectorization_time = time.perf_counter() - code_summary_time
+    print(f"\nSummary vectorization completed in {summary_vectorization_time:.2f} seconds.\n")
 
     print("Summaries generated successfully!")
     end_time = time.perf_counter()
     elapsed = end_time - start_time
-    print(f"Total execution time: {elapsed:.2f} seconds")
+    print(f"Total execution time: {elapsed/60:.2f} minutes.")
     input("Press enter to return to main menu...")
 
 def view_collections(db_type: str):
