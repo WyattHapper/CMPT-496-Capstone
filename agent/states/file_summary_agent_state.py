@@ -8,7 +8,7 @@ Each node reads from and returns an updated version of this state.
 """
 
 from typing import TypedDict, Deque
-from structured_output.summary_output import SummaryOutput
+from agent.structured_output.summary_output import SummaryOutput
 
 class GraphState(TypedDict):
     """!

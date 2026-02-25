@@ -4,9 +4,9 @@
 @details Implements a crawler-summarizer-writer workflow that traverses a directory, uses an LLM to produce structured file summaries, and saves the results as JSON outputs.
 """
 
-from states.file_summary_agent_state import GraphState
+from agent.states.file_summary_agent_state import GraphState
 from langgraph.graph import StateGraph, START, END
-from structured_output.summary_output import SummaryOutput
+from agent.structured_output.summary_output import SummaryOutput
 from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 import os
@@ -232,7 +232,7 @@ if __name__ == "__main__":
         print("Usage: python file_summary_agent.py <codebase_name>")
         sys.exit(1)
     codebase = sys.argv[1]
-    directory_path = os.path.join(PROJECT_ROOT, "targetCodebases", codebase)
+    directory_path = os.path.abspath(codebase)
 
     agent = FileSummaryAgent()
     agent.run(directory_path)

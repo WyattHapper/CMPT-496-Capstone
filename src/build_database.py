@@ -27,7 +27,7 @@ def build_database(source_path: str) -> None:
     script_dir = Path(__file__).parent
     source_dir = (Path(script_dir).parent / source_path).resolve()
     db_dir = (Path(script_dir).parent / "vectorStores").resolve()
-    db_name = f"{source_dir.name}_db"
+    db_name = f"{source_dir.name}_code_db"
 
     # Create the vectoreStores directory if it doesn't exist
     if not db_dir.exists():
@@ -38,6 +38,7 @@ def build_database(source_path: str) -> None:
 
     # Initialize ChromaDB client
     client = chromadb.PersistentClient(path=str(db_dir))
+    print(f"\n--- Building Collection: {db_name} ---")
 
     # Create or get the collection
     collection = client.get_or_create_collection(name=db_name, embedding_function = embedding)
@@ -93,6 +94,8 @@ def build_database(source_path: str) -> None:
         collection.upsert(ids=ids[i:end_index], 
                             documents=embeddings[i:end_index], 
                             metadatas=metadatas[i:end_index])
+    
+    print(f"Finished indexing {len(ids)} unique items for {db_name}")
 
 
 if __name__ == "__main__":
