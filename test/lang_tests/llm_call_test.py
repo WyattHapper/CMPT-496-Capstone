@@ -18,7 +18,7 @@ model = ChatGoogleGenerativeAI(
     api_key=os.getenv("GOOGLE_API_KEY"))
 
 # Read the code file to be summarized
-with open("test/lang_tests/shapes_test.py", "r") as f:
+with open("test/lang_tests/TestCodebase/shapes_test.py", "r") as f:
     code = f.read()
 
 # Prepare the messages for the model

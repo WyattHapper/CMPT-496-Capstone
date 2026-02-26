@@ -1,6 +1,8 @@
 """
 @file test_vector_store_wrapper.py
 @brief Unit test for the ChromaManager wrapper class to ensure it can connect to the persistent ChromaDB and perform similarity search
+@details This test initializes the ChromaManager class specifically with ConsoleTables_code_db collection,
+so you must ensure you have that collection created before running this test
 """
 
 # Ensure project root is on `sys.path` when running this test directly
@@ -21,7 +23,7 @@ def test_chroma_manager():
     """
     # Absolute path verification
     db_path = "./vectorStores" 
-    collection_name = "ConsoleTables_db"
+    collection_name = "ConsoleTables_code_db"
 
     try:
         manager = ChromaManager(db_path=db_path, collection_name=collection_name)

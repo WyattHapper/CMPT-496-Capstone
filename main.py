@@ -48,13 +48,13 @@ def create_summaries():
     print("Generating summaries...")
     subprocess.run([sys.executable, "-m", "agent.file_summary_agent", str(codebase)], text=True)
 
-    code_summary_time = time.perf_counter() - code_vectorization_time
+    code_summary_time = time.perf_counter() - start_time - code_vectorization_time
     print(f"\nSummary generation completed in {code_summary_time:.2f} seconds.\n")
 
     print("Building summary database...")
     subprocess.run([sys.executable, "-m", "src.build_database_JSON", codebase_name], text=True)
 
-    summary_vectorization_time = time.perf_counter() - code_summary_time
+    summary_vectorization_time = time.perf_counter() - start_time - code_vectorization_time - code_summary_time
     print(f"\nSummary vectorization completed in {summary_vectorization_time:.2f} seconds.\n")
 
     print("Summaries generated successfully!")
