@@ -8,6 +8,7 @@ from agent.states.file_summary_agent_state import GraphState
 from langgraph.graph import StateGraph, START, END
 from agent.structured_output.summary_output import SummaryOutput
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
 import os
 import sys
@@ -47,6 +48,7 @@ class FileSummaryAgent:
         if llm is not None:
             self.llm = llm
             self.structured_llm = self.llm
+            self.graph = self.build_graph()
         else:
             load_dotenv()
             self.llm = ChatGoogleGenerativeAI(
@@ -175,20 +177,20 @@ class FileSummaryAgent:
             # visual to see if program gets frozen or actually progresses through the codebase
             print("Finished:", file)
             
-            # The mock LLM, GenericFakeChatModel cannot use structured output, only returns a string
-            if isinstance(output, str):
-                return {
-                    "file_summary": SummaryOutput(
-                        path=file,
-                        summary=output
-                    ),
-                    "current_file": Path(file).name
-                }
+            # The following checks are to accomodate output from the mock testing model
+            if isinstance(output, SummaryOutput):
+                final_summary = output
+            # If it's an AIMessage (Mock / GenericFakeChatModel)
+            elif isinstance(output, AIMessage):
+                final_summary = SummaryOutput(path=file, summary=output.content)
             else:
-                return {
-                "file_summary": output, 
+                # Try to handle unexpected types
+                final_summary = SummaryOutput(path=file, summary=str(output))
+
+            return {
+                "file_summary": final_summary,
                 "current_file": Path(file).name
-                }
+            }
         except Exception as e:
             print(f"Error processing file {file}: {e}")
             return {
