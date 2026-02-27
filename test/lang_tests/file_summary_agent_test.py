@@ -10,7 +10,9 @@ from pathlib import Path
 def file_summary_agent():
     responses = [
         AIMessage(content="Summary for file 1..."),
-        AIMessage(content="Summary for file 2...")]
+        AIMessage(content="Summary for file 2..."),
+        AIMessage(content="Summary for file 3..."),
+        AIMessage(content="Summary for file 4...")]
     return FileSummaryAgent(llm=GenericFakeChatModel(messages=iter(responses)))
 
 
@@ -27,15 +29,17 @@ def test_crawler_node(file_summary_agent):
     
     # Check that crawler found two files, so excluded the .txt file in TestCodebase
     assert "files" in result
-    assert result["total_number_of_files"] == 2
+    assert result["total_number_of_files"] == 4
 
 
 def test_summarizer_node(file_summary_agent):
     # Simulate the state after crawling, with two files to summarize
     state = {
         "files": deque([
-            str(Path(__file__).parent / "TestCodebase" / "shapes.py"),
-            str(Path(__file__).parent / "TestCodebase" / "math.py")
+            str(Path(__file__).parent / "TestCodebase" / "Shapes" / "shapes2.py"),
+            str(Path(__file__).parent / "TestCodebase" / "Shapes" / "shapes.py"),
+            str(Path(__file__).parent / "TestCodebase" / "Math" / "math2.py"),
+            str(Path(__file__).parent / "TestCodebase" / "Math" / "math.py")
         ])
     }
 
@@ -48,7 +52,7 @@ def test_summarizer_node(file_summary_agent):
     # Test summarization for the second file
     result2 = file_summary_agent.summarizer_node(state)
     assert "file_summary" in result2
-    assert result2["current_file"] == "shapes.py"
+    assert result2["current_file"] == "math2.py"
     assert result2["file_summary"].summary == "Summary for file 2..."
 
 
