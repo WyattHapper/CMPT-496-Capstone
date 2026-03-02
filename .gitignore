@@ -7,3 +7,4 @@
 __pycache__/
 *.pyc
 agent/file_summary_agent_output/*/*.json
+agent/file_summary_agent_output/markdown/
