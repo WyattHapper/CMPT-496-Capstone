@@ -1,3 +1,9 @@
+"""
+@file directory_output.py
+@brief This file defines the DirectoryOutput class, which is used to represent the structured output of a summary of a directory's contents and purpose.
+@details Includes a nested class for a directory's contents (files and subdirectories) as well as fields for the directory's purpose, responsibilities, and unresolved questions.
+"""
+
 from typing import Optional
 from pydantic import BaseModel, Field
 
