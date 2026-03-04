@@ -4,9 +4,9 @@
 @details Implements a crawler-summarizer-writer workflow that traverses a directory, uses an LLM to produce structured file summaries, and saves the results as JSON outputs.
 """
 
-from agent.states.file_summary_agent_state import GraphState
+from agent.states.file_summary_agent_state import FileGraphState
 from langgraph.graph import StateGraph, START, END
-from agent.structured_output.summary_output import SummaryOutput
+from agent.structured_output.file_summary_output import FileSummaryOutput
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
@@ -40,7 +40,7 @@ class FileSummaryAgent:
         This constructor:
         - Loads environment variables.
         - Configures the language model.
-        - Enables structured output using SummaryOutput.
+        - Enables structured output using FileSummaryOutput.
         - Builds and compiles the LangGraph workflow.
 
         @return None
@@ -54,7 +54,7 @@ class FileSummaryAgent:
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-3-flash-preview",
                 api_key=os.getenv("GOOGLE_API_KEY"))
-            self.structured_llm = self.llm.with_structured_output(SummaryOutput)
+            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
 
 
@@ -74,7 +74,7 @@ class FileSummaryAgent:
         @return Compiled execution graph.
         """
 
-        builder = StateGraph(GraphState)
+        builder = StateGraph(FileGraphState)
 
         # define nodes
         builder.add_node("crawler", self.crawler_node)
@@ -102,7 +102,7 @@ class FileSummaryAgent:
         @return dict: Final state of the graph after execution.
         """
 
-        # Initialize starting GraphState
+        # Initialize starting FileGraphState
         initial_state = {
             "directory_path": directory_path,
             "files": deque()
@@ -113,7 +113,7 @@ class FileSummaryAgent:
 
 
 
-    def crawler_node(self, state: GraphState):
+    def crawler_node(self, state: FileGraphState):
         """
         @brief Recursively collects all code files from the target directory.
 
@@ -122,7 +122,7 @@ class FileSummaryAgent:
         filtering for common code file extensions. Populates a deque of file
         paths and returns the total number of discovered files.
 
-        @param state GraphState: Current graph state containing at least:
+        @param state FileGraphState: Current graph state containing at least:
             - directory_path (str): Path of the directory to scan.
         
         @return dict: Updated state containing:
@@ -143,14 +143,14 @@ class FileSummaryAgent:
                     # add file to queue
                     files.append(os.path.join(root, f))
 
-        # update the GraphState
+        # update the FileGraphState
         return {
             "files": files,
             "total_number_of_files": len(files),
             "codebase_name": codebase_name
         }
     
-    def summarizer_node(self, state: GraphState):
+    def summarizer_node(self, state: FileGraphState):
         """
         @brief Node which calls the LLM to generate a summary for a single file
         @details Pops a file from the stack, reads its contents, and prompts the LLM to generate a summary. Should loop back to this
@@ -178,14 +178,14 @@ class FileSummaryAgent:
             print("Finished:", file)
             
             # The following checks are to accomodate output from the mock testing model
-            if isinstance(output, SummaryOutput):
+            if isinstance(output, FileSummaryOutput):
                 final_summary = output
             # If it's an AIMessage (Mock / GenericFakeChatModel)
             elif isinstance(output, AIMessage):
-                final_summary = SummaryOutput(path=file, summary=output.content)
+                final_summary = FileSummaryOutput(path=file, summary=output.content)
             else:
                 # Try to handle unexpected types
-                final_summary = SummaryOutput(path=file, summary=str(output))
+                final_summary = FileSummaryOutput(path=file, summary=str(output))
 
             return {
                 "file_summary": final_summary,
@@ -194,14 +194,14 @@ class FileSummaryAgent:
         except Exception as e:
             print(f"Error processing file {file}: {e}")
             return {
-                "file_summary": SummaryOutput(
+                "file_summary": FileSummaryOutput(
                     path=file,
                     summary=f"Error generating summary: {e}"
                 ),
                 "current_file": Path(file).name
             }
         
-    def write_file_summary_node(self, state: GraphState):
+    def write_file_summary_node(self, state: FileGraphState):
         """
         @brief Writes a file summary to disk as a JSON file.
 
@@ -211,11 +211,11 @@ class FileSummaryAgent:
         The output file name is derived from `state["current_file"]` with
         periods replaced by hyphens.
 
-        @param state GraphState: Current graph state containing:
-            - file_summary (SummaryOutput): Structured LLM summary.
+        @param state FileGraphState: Current graph state containing:
+            - file_summary (FileSummaryOutput): Structured LLM summary.
             - current_file (str): Name of the summarized file.
 
-        @return GraphState: Unmodified state passed to the next node.
+        @return FileGraphState: Unmodified state passed to the next node.
         """
 
         base_output_dir = "./agent/file_summary_agent_output"

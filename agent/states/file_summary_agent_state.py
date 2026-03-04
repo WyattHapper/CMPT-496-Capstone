@@ -2,15 +2,15 @@
 @file state1.py
 @brief Defines the shared state structure used by the LangGraph workflow.
 @details 
-This module defines the GraphState TypedDict, which represents the 
+This module defines the FileGraphState TypedDict, which represents the 
 structured state passed between nodes in the LangGraph execution graph. 
 Each node reads from and returns an updated version of this state.
 """
 
 from typing import TypedDict, Deque
-from agent.structured_output.summary_output import SummaryOutput
+from agent.structured_output.file_summary_output import FileSummaryOutput
 
-class GraphState(TypedDict):
+class FileGraphState(TypedDict):
     """!
     @brief Represents the state object shared between graph nodes.
     @details 
@@ -30,7 +30,7 @@ class GraphState(TypedDict):
 
     directory_path: str
     files: Deque[str] 
-    file_summary: SummaryOutput
+    file_summary: FileSummaryOutput
     codebase_name: str
     total_number_of_files: int
     current_file: str

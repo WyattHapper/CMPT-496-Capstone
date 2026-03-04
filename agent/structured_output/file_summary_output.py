@@ -1,6 +1,6 @@
 """
-@file summary_output.py
-@brief This file defines the SummaryOutput class, which is used to represent the structured output of a summary of a file's contents.
+@file file_summary_output.py
+@brief This file defines the FileSummaryOutput class, which is used to represent the structured output of a summary of a file's contents.
 @details This file defines a nested structured output format for LLM summarization of a code file's contents, including separate classes for
 function and class summaries
 """
@@ -32,7 +32,7 @@ class ClassSummary(BaseModel):
     # Optional fields
     methods: Optional[list[FunctionSummary]] = Field(default_factory=list, description="A list of methods defined in this class, if applicable. Leave as an empty list if there are no methods or if they cannot be determined.")
 
-class SummaryOutput(BaseModel):
+class FileSummaryOutput(BaseModel):
     """
     @brief A pydantic BaseModel representing a summary of a file's contents.
     """
