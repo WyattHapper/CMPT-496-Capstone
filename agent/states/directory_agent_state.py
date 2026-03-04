@@ -3,8 +3,9 @@
 @brief Defines the shared state structure used by the DirectoryAgent workflow.
 """
 
-from typing import TypedDict, Deque
-# from agent.structured_output.directory_output import DirectoryOutput
+from typing import TypedDict, Deque, Annotated
+from agent.structured_output.directory_output import DirectoryOutput
+from operator import add
 
 class DirectoryGraphState(TypedDict):
     """
@@ -18,7 +19,9 @@ class DirectoryGraphState(TypedDict):
     """
     directory_path: str
     directories: Deque[str]
-    # directory_summary: DirectoryOutput
+    retrieved_context: Annotated[list[str], add] # Annotation indicates that this field will be appended to, rather than overwritten
+    sufficient_context_retrieved: bool # For the context analyser node
+    directory_summary: DirectoryOutput
     codebase_name: str
     total_number_of_directories: int
     current_directory: str
