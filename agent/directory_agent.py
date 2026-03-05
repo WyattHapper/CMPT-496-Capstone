@@ -64,8 +64,21 @@ class DirectoryAgent:
         return self.graph.invoke(initial_state)
 
     def crawler_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Recursively collects subdirectories of a given directory, ignoring system/irrelevant folders.
+        @param state Workflow state containing "directory_path" as the root to crawl.
+        @return Updated state with:
+            - "directories": deque of discovered subdirectory paths, deepest first
+            - "total_number_of_directories": count of discovered directories
+            - "codebase_name": name of the root directory
+            - "retrieved_context": empty list
+            - "sufficient_context_retrieved": False
+            - "K": int, default 3 for retrieval
+        @raises ValueError if "directory_path" is not a valid directory.
+        """
         root_path = state["directory_path"]
 
+        # error check path
         if not os.path.isdir(root_path):
             raise ValueError(f"Invalid directory path: {root_path}")
 
@@ -82,7 +95,7 @@ class DirectoryAgent:
             "NuSpecs", 
             "NuSpec",
             "Debug"
-        }
+        } # may have to be changed depending on what we deem useful
 
         # Walk directory tree
         for root, dirs, _ in os.walk(root_path):
@@ -94,23 +107,15 @@ class DirectoryAgent:
         # Sort deepest directories first (bottom-up summarization)
         discovered_directories.sort(
             key=lambda path: path.count(os.sep),
-            #reverse=True
+            reverse=True
         )
-        
-        """
-        for dir in discovered_directories:
-            print(dir)
-        print(len(discovered_directories))
-        """
 
         return {
             "directories": deque(discovered_directories),
             "total_number_of_directories": len(discovered_directories),
             "codebase_name": Path(root_path).name,
-
-            # Initialize workflow control fields
             "retrieved_context": [],
-            "sufficient_context_retrieved": True, # ** SET BACK TO FALSE WHEN DONE ** --> needed to run graph or it creates infinite loop
+            "sufficient_context_retrieved": False,
             "K": 3
         }        
 

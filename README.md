@@ -65,3 +65,8 @@ Flags:
 
 Notes:
 - Run the command from the project root so the default input path resolves correctly.
+
+## How To Run LangGraph Test Cases
+```powershell
+pytest .\test\lang_tests\directory_agent_test.py
+```
