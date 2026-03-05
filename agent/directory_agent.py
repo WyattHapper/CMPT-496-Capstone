@@ -70,14 +70,18 @@ class DirectoryAgent:
         """
         A note to whoever builds this node: The retrieved_context field in the graph state is set to append instead of overwrite by default. Therefore,
         if the next node loops back to this one to have it retrieve additional context, you can just write to that state field normally and it will append.
-        The summarizer node should manually clear this field when the summary is generated so that the next retrieval step starts fresh
+        The summarizer node should manually clear this field when the summary is generated so that the next retrieval step starts fresh. It is also worth noting
+        that if the retriever node is looped back to to gather additional context, it should gather different context than the previous time. One idea to do so 
+        would be to track a number k, which would be the amount of results to be retrieved (top-k results). The context analyser could then increment this number if 
+        it determines that more context is needed, and the retriever node would retrieve the top-k results according to that number. k should then be added to the
+        graph state, and it should also be noted that this process would need to be done for both of the vector stores (code and summary)
         """
         pass
 
     def context_analyser_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
         A note to whoever builds this node: I (Nico) added a bool to the state object called "sufficient_context_retrieved". This bool is checked in a
-        conditional edge in the graph after this node, to determine if it should loop back to the retriever
+        conditional edge in the graph after this node, to determine if it should loop back to the retriever.
         """
         pass
 
@@ -85,8 +89,8 @@ class DirectoryAgent:
         """
         A note to whoever builds this node: Because the GenericFakeChatModel used for testing cannot use structured output, you will have to check
         if that model is being used here, and if so, you will have to manually create and return the structured output object.
-        Also, as mentioned in the context analyser node, make sure to clear the retrieved_context field in the state object in this node, so that the
-        next retrieval step starts with an empty context.
+        Also, as mentioned in the context analyser node, make sure to clear the retrieved_context field and reset the sufficient_context_retrieved flag
+        in the state object in this node, so that the next retrieval step starts with an empty context.
         """
         pass
 
