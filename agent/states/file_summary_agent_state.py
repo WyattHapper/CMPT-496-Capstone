@@ -7,8 +7,8 @@ structured state passed between nodes in the LangGraph execution graph.
 Each node reads from and returns an updated version of this state.
 """
 
-from typing import TypedDict, Deque
-from agent.structured_output.file_summary_output import FileSummaryOutput
+from typing import TypedDict, Deque, List, Dict
+from agent.structured_output.summary_output import SummaryOutput
 
 class FileGraphState(TypedDict):
     """!
@@ -30,7 +30,8 @@ class FileGraphState(TypedDict):
 
     directory_path: str
     files: Deque[str] 
-    file_summary: FileSummaryOutput
+    file_summaries: List[SummaryOutput]
     codebase_name: str
     total_number_of_files: int
-    current_file: str
+    current_files: List[str]
+    filename_counters: Dict[str, int]
