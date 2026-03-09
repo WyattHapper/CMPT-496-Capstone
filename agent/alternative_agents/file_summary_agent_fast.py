@@ -4,9 +4,9 @@
 @details Implements a crawler-summarizer-writer workflow that traverses a directory, uses an LLM to produce structured file summaries, and saves the results as JSON outputs.
 """
 
-from agent.states.file_summary_agent_state import GraphState
+from agent.states.file_summary_agent_state import FileGraphState
 from langgraph.graph import StateGraph, START, END
-from agent.structured_output.summary_output import SummaryOutput
+from agent.structured_output.file_summary_output import FileSummaryOutput
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
@@ -51,14 +51,14 @@ class FileSummaryAgent:
         """
         if llm is not None:
             self.llm = llm
-            self.structured_llm = self.llm.with_structured_output(SummaryOutput)
+            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
         else:
             load_dotenv()
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-2.5-pro",
                 api_key=os.getenv("GOOGLE_API_KEY"))
-            self.structured_llm = self.llm.with_structured_output(SummaryOutput)
+            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
 
 
@@ -78,7 +78,7 @@ class FileSummaryAgent:
         @return Compiled execution graph.
         """
 
-        builder = StateGraph(GraphState)
+        builder = StateGraph(FileGraphState)
 
         # define nodes
         builder.add_node("crawler", self.crawler_node)
@@ -124,7 +124,7 @@ class FileSummaryAgent:
 
 
 
-    def crawler_node(self, state: GraphState):
+    def crawler_node(self, state: FileGraphState):
         """
         @brief Recursively collects all code files from the target directory.
 
@@ -180,13 +180,13 @@ class FileSummaryAgent:
         summaries = []
         for file_path, output, err in results:
             if err is not None:
-                summaries.append(SummaryOutput(path=file_path, summary=f"Error generating summary: {err}"))
-            elif isinstance(output, SummaryOutput):
+                summaries.append(FileSummaryOutput(path=file_path, summary=f"Error generating summary: {err}"))
+            elif isinstance(output, FileSummaryOutput):
                 summaries.append(output)
             elif isinstance(output, AIMessage):
-                summaries.append(SummaryOutput(path=file_path, summary=output.content))
+                summaries.append(FileSummaryOutput(path=file_path, summary=output.content))
             else:
-                summaries.append(SummaryOutput(path=file_path, summary=str(output)))
+                summaries.append(FileSummaryOutput(path=file_path, summary=str(output)))
 
         return {
             "file_summaries": summaries,
@@ -194,7 +194,7 @@ class FileSummaryAgent:
         }
 
         
-    def write_file_summary_node(self, state: GraphState):
+    def write_file_summary_node(self, state: FileGraphState):
         base_output_dir = "./agent/file_summary_agent_output"
         codebase_subdir = os.path.join(base_output_dir, f'{state["codebase_name"]}_pro')
         os.makedirs(codebase_subdir, exist_ok=True)

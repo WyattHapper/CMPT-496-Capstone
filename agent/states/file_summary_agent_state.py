@@ -8,7 +8,7 @@ Each node reads from and returns an updated version of this state.
 """
 
 from typing import TypedDict, Deque, List, Dict
-from agent.structured_output.summary_output import SummaryOutput
+from agent.structured_output.file_summary_output import FileSummaryOutput
 
 class FileGraphState(TypedDict):
     """!
@@ -30,8 +30,10 @@ class FileGraphState(TypedDict):
 
     directory_path: str
     files: Deque[str] 
-    file_summaries: List[SummaryOutput]
+    file_summaries: List[FileSummaryOutput]
+    file_summary: FileSummaryOutput
     codebase_name: str
     total_number_of_files: int
     current_files: List[str]
+    current_file: str
     filename_counters: Dict[str, int]
