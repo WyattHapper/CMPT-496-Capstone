@@ -7,6 +7,15 @@ from typing import TypedDict, Deque, Annotated, Any
 from agent.structured_output.directory_output import DirectoryOutput
 from operator import add
 
+def merge_summaries(existing: dict, new: dict) -> dict:
+    """
+    @brief Merges new directory summaries into the existing dict
+    @param existing The existing dictionary of directory summaries
+    @param new The new dictionary of directory summaries to merge in
+    @return A merged dictionary containing all summaries from both existing and new, with new summaries appended
+    """
+    return {**existing, **new}
+
 class DirectoryGraphState(TypedDict):
     """
     @brief Represents the state object shared between graph nodes in the DirectoryAgent workflow.
@@ -23,6 +32,7 @@ class DirectoryGraphState(TypedDict):
     summary_context: Annotated[list[str], add] # Annotation indicates that this field will be appended to, rather than overwritten
     sufficient_context_retrieved: bool # For the context analyser node
     directory_summary: DirectoryOutput
+    child_summaries: Annotated[dict[str, DirectoryOutput], merge_summaries]
     codebase_name: str
     total_number_of_directories: int
     current_directory: str

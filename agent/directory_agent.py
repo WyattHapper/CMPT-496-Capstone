@@ -59,10 +59,12 @@ class DirectoryAgent:
         initial_state = {
             "directory_path": directory_path,
             "directories": deque(),
-            "retrieved_context": [],
+            "code_context": [],
+            "summary_context": [],
             "sufficient_context_retrieved": False,
             "codebase_k": 3,
-            "file_summary_k": 3
+            "file_summary_k": 3,
+            "child_summaries": {}
         }
 
         return self.graph.invoke(initial_state)
@@ -111,10 +113,13 @@ class DirectoryAgent:
             reverse=True
         )
 
+        first_dir = discovered_directories.pop()
+
         return {
             "directories": deque(discovered_directories),
             "total_number_of_directories": len(discovered_directories),
             "codebase_name": Path(root_path).name,
+            "current_directory": first_dir
         }        
 
     def retriever_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
@@ -138,10 +143,9 @@ class DirectoryAgent:
 
     def summarizer_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
-        A note to whoever builds this node: Because the GenericFakeChatModel used for testing cannot use structured output, you will have to check
-        if that model is being used here, and if so, you will have to manually create and return the structured output object.
-        Also, as mentioned in the context analyser node, make sure to clear the retrieved_context field and reset the sufficient_context_retrieved flag
-        in the state object in this node, so that the next retrieval step starts with an empty context.
+        @brief Generates a summary of the current directory based on retrieved context and updates the state with the summary.
+        @param state Workflow state object containing the current directory and retrieved context.
+        @return Updated state with directory summary in the form of a DirectoryOutput object.
         """
         if (isinstance(self.llm, GenericFakeChatModel)):
             output = self.llm.invoke("")
@@ -151,10 +155,104 @@ class DirectoryAgent:
                 purpose = output.content
             )
         
-        strucured_llm = self.llm.with_structured_output(DirectoryOutput)
+        try:
+            # Structure LLM output
+            strucured_llm = self.llm.with_structured_output(DirectoryOutput)
+
+            # Gather all relevant context for summarization
+            current_dir = state["current_directory"]
+            child_summaries = self._get_child_directory_summaries(current_dir, state["child_summaries"])
+            formatted_child_summaries = self._format_child_summaries(child_summaries)
+            summary_context = "\n\n".join(state["summary_context"])
+            code_context = "\n\n".join(state["code_context"])
+
+            # Create prompt and system message for LLM
+            system_message = "You are a Senior Software Architect. Your task is to provide a high-level technical summary of a specific directory in a large codebase."
+            prompt = f"""DIRECTORY TO ANALYZE: {state['current_directory']}
+
+                        INPUT DATA:
+                        1. CHILD DIRECTORY SUMMARIES:
+                        {formatted_child_summaries}
+
+                        2. FILE-LEVEL SUMMARIES:
+                        {summary_context}
+
+                        3. CODE SNIPPETS:
+                        {code_context}
+
+                        INSTRUCTIONS:
+                        Follow these steps to generate your summary:
+                        1. Identify the main purpose of this directory and its contents, based on the input data provided. Consider the summaries of child directories, file-level summaries, and any relevant code snippets to inform your understanding.
+                        2. Identify any smaller responsibilities that this directory handles.
+
+                        Create your output based on the structured output format provided. For the purpose, favour completeness over conciseness, but avoid including unnecessary details.
+
+                        Example:
+                        directory_name: "Benchmarks"
+                        directory_path: "targetCodebases/Humanizer/src/Benchmarks"
+                        purpose: "This directory contains benchmarking scripts and related resources for evaluating the performance of the codebase. The scripts here are designed to run various performance tests and generate reports based on the results."
+                        responsibilities: ["Performance Testing", "Benchmarking Scripts"]
+                        """
+            messages = [("system", system_message), ("user", prompt)]
+
+            # Generate summary using LLM
+            output = strucured_llm.invoke(messages)
+
+            print(f"Generated summary for directory {state['current_directory']}")
+
+            # Update deque of directories, current_dir
+
+            return {
+                "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
+                "summary_context": [],
+                "codebase_k": 10,
+                "file_summary_k": 10,
+                "directory_summary": output,
+            }
+        except Exception as e:
+            print(f"Error during summarization: {e}")
+            raise e
+
+
 
     def writer_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         state["directories"].pop()
+
+    def _get_child_directory_summaries(self, current_dir: str, summaries_dict: dict[str, DirectoryOutput]) -> list[DirectoryOutput]:
+        """
+        @brief Retrieves summaries of all child directories of the current directory.
+        @param current_dir The path of the current directory being processed.
+        @param summaries_dict Dictionary mapping directory paths to their DirectoryOutput summaries.
+        @return List of DirectoryOutput objects for child directories.
+        """
+        child_summaries = []
+        
+        # Find all entries in summaries_dict whose parent is current_dir
+        for dir_path, summary in summaries_dict.items():
+            # Check if dir_path is a direct child of current_dir
+            if os.path.dirname(dir_path) == current_dir:
+                child_summaries.append(summary)
+        
+        return child_summaries
+
+    def _format_child_summaries(self, summaries: list[DirectoryOutput]) -> str:
+        """
+        @brief Formats child directory summaries into a readable string for the LLM prompt.
+        @param summaries List of DirectoryOutput objects for child directories.
+        @return Formatted string representation of child summaries.
+        """
+        if not summaries:
+            return "No child directories found or summarized yet."
+        
+        formatted = []
+        for summary in summaries:
+            text = f"""Directory: {summary.directory_name}
+                    Path: {summary.directory_path}
+                    Purpose: {summary.purpose}
+                    Responsibilities: {', '.join(summary.responsibilities) if summary.responsibilities else 'None identified'}"""
+            formatted.append(text)
+        
+        return "\n\n".join(formatted)
 
 if __name__ == "__main__":
     """
