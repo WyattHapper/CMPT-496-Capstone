@@ -426,6 +426,8 @@ class DirectoryAgent:
             return {
                 "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
                 "summary_context": [],
+                "sufficient_code_context": False,
+                "sufficient_summary_context": False,
                 "codebase_k": 10,
                 "file_summary_k": 10,
                 "directory_summary": DirectoryOutput(
@@ -482,6 +484,8 @@ class DirectoryAgent:
             return {
                 "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
                 "summary_context": [],
+                "sufficient_code_context": False,
+                "sufficient_summary_context": False,
                 "codebase_k": 10,
                 "file_summary_k": 10,
                 "directory_summary": output,
@@ -492,6 +496,8 @@ class DirectoryAgent:
             return {
                 "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
                 "summary_context": [],
+                "sufficient_code_context": False,
+                "sufficient_summary_context": False,
                 "codebase_k": 10,
                 "file_summary_k": 10,
                 "directory_summary": DirectoryOutput(
