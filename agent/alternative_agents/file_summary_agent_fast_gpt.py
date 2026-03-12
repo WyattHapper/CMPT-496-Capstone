@@ -6,7 +6,7 @@
 
 from agent.states.file_summary_agent_state import GraphState
 from langgraph.graph import StateGraph, START, END
-from agent.structured_output.summary_output import SummaryOutput
+from agent.structured_output.file_summary_output import FileSummaryOutput
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
@@ -52,7 +52,7 @@ class FileSummaryAgent:
         """
         if llm is not None:
             self.llm = llm
-            self.structured_llm = self.llm.with_structured_output(SummaryOutput)
+            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
         else:
             load_dotenv()
@@ -61,7 +61,7 @@ class FileSummaryAgent:
                 api_key=os.getenv("OPENAI_API_KEY"),  # or omit and rely on env var
                 temperature=0,                        # helps structured output stability
             )
-            self.structured_llm = self.llm.with_structured_output(SummaryOutput)
+            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
 
     def build_graph(self):
@@ -184,13 +184,13 @@ class FileSummaryAgent:
         summaries = []
         for file_path, output, err in results:
             if err is not None:
-                summaries.append(SummaryOutput(path=file_path, summary=f"Error generating summary: {err}"))
-            elif isinstance(output, SummaryOutput):
+                summaries.append(FileSummaryOutput(path=file_path, summary=f"Error generating summary: {err}"))
+            elif isinstance(output, FileSummaryOutput):
                 summaries.append(output)
             elif isinstance(output, AIMessage):
-                summaries.append(SummaryOutput(path=file_path, summary=output.content))
+                summaries.append(FileSummaryOutput(path=file_path, summary=output.content))
             else:
-                summaries.append(SummaryOutput(path=file_path, summary=str(output)))
+                summaries.append(FileSummaryOutput(path=file_path, summary=str(output)))
 
         return {
             "file_summaries": summaries,
@@ -233,14 +233,14 @@ async def _summarize_one(structured_llm, file_path: str, max_retries: int = 6):
         try:
             out = await structured_llm.ainvoke(messages)
 
-            if isinstance(out, SummaryOutput):
+            if isinstance(out, FileSummaryOutput):
                 return file_path, out, None
 
             parsed = getattr(out, "parsed", None)
-            if isinstance(parsed, SummaryOutput):
+            if isinstance(parsed, FileSummaryOutput):
                 return file_path, parsed, None
 
-            return file_path, SummaryOutput(path=file_path, summary=str(out)), None
+            return file_path, FileSummaryOutput(path=file_path, summary=str(out)), None
 
         except Exception as e:
             msg = str(e).lower()
