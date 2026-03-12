@@ -197,10 +197,8 @@ class DirectoryAgent:
         # get current directory
         current_directory = state.get("current_directory")
         if not current_directory:
-            if not state["directories"]:
-                raise ValueError("No directories left to retrieve context for.")
-            current_directory = state["directories"][-1]
-
+            raise ValueError("No directories left to retrieve context for.")
+            
         # get collections
         code_collection = state["code_collection"]
         summary_collection = state["summary_collection"]
@@ -328,10 +326,8 @@ class DirectoryAgent:
         """
         current_directory = state.get("current_directory")
         if not current_directory:
-            if not state["directories"]:
-                raise ValueError("No directories left to retrieve context for.")
-            current_directory = state["directories"][-1]
-
+            raise ValueError("No directories left to retrieve context for.")
+        
         root_directory = state["directory_path"]
 
         try:
