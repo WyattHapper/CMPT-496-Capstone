@@ -144,15 +144,9 @@ class DirectoryAgent:
         # Sort deepest directories first (bottom-up summarization)
         discovered_directories.sort(
             key=lambda path: path.count(os.sep),
-            #reverse=True
         )
         
-        print("DISCOVERED DIRECTORIES:")
-        for d in discovered_directories:
-            print(d)
-
         first_dir = discovered_directories.pop()
-
         return {
             "directories": deque(discovered_directories),
             "total_number_of_directories": len(discovered_directories),
@@ -203,7 +197,9 @@ class DirectoryAgent:
         # get current directory
         current_directory = state.get("current_directory")
         if not current_directory:
-            raise ValueError("Current directory not set.")
+            if not state["directories"]:
+                raise ValueError("No directories left to retrieve context for.")
+            current_directory = state["directories"][-1]
 
         # get collections
         code_collection = state["code_collection"]
@@ -332,7 +328,9 @@ class DirectoryAgent:
         """
         current_directory = state.get("current_directory")
         if not current_directory:
-            raise ValueError("Current directory not set.")
+            if not state["directories"]:
+                raise ValueError("No directories left to retrieve context for.")
+            current_directory = state["directories"][-1]
 
         root_directory = state["directory_path"]
 
@@ -511,42 +509,55 @@ class DirectoryAgent:
             }
 
     def writer_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Writes the current directory's summary to a JSON file and updates the workflow state.
+            Root directory summaries are saved under a `root_output` subdirectory.
+        @param state Current workflow state containing `directory_summary`, `directories`, 
+                    `codebase_name`, and `directory_path`.
+        @return Updated state with:
+                - `current_directory`: set to the next directory to process, or `None` if finished.
+                - Summary JSON written to the appropriate output folder:
+                    - Non-root directories: `directory_agent_output/<codebase_name>/`
+                    - Root directory: `directory_agent_output/<codebase_name>/root_output/`
+        """
+        # creates directory_agent_output subdir 
         base_output_dir = "./agent/directory_agent_output"
         os.makedirs(base_output_dir, exist_ok=True)
 
-        # 2. Append the codebase name to create a subdirectory
-        # state["codebase_name"] comes from the crawler node
+        # create codebase subdir inside of directory_agent_output
         codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
         os.makedirs(codebase_subdir, exist_ok=True)
 
         directory_summary = state['directory_summary']
         
-        # 3. Create the full file path inside the subdirectory
-        # We still replace dots with hyphens to avoid double-extension confusion
+        # create relative path from absolute
         rel_path = os.path.relpath(directory_summary.directory_path, state["directory_path"])
 
-        # Detect root directory
+        # case for root level summary
         if rel_path == ".":
-            final_dir = os.path.join(codebase_subdir, "final_output")
+            final_dir = os.path.join(codebase_subdir, "root_output")
             os.makedirs(final_dir, exist_ok=True)
 
             safe_name = state["codebase_name"] + ".json"
             full_path = os.path.join(final_dir, safe_name)
-
+        
+        # case for non-root level summaries
         else:
             safe_name = Path(rel_path).as_posix().strip("./").replace("/", "_") + ".json"
             full_path = os.path.join(codebase_subdir, safe_name)
         
+        # write summary into .JSON file
         with open(full_path, "w", encoding='utf-8') as f:
             f.write(directory_summary.model_dump_json(indent=2))
         
+        # move onto next directory
         if state["directories"]:
             next_dir = state["directories"].pop()
             state["current_directory"] = next_dir
+        
+        # case for when the directory that just finished is the last one (root)
         else:
             state["current_directory"] = None
-
-        
 
         return state
         
