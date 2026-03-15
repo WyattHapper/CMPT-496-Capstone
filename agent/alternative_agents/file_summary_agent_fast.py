@@ -222,8 +222,147 @@ async def _summarize_one(structured_llm, file_path: str):
     try:
         contents = Path(file_path).read_text(encoding="utf-8", errors="replace")
         messages = [
-            ("system", "You are a helpful assistant that creates concise, accurate summaries of code files."),
-            ("user", f"File path: {file_path}\nSummarize the following code file:\n{contents}")
+            (
+                "system",
+                "You analyze source code and return only structured output matching the schema."
+            ),
+            (
+                "user",
+                f"""
+        Your task is to summarize the file and extract type information for UML documentation.
+
+        Return:
+        - a concise summary of the file
+        - dependencies/imports
+        - top-level functions
+        - all types defined in the file
+
+        Types may be:
+        - class
+        - enum
+        - interface
+        - struct
+
+        For each type:
+        - provide a short description
+        - list properties or fields
+        - list methods and constructors
+        - list base classes in inherits_from
+        - list enum values if the type is an enum
+        - generate a standalone PlantUML snippet describing the type
+
+        For properties and fields:
+        - determine visibility: public, private, or protected
+        - indicate whether the member is static
+
+        For methods:
+        - determine visibility
+        - determine whether the method is static
+        - determine whether it is a constructor
+        - list parameters with direction (in, out, or inout)
+        - include return type if known
+
+        Constructor parameters must be included in the structured method entry exactly as they appear in the PlantUML signature.
+
+        Relationship extraction:
+
+        Two relationship types are supported:
+
+        inheritance  
+        A type inherits from another type.
+
+        association  
+        One type stores another type as a field, property, or member.
+
+        Association rules:
+        - Only create an association when a type stores another type as a field or property.
+        - Do NOT create associations for:
+        - local variables
+        - object creation inside methods
+        - parameters
+        - return types
+        - method calls
+        - assertions
+        - temporary usage inside functions
+        - If a type is only used inside methods, omit the relationship.
+
+        Method parameter consistency:
+        - Every method and constructor must include its full parameter list in the structured `parameters` field.
+        - The `parameters` field must match the parameters shown in the PlantUML signature.
+        - Do not leave `parameters` empty for methods or constructors that take arguments.
+
+        Test file rule:
+        - In test files, do NOT create associations to types used only inside test methods.
+        - Only create associations if the test class actually stores a member of that type.
+
+        Relationship placement:
+        - If both types are defined in the file, place the relationship in `relationships`.
+        - If the target type is defined outside the file, place the relationship in `external_relationships`.
+        - If no valid relationships exist, return empty lists.
+
+        PlantUML rules:
+
+        For each type:
+        - the PlantUML must match the extracted structured fields exactly
+        - do not include members that are missing from the structured output
+        - use:
+        + for public
+        - for private
+        # for protected
+        - mark static members using `{{static}}`
+        - show fields as: `+name : Type`
+        - show methods as: `+method(in x : Type) : ReturnType`
+        - constructors must not have return types
+        
+        Relationship PlantUML formatting:
+        - Use `<|--` for inheritance.
+        - Use `-->` for association.
+        - Do not use aggregation (`o--`) or composition (`*--`) symbols.
+
+        PlantUML static member formatting:
+        - For static properties and static methods, place {{static}} before the visibility symbol.
+        - Correct format examples:
+        {{static}} +NumericTypes : HashSet<Type>
+        {{static}} +FromDictionary(in values : Dictionary<string, Dictionary<string, object>>) : ConsoleTable
+        {{static}} -GetColumns<T>() : IEnumerable<string>
+        - Do not place the visibility symbol before {{static}}.
+        - Incorrect examples:
+        +{{static}} NumericTypes : HashSet<Type>
+        -{{static}} GetColumns<T>() : IEnumerable<string>
+
+        File-level relationship diagram:
+
+        Generate `relationship_plantuml` as a standalone diagram.
+
+        Rules:
+        - include `@startuml` and `@enduml`
+        - declare all in-file types
+        - include only relationships from the `relationships` field
+        - do not include external relationships
+        - if there are no relationships, still declare the types
+
+        General rules:
+        - only include information supported by the code
+        - do not invent members or relationships
+        - keep items in source order when possible
+
+        Association filtering:
+        - Prefer associations to named application, project, or file-relevant types.
+        - Do not create associations to generic collection/container/helper types unless they are especially important to understanding the design.
+        - Do not create associations only because a property type is a primitive, framework utility, or common container type.
+        - Do not create associations to enum types.
+        - Enum values may appear in properties but should not generate relationships.
+
+        Structured data is the source of truth.
+        Generate PlantUML from the structured fields, not the other way around.
+
+        File path:
+        {file_path}
+
+        Code:
+        {contents}
+        """
+            )
         ]
         out = await structured_llm.ainvoke(messages)
         return file_path, out, None
