@@ -56,7 +56,7 @@ class FileSummaryAgent:
         else:
             load_dotenv()
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-2.5-pro",
+                model="gemini-3-flash-preview",
                 api_key=os.getenv("GOOGLE_API_KEY"))
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
@@ -196,7 +196,7 @@ class FileSummaryAgent:
         
     def write_file_summary_node(self, state: FileGraphState):
         base_output_dir = "./agent/file_summary_agent_output"
-        codebase_subdir = os.path.join(base_output_dir, f'{state["codebase_name"]}_pro')
+        codebase_subdir = os.path.join(base_output_dir, f'{state["codebase_name"]}')
         os.makedirs(codebase_subdir, exist_ok=True)
 
         counters = state["filename_counters"]

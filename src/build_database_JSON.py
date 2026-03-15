@@ -67,7 +67,7 @@ def build_database(codebase_name: str) -> None:
             metadatas.append({"type": "file", "path": src_path})
 
         # 2. Top-Level Functions
-        for func in data.get("functions", []):
+        for func in data.get("functions") or []:
             name = func.get("name")
             func_id = f"func:{src_path}:{name}"
             if func_id not in ids:
@@ -76,7 +76,7 @@ def build_database(codebase_name: str) -> None:
                 metadatas.append({"type": "function", "name": name, "path": src_path})
 
         # 3. Classes & Their Methods
-        for cls in data.get("classes", []):
+        for cls in data.get("classes") or []:
             class_name = cls.get("name")
             class_id = f"class:{src_path}:{class_name}"
             
@@ -85,7 +85,7 @@ def build_database(codebase_name: str) -> None:
                 documents.append(f"Class '{class_name}' in {src_path}. Description: {cls.get('description')}")
                 metadatas.append({"type": "class", "name": class_name, "path": src_path})
 
-            for method in cls.get("methods", []):
+            for method in cls.get("methods") or []:
                 m_name = method.get("name")
                 method_id = f"method:{src_path}:{class_name}:{m_name}"
                 
