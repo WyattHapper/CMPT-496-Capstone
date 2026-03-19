@@ -41,6 +41,8 @@ class DirectoryAgent:
         builder.add_node("retriever", self.retriever_node)
         builder.add_node("context_analyser", self.context_analyser_node)
         builder.add_node("summarizer", self.summarizer_node)
+        builder.add_node("judgement", self.judgement_node)
+        builder.add_node("refinement", self.refinement_node)
         builder.add_node("writer", self.writer_node)
 
         # Set edges
@@ -53,7 +55,12 @@ class DirectoryAgent:
             if state["sufficient_code_context"] and state["sufficient_summary_context"]
             else "retriever"
         )
-        builder.add_edge("summarizer", "writer")
+        builder.add_edge("summarizer", "judgement")
+        builder.add_conditional_edges(
+            "judgement",
+            lambda state: "writer" if state["summary_acceptable"] or state["refinement_attempts"] >= 2 else "refinement"
+        )
+        builder.add_edge("refinement", "judgement")
         builder.add_conditional_edges(
             "writer",
             lambda state: "retriever" if state["current_directory"] else END
@@ -100,7 +107,8 @@ class DirectoryAgent:
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "summary_acceptable": False,
-            "summary_feedback": ""
+            "summary_feedback": "",
+            "refinement_attempts": 0
         }
 
         return self.graph.invoke(initial_state)
@@ -424,12 +432,6 @@ class DirectoryAgent:
         if (isinstance(self.llm, GenericFakeChatModel)):
             output = self.llm.invoke("")
             return {
-                "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
-                "summary_context": [],
-                "sufficient_code_context": False,
-                "sufficient_summary_context": False,
-                "codebase_k": 10,
-                "file_summary_k": 10,
                 "directory_summary": DirectoryOutput(
                     directory_name = Path(state["current_directory"]).name,
                     directory_path = state["current_directory"],
@@ -438,7 +440,7 @@ class DirectoryAgent:
         
         try:
             # Structure LLM output
-            strucured_llm = self.llm.with_structured_output(DirectoryOutput)
+            structured_llm = self.llm.with_structured_output(DirectoryOutput)
 
             # Gather all relevant context for summarization
             current_dir = state["current_directory"]
@@ -453,13 +455,13 @@ class DirectoryAgent:
 
                         INPUT DATA:
                         1. CHILD DIRECTORY SUMMARIES:
-                        {formatted_child_summaries}
+                        {formatted_child_summaries if formatted_child_summaries else "None"}
 
                         2. FILE-LEVEL SUMMARIES:
-                        {summary_context}
+                        {summary_context if summary_context else "None"}
 
                         3. CODE SNIPPETS:
-                        {code_context}
+                        {code_context if code_context else "None"}
 
                         INSTRUCTIONS:
                         Follow these steps to generate your summary:
@@ -477,29 +479,16 @@ class DirectoryAgent:
             messages = [("system", system_message), ("user", prompt)]
 
             # Generate summary using LLM
-            output = strucured_llm.invoke(messages)
+            output = structured_llm.invoke(messages)
 
             print(f"Generated summary for directory {state['current_directory']}")
 
             return {
-                "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
-                "summary_context": [],
-                "sufficient_code_context": False,
-                "sufficient_summary_context": False,
-                "codebase_k": 10,
-                "file_summary_k": 10,
-                "directory_summary": output,
-                "child_summaries": {current_dir: output} # Add the current summary to the child_summaries dict
+                "directory_summary": output
             }
         except Exception as e:
             print(f"Error during summarization: {e}")
             return {
-                "code_context": [], # Clear code and summary context and k after summarization so that the next retrieval starts fresh
-                "summary_context": [],
-                "sufficient_code_context": False,
-                "sufficient_summary_context": False,
-                "codebase_k": 10,
-                "file_summary_k": 10,
                 "directory_summary": DirectoryOutput(
                     directory_name = Path(state["current_directory"]).name,
                     directory_path = state["current_directory"],
@@ -544,7 +533,7 @@ class DirectoryAgent:
             CONTEXT USED TO GENERATE THE SUMMARY:
 
             CHILD DIRECTORY SUMMARIES:
-            {formatted_child_summaries}
+            {formatted_child_summaries if formatted_child_summaries else "None"}
 
             FILE-LEVEL SUMMARIES:
             {summary_context if summary_context else "None"}
@@ -565,13 +554,89 @@ class DirectoryAgent:
         ]
 
         judgement = structured_llm.invoke(messages)
-        judgement_feedback = "\n".join(judgement.feedback).strip() if judgement.feedback else ""
+        judgement_feedback = judgement.feedback if judgement.feedback else ""
 
         return {
             "summary_acceptable": judgement.summary_acceptable,
             "summary_feedback": judgement_feedback
         }
-        
+    
+    def refinement_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Refines the generated directory summary based on feedback from the judgement node.
+        @param state Workflow state object containing the generated directory summary and feedback from the judgement node.
+        @return Updated state with a refined directory summary that addresses the feedback provided by the judgement node.
+        """
+        current_attempts = state.get("refinement_attempts", 0) + 1
+        print(f"Attempting refinement for directory {state['current_directory']}")
+        try:
+            current_directory = state.get("current_directory")
+            if not current_directory:
+                raise ValueError("No current directory available for summary refinement.")
+
+            summary = state.get("directory_summary")
+            if not summary:
+                raise ValueError("No directory summary available for refinement.")
+            
+            feedback = state.get("summary_feedback", "")
+            if not feedback:
+                raise ValueError("No feedback available for summary refinement.")
+            
+            # Gather all relevant context for summarization
+            child_summaries = self._get_child_directory_summaries(current_directory, state["child_summaries"])
+            formatted_child_summaries = self._format_child_summaries(child_summaries)
+            summary_context = "\n\n".join(state["summary_context"])
+            code_context = "\n\n".join(state["code_context"])
+
+            structured_llm = self.llm.with_structured_output(DirectoryOutput)
+            messages = [
+                ("system", """You are a Senior Software Architect. 
+                Your task is to refine a previously generated directory summary based on specific feedback that identifies weaknesses in the original summary."""),
+                ("user", f"""
+                DIRECTORY:
+                {current_directory}
+
+                directory_name: {summary.directory_name}
+                directory_path: {summary.directory_path}
+
+                CONTEXT USED TO GENERATE THE SUMMARY:
+                CHILD DIRECTORY SUMMARIES:
+                {formatted_child_summaries if formatted_child_summaries else "None"}
+
+                FILE-LEVEL SUMMARIES:
+                {summary_context if summary_context else "None"}
+
+                CODE SNIPPETS:
+                {code_context if code_context else "None"}
+
+                ORIGINAL SUMMARY:
+                purpose: {summary.purpose}
+                responsibilities: {summary.responsibilities}
+
+                FEEDBACK FOR IMPROVEMENT:
+                {feedback}
+
+                INSTRUCTIONS:
+                1. Amend the provided summary based on the feedback. Address any identified weaknesses or vagueness.
+                2. If feedback mentions 'too vague', provide concrete examples: 
+                    E.g. 'Contains utilities' → 'Contains string formatting utilities (case conversion, pluralization)'"
+                3. Ensure that the refined summary is specific, useful, and grounded in the context. There must be no statements which contradict each other or the provided context.
+                4. Amend only sections for which there is feedback. If a section is not mentioned in the feedback, keep it unchanged.
+                """)
+            ]
+
+            refined_summary = structured_llm.invoke(messages)
+
+            return {
+                "directory_summary": refined_summary,
+                "refinement_attempts": current_attempts
+            }
+        except Exception as e:
+            print(f"Error during summary refinement: {e}")
+            return {
+                "directory_summary": state.get("directory_summary"), # If refinement fails, keep the original summary
+                "refinement_attempts": current_attempts
+            }        
 
     def writer_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
@@ -594,6 +659,7 @@ class DirectoryAgent:
         os.makedirs(codebase_subdir, exist_ok=True)
 
         directory_summary = state['directory_summary']
+        current_dir = state["current_directory"]
         
         # create relative path from absolute
         rel_path = os.path.relpath(directory_summary.directory_path, state["directory_path"])
@@ -618,13 +684,24 @@ class DirectoryAgent:
         # move onto next directory
         if state["directories"]:
             next_dir = state["directories"].pop()
-            state["current_directory"] = next_dir
-        
+
         # case for when the directory that just finished is the last one (root)
         else:
-            state["current_directory"] = None
+            next_dir = None
 
-        return state
+        return {
+            "code_context": [],
+            "summary_context": [],
+            "sufficient_code_context": False,
+            "sufficient_summary_context": False,
+            "codebase_k": 10,
+            "file_summary_k": 10,
+            "summary_acceptable": False,
+            "summary_feedback": "",
+            "refinement_attempts": 0,
+            "current_directory": next_dir,
+            "child_summaries": {current_dir: directory_summary}
+        }
         
 
     # Helper methods

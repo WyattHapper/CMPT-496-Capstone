@@ -63,6 +63,12 @@ class DirectoryGraphState(TypedDict):
         The ChromaDB collection containing embedded code snippets.
     @var summary_collection
         The ChromaDB collection containing embedded file/class/function summaries.
+    @var summary_acceptable
+        Flag set by the judgement node indicating whether the generated directory summary is satisfactory.
+    @var summary_feedback
+        Detailed feedback provided by the judgement node regarding the quality of the generated directory summary.
+    @var refinement_attempts
+        Counter tracking the number of refinement iterations attempted for the current directory summary.
     """
     directory_path: str
     directories: Deque[str]
@@ -81,3 +87,4 @@ class DirectoryGraphState(TypedDict):
     summary_collection: Any
     summary_acceptable: bool
     summary_feedback: str
+    refinement_attempts: int
