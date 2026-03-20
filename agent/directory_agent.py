@@ -148,10 +148,11 @@ class DirectoryAgent:
             key=lambda path: path.count(os.sep),
         )
         
+        total_dirs = len(discovered_directories)
         first_dir = discovered_directories.pop()
         return {
             "directories": deque(discovered_directories),
-            "total_number_of_directories": len(discovered_directories),
+            "total_number_of_directories": total_dirs,
             "codebase_name": Path(root_path).name,
             "current_directory": first_dir
         }        
@@ -586,7 +587,8 @@ class DirectoryAgent:
                     - Root directory: `directory_agent_output/<codebase_name>/root_output/`
         """
         # creates directory_agent_output subdir 
-        base_output_dir = "./agent/directory_agent_output"
+        base_output_dir = state.get("output_directory", "./agent/directory_agent_output")
+
         os.makedirs(base_output_dir, exist_ok=True)
 
         # create codebase subdir inside of directory_agent_output
