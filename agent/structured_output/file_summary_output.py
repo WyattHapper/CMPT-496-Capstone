@@ -86,6 +86,15 @@ class TypeSummary(BaseModel):
     inherits_from: list[str] = Field(default_factory=list,description="Base classes this type inherits from.")
     plantuml: str = Field(...,description="Standalone PlantUML snippet describing this type.")
 
+class BusinessRule(BaseModel):
+    """
+    @brief Represents a business rule extracted from source code.
+    """
+    model_config = ConfigDict(extra="forbid")
+    rule: str = Field(..., description="A concise statement of the business rule.")
+    explanation: str = Field(..., description="How this rule is implied by the code.")
+    supporting_code: list[str] = Field(..., description="Code snippets that evidence this rule.")
+
 class FileSummaryOutput(BaseModel):
     """
     @brief Represents the structured summary of a source file.
@@ -99,3 +108,4 @@ class FileSummaryOutput(BaseModel):
     relationships: list[RelationshipSummary] = Field(default_factory=list,description="Relationships where both source and target types are defined in the file.")
     external_relationships: list[RelationshipSummary] = Field(default_factory=list,description="Relationships from types in this file to types defined outside the file.")
     relationship_plantuml: str = Field(...,description="Standalone PlantUML diagram showing all in-file types and their relationships.")
+    business_rules: list[BusinessRule] = Field(default_factory=list, description="Business rules evidenced by code in this file.")
