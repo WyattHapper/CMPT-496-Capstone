@@ -1,5 +1,5 @@
 """
-@file file_summary_agent.py
+@file file_summary_agent_fast.py
 @brief Defines the FileSummaryAgent, a LangGraph-based agent for generating structured summaries of source code files.
 @details Implements a crawler-summarizer-writer workflow that traverses a directory, uses an LLM to produce structured file summaries, and saves the results as JSON outputs.
 """
@@ -12,8 +12,12 @@ from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
 import os
 import sys
+import asyncio
 from pathlib import Path
 from collections import deque
+
+BATCH_SIZE = 10
+MAX_CONCURRENCY = 10
 
 class FileSummaryAgent:
     """
@@ -40,14 +44,14 @@ class FileSummaryAgent:
         This constructor:
         - Loads environment variables.
         - Configures the language model.
-        - Enables structured output using FileSummaryOutput.
+        - Enables structured output using SummaryOutput.
         - Builds and compiles the LangGraph workflow.
 
         @return None
         """
         if llm is not None:
             self.llm = llm
-            self.structured_llm = self.llm
+            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
         else:
             load_dotenv()
@@ -102,14 +106,21 @@ class FileSummaryAgent:
         @return dict: Final state of the graph after execution.
         """
 
-        # Initialize starting FileGraphState
+        # Initialize starting GraphState
         initial_state = {
             "directory_path": directory_path,
-            "files": deque()
+            "files": deque(),
+            "filename_counters": {},
+            "file_summaries": [],
+            "current_files": []
         }
 
-        # return the executed version of graph
-        return self.graph.invoke(initial_state)
+        self._loop = asyncio.new_event_loop()
+        try:
+            return self.graph.invoke(initial_state)
+        finally:
+            self._loop.close()
+            self._loop = None
 
 
 
@@ -122,7 +133,7 @@ class FileSummaryAgent:
         filtering for common code file extensions. Populates a deque of file
         paths and returns the total number of discovered files.
 
-        @param state FileGraphState: Current graph state containing at least:
+        @param state GraphState: Current graph state containing at least:
             - directory_path (str): Path of the directory to scan.
         
         @return dict: Updated state containing:
@@ -137,108 +148,228 @@ class FileSummaryAgent:
 
         # recursively loop through all files in the directory path
         for root, _, filenames in os.walk(state["directory_path"]):
+            filenames.sort()
             for f in filenames:
                 file_ext = Path(f).suffix.lower()
                 if file_ext in acceptable_extensions:
                     # add file to queue
                     files.append(os.path.join(root, f))
 
-        # update the FileGraphState
+        # update the GraphState
         return {
             "files": files,
             "total_number_of_files": len(files),
             "codebase_name": codebase_name
         }
     
-    def summarizer_node(self, state: FileGraphState):
-        """
-        @brief Node which calls the LLM to generate a summary for a single file
-        @details Pops a file from the stack, reads its contents, and prompts the LLM to generate a summary. Should loop back to this
-        node until the stack is empty
-        @param state The current state of the graph
-        """
+    def summarizer_node(self, state):
+        # pop a batch
+        batch = []
+        while state["files"] and len(batch) < BATCH_SIZE:
+            batch.append(state["files"].popleft())
 
-        file = state['files'].pop()
+        async def run_batch():
+            sem = asyncio.Semaphore(MAX_CONCURRENCY)
+            async def guarded(fp):
+                async with sem:
+                    return await _summarize_one(self.structured_llm, fp)
+            return await asyncio.gather(*(guarded(fp) for fp in batch))
 
-        try:
-            with open(file, 'r', encoding='utf-8', errors='replace') as f:
-                contents = f.read()
-            
-            messages = [
-                ("system", "You are a helpful assistant that creates concise, accurate summaries of code files."),
-                ("user", f"""
-                    File path: {file}
-                    Summarize the following code file: {contents}
-                """)
-            ]
+        results = self._loop.run_until_complete(run_batch())
 
-            output =  self.structured_llm.invoke(messages)
-
-            # visual to see if program gets frozen or actually progresses through the codebase
-            print("Finished:", file)
-            
-            # The following checks are to accomodate output from the mock testing model
-            if isinstance(output, FileSummaryOutput):
-                final_summary = output
-            # If it's an AIMessage (Mock / GenericFakeChatModel)
+        summaries = []
+        for file_path, output, err in results:
+            if err is not None:
+                summaries.append(FileSummaryOutput(path=file_path, summary=f"Error generating summary: {err}"))
+            elif isinstance(output, FileSummaryOutput):
+                summaries.append(output)
             elif isinstance(output, AIMessage):
-                final_summary = FileSummaryOutput(path=file, summary=output.content)
+                summaries.append(FileSummaryOutput(path=file_path, summary=output.content))
             else:
-                # Try to handle unexpected types
-                final_summary = FileSummaryOutput(path=file, summary=str(output))
+                summaries.append(FileSummaryOutput(path=file_path, summary=str(output)))
 
-            return {
-                "file_summary": final_summary,
-                "current_file": Path(file).name
-            }
-        except Exception as e:
-            print(f"Error processing file {file}: {e}")
-            return {
-                "file_summary": FileSummaryOutput(
-                    path=file,
-                    summary=f"Error generating summary: {e}"
-                ),
-                "current_file": Path(file).name
-            }
+        return {
+            "file_summaries": summaries,
+            "current_files": [Path(p).name for p in batch],
+        }
+
         
     def write_file_summary_node(self, state: FileGraphState):
-        """
-        @brief Writes a file summary to disk as a JSON file.
-
-        @details
-        Creates the output directory if it does not exist, then writes the
-        structured summary stored in `state["file_summary"]` to a JSON file.
-        The output file name is derived from `state["current_file"]` with
-        periods replaced by hyphens.
-
-        @param state FileGraphState: Current graph state containing:
-            - file_summary (FileSummaryOutput): Structured LLM summary.
-            - current_file (str): Name of the summarized file.
-
-        @return FileGraphState: Unmodified state passed to the next node.
-        """
-
         base_output_dir = "./agent/file_summary_agent_output"
-        
-        # 2. Append the codebase name to create a subdirectory
-        # state["codebase_name"] comes from the crawler node
-        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
-        
+        codebase_subdir = os.path.join(base_output_dir, f'{state["codebase_name"]}')
         os.makedirs(codebase_subdir, exist_ok=True)
 
-        summary_file = state['file_summary']
-        file_name = str(state['current_file'])
-        
-        # 3. Create the full file path inside the subdirectory
-        # We still replace dots with hyphens to avoid double-extension confusion
-        safe_name = file_name.replace(".", "-") + ".json"
-        full_path = os.path.join(codebase_subdir, safe_name)
+        counters = state["filename_counters"]
 
-        with open(full_path, "w", encoding='utf-8') as f:
-            f.write(summary_file.model_dump_json(indent=2))
-            
+        for summary in state["file_summaries"]:
+            source_path = summary.path
+            base = os.path.basename(source_path)          # config.py
+            stem = base.replace(".", "-")                  # config-py
+
+            # increment counter
+            count = counters.get(stem, 0) + 1
+            counters[stem] = count
+
+            safe_name = f"{stem}__{count}.json"
+            full_path = os.path.join(codebase_subdir, safe_name)
+
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(summary.model_dump_json(indent=2))
+
         return state
 
+async def _summarize_one(structured_llm, file_path: str):
+    try:
+        contents = Path(file_path).read_text(encoding="utf-8", errors="replace")
+        messages = [
+            (
+                "system",
+                "You analyze source code and return only structured output matching the schema."
+            ),
+            (
+                "user",
+                f"""
+        Your task is to summarize the file and extract type information for UML documentation.
+
+        Return:
+        - a concise summary of the file
+        - dependencies/imports
+        - top-level functions
+        - all types defined in the file
+
+        Types may be:
+        - class
+        - enum
+        - interface
+        - struct
+
+        For each type:
+        - provide a short description
+        - list properties or fields
+        - list methods and constructors
+        - list base classes in inherits_from
+        - list enum values if the type is an enum
+        - generate a standalone PlantUML snippet describing the type
+
+        For properties and fields:
+        - determine visibility: public, private, or protected
+        - indicate whether the member is static
+
+        For methods:
+        - determine visibility
+        - determine whether the method is static
+        - determine whether it is a constructor
+        - list parameters with direction (in, out, or inout)
+        - include return type if known
+
+        Constructor parameters must be included in the structured method entry exactly as they appear in the PlantUML signature.
+
+        Relationship extraction:
+
+        Two relationship types are supported:
+
+        inheritance  
+        A type inherits from another type.
+
+        association  
+        One type stores another type as a field, property, or member.
+
+        Association rules:
+        - Only create an association when a type stores another type as a field or property.
+        - Do NOT create associations for:
+        - local variables
+        - object creation inside methods
+        - parameters
+        - return types
+        - method calls
+        - assertions
+        - temporary usage inside functions
+        - If a type is only used inside methods, omit the relationship.
+
+        Method parameter consistency:
+        - Every method and constructor must include its full parameter list in the structured `parameters` field.
+        - The `parameters` field must match the parameters shown in the PlantUML signature.
+        - Do not leave `parameters` empty for methods or constructors that take arguments.
+
+        Test file rule:
+        - In test files, do NOT create associations to types used only inside test methods.
+        - Only create associations if the test class actually stores a member of that type.
+
+        Relationship placement:
+        - If both types are defined in the file, place the relationship in `relationships`.
+        - If the target type is defined outside the file, place the relationship in `external_relationships`.
+        - If no valid relationships exist, return empty lists.
+
+        PlantUML rules:
+
+        For each type:
+        - the PlantUML must match the extracted structured fields exactly
+        - do not include members that are missing from the structured output
+        - use:
+        + for public
+        - for private
+        # for protected
+        - mark static members using `{{static}}`
+        - show fields as: `+name : Type`
+        - show methods as: `+method(in x : Type) : ReturnType`
+        - constructors must not have return types
+        
+        Relationship PlantUML formatting:
+        - Use `<|--` for inheritance.
+        - Use `--` for association.
+        - Do not use aggregation (`o--`) or composition (`*--`) symbols.
+
+        PlantUML static member formatting:
+        - For static properties and static methods, place {{static}} before the visibility symbol.
+        - Correct format examples:
+        {{static}} +NumericTypes : HashSet<Type>
+        {{static}} +FromDictionary(in values : Dictionary<string, Dictionary<string, object>>) : ConsoleTable
+        {{static}} -GetColumns<T>() : IEnumerable<string>
+        - Do not place the visibility symbol before {{static}}.
+        - Incorrect examples:
+        +{{static}} NumericTypes : HashSet<Type>
+        -{{static}} GetColumns<T>() : IEnumerable<string>
+
+        File-level relationship diagram:
+
+        Generate `relationship_plantuml` as a standalone diagram.
+
+        Rules:
+        - include `@startuml` and `@enduml`
+        - declare all in-file types
+        - include only relationships from the `relationships` field
+        - do not include external relationships
+        - if there are no relationships, still declare the types
+
+        General rules:
+        - only include information supported by the code
+        - do not invent members or relationships
+        - keep items in source order when possible
+
+        Association filtering:
+        - Prefer associations to named application, project, or file-relevant types.
+        - Do not create associations to generic collection/container/helper types unless they are especially important to understanding the design.
+        - Do not create associations only because a property type is a primitive, framework utility, or common container type.
+        - Do not create associations to enum types.
+        - Enum values may appear in properties but should not generate relationships.
+
+        Structured data is the source of truth.
+        Generate PlantUML from the structured fields, not the other way around.
+
+        File path:
+        {file_path}
+
+        Code:
+        {contents}
+        """
+            )
+        ]
+        out = await structured_llm.ainvoke(messages)
+        return file_path, out, None
+    except Exception as e:
+        return file_path, None, e
+    finally:
+        print(f"✔ finished: {file_path}")
 
 if __name__ == "__main__":
     """

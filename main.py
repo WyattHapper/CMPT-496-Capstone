@@ -60,12 +60,13 @@ def processing_menu(errors: list):
         print("2. Create Code Database Only")
         print("3. Create JSON Summaries Only")
         print("4. Create Summary Database from JSON Only")
-        print("5. Return to Main Menu")
+        print("5. Create Directory Summaries Only")
+        print("6. Return to Main Menu")
         print("----------------------------------------")
-        choice = input("Select an option (1-5): ")
-        if choice == '5':
+        choice = input("Select an option (1-6): ")
+        if choice == '6':
             break
-        if choice in ['1', '2', '3', '4']:
+        if choice in ['1', '2', '3', '4', '5']:
             path_input = input("\nEnter the path to the codebase: ").strip()
             if not path_input: 
                 continue
@@ -80,9 +81,10 @@ def processing_menu(errors: list):
 
             if choice == '1':
                 if run_step("Code Vectorization", "src.build_database", [str(codebase)], errors):
-                    if run_step("Summary Generation", "agent.file_summary_agent", [str(codebase)], errors):
+                    if run_step("File Summary Generation", "agent.file_summary_agent", [str(codebase)], errors):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
-                            print("\nFull pipeline completed successfully!")
+                            if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
+                                print("\nFull pipeline completed successfully!")
                 
                 input("\nPress enter to return to menu...")
 
@@ -96,6 +98,10 @@ def processing_menu(errors: list):
 
             elif choice == '4':
                 run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors)
+                input("\nTask finished. Press enter...")
+
+            elif choice == '5':
+                run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors)
                 input("\nTask finished. Press enter...")
 
 def view_collections(db_type: str):
