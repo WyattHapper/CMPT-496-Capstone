@@ -12,6 +12,7 @@ from langchain_core.messages import AIMessage
 from dotenv import load_dotenv
 import os
 import sys
+import json
 import asyncio
 from pathlib import Path
 from collections import deque
@@ -84,12 +85,17 @@ class FileSummaryAgent:
         builder.add_node("crawler", self.crawler_node)
         builder.add_node("summarizer", self.summarizer_node)
         builder.add_node("writer", self.write_file_summary_node)
+        builder.add_node("business_rules_writer", self.write_business_rules_node)
 
         # set path
         builder.set_entry_point("crawler")  # start
         builder.add_edge("crawler", "summarizer")
         builder.add_edge("summarizer", "writer")
-        builder.add_conditional_edges("writer", lambda state: "summarizer" if state["files"] else END,) # conditional end
+        builder.add_conditional_edges(
+            "writer",
+            lambda state: "summarizer" if state["files"] else "business_rules_writer",
+        )
+        builder.add_edge("business_rules_writer", END)
         
         return builder.compile()
     
@@ -112,7 +118,8 @@ class FileSummaryAgent:
             "files": deque(),
             "filename_counters": {},
             "file_summaries": [],
-            "current_files": []
+            "current_files": [],
+            "business_rules_by_file": {}
         }
 
         self._loop = asyncio.new_event_loop()
@@ -188,9 +195,15 @@ class FileSummaryAgent:
             else:
                 summaries.append(FileSummaryOutput(path=file_path, summary=str(output)))
 
+        batch_rules = {}
+        for summary in summaries:
+            if summary.business_rules:
+                batch_rules[summary.path] = summary.business_rules
+
         return {
             "file_summaries": summaries,
             "current_files": [Path(p).name for p in batch],
+            "business_rules_by_file": batch_rules,
         }
 
         
@@ -216,7 +229,34 @@ class FileSummaryAgent:
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(summary.model_dump_json(indent=2))
 
-        return state
+        return {"filename_counters": counters}
+
+    def write_business_rules_node(self, state: FileGraphState):
+        """
+        @brief Writes the aggregated business rules to a JSON file.
+
+        @details
+        Serializes the business_rules_by_file dict and writes it to a
+        dedicated subdirectory under the codebase output folder.
+
+        @param state FileGraphState: Current graph state.
+        @return dict: Unchanged state.
+        """
+        base_output_dir = "./agent/file_summary_agent_output"
+        br_dir = os.path.join(base_output_dir, state["codebase_name"], "business_rules")
+        os.makedirs(br_dir, exist_ok=True)
+
+        output_path = os.path.join(br_dir, "business_rules.json")
+
+        serializable = {
+            path: [rule.model_dump() for rule in rules]
+            for path, rules in state["business_rules_by_file"].items()
+        }
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(serializable, f, indent=2)
+
+        return {}
 
 async def _summarize_one(structured_llm, file_path: str):
     try:
@@ -224,144 +264,128 @@ async def _summarize_one(structured_llm, file_path: str):
         messages = [
             (
                 "system",
-                "You analyze source code and return only structured output matching the schema."
+                "You are a senior software architect. Analyze source code and return only structured output matching the schema."
             ),
             (
                 "user",
-                f"""
-        Your task is to summarize the file and extract type information for UML documentation.
+                f"""### Tasks
+Analyze the file and produce:
+1. A concise summary, dependencies, top-level functions, and all type definitions
+2. UML-ready structured data and PlantUML diagrams
+3. Business rules evidenced by the code
 
-        Return:
-        - a concise summary of the file
-        - dependencies/imports
-        - top-level functions
-        - all types defined in the file
+### Type extraction
+Types may be: class, enum, interface, or struct.
 
-        Types may be:
-        - class
-        - enum
-        - interface
-        - struct
+For each type:
+- provide a short description
+- list properties/fields with visibility (public, private, protected) and whether static
+- list methods/constructors with visibility, static flag, parameters (with direction: in, out, inout), and return type
+- list base classes in inherits_from
+- list enum values if applicable
+- generate a standalone PlantUML snippet describing the type
 
-        For each type:
-        - provide a short description
-        - list properties or fields
-        - list methods and constructors
-        - list base classes in inherits_from
-        - list enum values if the type is an enum
-        - generate a standalone PlantUML snippet describing the type
+Constructor parameters must appear in the structured method entry exactly as in the PlantUML signature. Every method and constructor must include its full parameter list in the `parameters` field.
 
-        For properties and fields:
-        - determine visibility: public, private, or protected
-        - indicate whether the member is static
+### Relationship extraction
+Two relationship types are supported: inheritance and association.
 
-        For methods:
-        - determine visibility
-        - determine whether the method is static
-        - determine whether it is a constructor
-        - list parameters with direction (in, out, or inout)
-        - include return type if known
+Association rules:
+- Only create an association when a type stores another type as a field or property.
+- Do NOT create associations for local variables, parameters, return types, method calls, object creation inside methods, assertions, or temporary usage.
+- In test files, only create associations if the test class stores a member of that type.
 
-        Constructor parameters must be included in the structured method entry exactly as they appear in the PlantUML signature.
+Relationship placement:
+- Both types in this file: place in `relationships`.
+- Target type outside this file: place in `external_relationships`.
+- No valid relationships: return empty lists.
 
-        Relationship extraction:
+Association filtering:
+- Prefer associations to named application/project types.
+- Do not create associations to generic containers, primitives, framework utilities, or enum types.
 
-        Two relationship types are supported:
+### PlantUML rules
+For each type, the PlantUML must match the structured fields exactly.
+- `+` public, `-` private, `#` protected
+- Fields: `+name : Type`
+- Methods: `+method(in x : Type) : ReturnType`
+- Constructors: no return type
+- Static members: place `{{static}}` before the visibility symbol
+  Correct: `{{static}} +Name : Type`
+  Incorrect: `+{{static}} Name : Type`
+- Inheritance: `<|--`
+- Association: `--`
+- Do not use `o--` or `*--`
 
-        inheritance  
-        A type inherits from another type.
+### File-level relationship diagram
+Generate `relationship_plantuml` as a standalone diagram with `@startuml`/`@enduml`.
+- Declare all in-file types
+- Include only `relationships` (not external)
+- If no relationships exist, still declare the types
 
-        association  
-        One type stores another type as a field, property, or member.
+### Business rule extraction
+Extract business rules that are **directly evidenced** by code in this file.
 
-        Association rules:
-        - Only create an association when a type stores another type as a field or property.
-        - Do NOT create associations for:
-        - local variables
-        - object creation inside methods
-        - parameters
-        - return types
-        - method calls
-        - assertions
-        - temporary usage inside functions
-        - If a type is only used inside methods, omit the relationship.
+A business rule is a constraint, policy, threshold, validation, access control check, or behavioral requirement **that governs how the software product behaves for its users or within its problem domain**.
 
-        Method parameter consistency:
-        - Every method and constructor must include its full parameter list in the structured `parameters` field.
-        - The `parameters` field must match the parameters shown in the PlantUML signature.
-        - Do not leave `parameters` empty for methods or constructors that take arguments.
+**Do NOT extract** operational, infrastructure, or DevOps rules such as:
+- CI/CD pipeline configuration (branch triggers, build matrix, deployment gates)
+- Build system settings (SDK versions, build configurations, restore steps)
+- Package publishing or release policies (NuGet, npm, PyPI publishing rules)
+- Repository or version control policies (branch protection, PR rules, line ending settings)
+- Environment setup or toolchain configuration
 
-        Test file rule:
-        - In test files, do NOT create associations to types used only inside test methods.
-        - Only create associations if the test class actually stores a member of that type.
+These are development-process rules, not product business rules. If a file contains only infrastructure or DevOps configuration (e.g., CI/CD YAML, build scripts, deployment manifests), return an empty business rules list.
 
-        Relationship placement:
-        - If both types are defined in the file, place the relationship in `relationships`.
-        - If the target type is defined outside the file, place the relationship in `external_relationships`.
-        - If no valid relationships exist, return empty lists.
+Rules:
+- Only extract rules supported by code you can see. Do not speculate about cross-file behavior.
+- For each rule, provide a concise statement, an explanation of how the code implies it, and the relevant code snippets.
+- If no business rules are evident, return an empty list.
 
-        PlantUML rules:
+Positive example — extract rules like these:
+Given this code:
+```csharp
+if (order.Total < 0)
+    throw new ArgumentException("Order total cannot be negative");
+if (order.Items.Count == 0)
+    throw new InvalidOperationException("Cannot process empty order");
+```
 
-        For each type:
-        - the PlantUML must match the extracted structured fields exactly
-        - do not include members that are missing from the structured output
-        - use:
-        + for public
-        - for private
-        # for protected
-        - mark static members using `{{static}}`
-        - show fields as: `+name : Type`
-        - show methods as: `+method(in x : Type) : ReturnType`
-        - constructors must not have return types
-        
-        Relationship PlantUML formatting:
-        - Use `<|--` for inheritance.
-        - Use `--` for association.
-        - Do not use aggregation (`o--`) or composition (`*--`) symbols.
+Return:
+- rule: "Order total must be non-negative"
+  explanation: "The method throws an ArgumentException when the total is below zero, enforcing a non-negative total constraint."
+  supporting_code: ["if (order.Total < 0)\n    throw new ArgumentException(\"Order total cannot be negative\");"]
+- rule: "An order must contain at least one item to be processed"
+  explanation: "An InvalidOperationException is thrown when an order has no items, preventing empty orders from being processed."
+  supporting_code: ["if (order.Items.Count == 0)\n    throw new InvalidOperationException(\"Cannot process empty order\");"]
 
-        PlantUML static member formatting:
-        - For static properties and static methods, place {{static}} before the visibility symbol.
-        - Correct format examples:
-        {{static}} +NumericTypes : HashSet<Type>
-        {{static}} +FromDictionary(in values : Dictionary<string, Dictionary<string, object>>) : ConsoleTable
-        {{static}} -GetColumns<T>() : IEnumerable<string>
-        - Do not place the visibility symbol before {{static}}.
-        - Incorrect examples:
-        +{{static}} NumericTypes : HashSet<Type>
-        -{{static}} GetColumns<T>() : IEnumerable<string>
+Negative example — do NOT extract rules like these:
+Given this CI/CD configuration:
+```yaml
+branches:
+  only:
+    - master
+deploy:
+  on:
+    branch: master
+    appveyor_repo_tag: true
+nuget:
+  disable_publish_on_pr: true
+```
+These describe CI/CD pipeline behavior and deployment policies, not product domain logic. Return an empty business rules list for files like this.
 
-        File-level relationship diagram:
+### General rules
+- Only include information supported by the code
+- Do not invent members, relationships, or business rules
+- Keep items in source order when possible
+- Structured data is the source of truth. Generate PlantUML from the structured fields, not the other way around.
 
-        Generate `relationship_plantuml` as a standalone diagram.
+File path:
+{file_path}
 
-        Rules:
-        - include `@startuml` and `@enduml`
-        - declare all in-file types
-        - include only relationships from the `relationships` field
-        - do not include external relationships
-        - if there are no relationships, still declare the types
-
-        General rules:
-        - only include information supported by the code
-        - do not invent members or relationships
-        - keep items in source order when possible
-
-        Association filtering:
-        - Prefer associations to named application, project, or file-relevant types.
-        - Do not create associations to generic collection/container/helper types unless they are especially important to understanding the design.
-        - Do not create associations only because a property type is a primitive, framework utility, or common container type.
-        - Do not create associations to enum types.
-        - Enum values may appear in properties but should not generate relationships.
-
-        Structured data is the source of truth.
-        Generate PlantUML from the structured fields, not the other way around.
-
-        File path:
-        {file_path}
-
-        Code:
-        {contents}
-        """
+Code:
+{contents}
+"""
             )
         ]
         out = await structured_llm.ainvoke(messages)
