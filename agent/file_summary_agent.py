@@ -326,13 +326,23 @@ Generate `relationship_plantuml` as a standalone diagram with `@startuml`/`@endu
 ### Business rule extraction
 Extract business rules that are **directly evidenced** by code in this file.
 
+A business rule is a constraint, policy, threshold, validation, access control check, or behavioral requirement **that governs how the software product behaves for its users or within its problem domain**.
+
+**Do NOT extract** operational, infrastructure, or DevOps rules such as:
+- CI/CD pipeline configuration (branch triggers, build matrix, deployment gates)
+- Build system settings (SDK versions, build configurations, restore steps)
+- Package publishing or release policies (NuGet, npm, PyPI publishing rules)
+- Repository or version control policies (branch protection, PR rules, line ending settings)
+- Environment setup or toolchain configuration
+
+These are development-process rules, not product business rules. If a file contains only infrastructure or DevOps configuration (e.g., CI/CD YAML, build scripts, deployment manifests), return an empty business rules list.
+
 Rules:
 - Only extract rules supported by code you can see. Do not speculate about cross-file behavior.
-- A business rule is a constraint, policy, threshold, validation, access control check, or behavioral requirement that reflects a business decision.
 - For each rule, provide a concise statement, an explanation of how the code implies it, and the relevant code snippets.
 - If no business rules are evident, return an empty list.
 
-Example:
+Positive example — extract rules like these:
 Given this code:
 ```csharp
 if (order.Total < 0)
@@ -348,6 +358,21 @@ Return:
 - rule: "An order must contain at least one item to be processed"
   explanation: "An InvalidOperationException is thrown when an order has no items, preventing empty orders from being processed."
   supporting_code: ["if (order.Items.Count == 0)\n    throw new InvalidOperationException(\"Cannot process empty order\");"]
+
+Negative example — do NOT extract rules like these:
+Given this CI/CD configuration:
+```yaml
+branches:
+  only:
+    - master
+deploy:
+  on:
+    branch: master
+    appveyor_repo_tag: true
+nuget:
+  disable_publish_on_pr: true
+```
+These describe CI/CD pipeline behavior and deployment policies, not product domain logic. Return an empty business rules list for files like this.
 
 ### General rules
 - Only include information supported by the code
