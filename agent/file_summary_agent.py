@@ -149,7 +149,7 @@ class FileSummaryAgent:
         """
         
         files = deque()
-        acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css", ".yml", ".yaml"]
+        acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css"]
 
         codebase_name = Path(state["directory_path"]).name
 

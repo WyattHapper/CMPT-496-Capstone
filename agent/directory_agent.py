@@ -1,5 +1,5 @@
 from agent.states.directory_agent_state import DirectoryGraphState
-from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput
+from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput, BusinessRulesOutput
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -10,6 +10,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import deque
+import json
 
 class DirectoryAgent:
     def __init__(self, model = None):
@@ -44,7 +45,9 @@ class DirectoryAgent:
         builder.add_node("root_summarizer", self.root_summary_node)
         builder.add_node("judgement", self.judgement_node)
         builder.add_node("refinement", self.refinement_node)
+        builder.add_node("business_rules_extractor", self.business_rules_node)
         builder.add_node("writer", self.writer_node)
+        builder.add_node("rollup_writer", self.rollup_writer_node)
 
         # Set edges
         builder.set_entry_point("crawler")
@@ -59,13 +62,15 @@ class DirectoryAgent:
         builder.add_edge("root_summarizer", "judgement")
         builder.add_conditional_edges(
             "judgement",
-            lambda state: "writer" if state["summary_acceptable"] or state["refinement_attempts"] >= 2 else "refinement"
+            lambda state: "business_rules_extractor" if state["summary_acceptable"] or state["refinement_attempts"] >= 2 else "refinement"
         )
         builder.add_edge("refinement", "judgement")
+        builder.add_edge("business_rules_extractor", "writer")
         builder.add_conditional_edges(
             "writer",
-            lambda state: "retriever" if state["current_directory"] else END
+            lambda state: "retriever" if state["current_directory"] else "rollup_writer"
         )
+        builder.add_edge("rollup_writer", END)
 
         return builder.compile()
     
@@ -109,7 +114,8 @@ class DirectoryAgent:
             "summary_collection": summary_collection,
             "summary_acceptable": False,
             "summary_feedback": "",
-            "refinement_attempts": 0
+            "refinement_attempts": 0,
+            "accumulated_business_rules": {}
         }
 
         return self.graph.invoke(initial_state)
@@ -574,7 +580,132 @@ class DirectoryAgent:
                     directory_path = state["current_directory"],
                     purpose = f"Error generating summary: {e}")
         }
-        
+
+    def business_rules_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Extracts cross-file business rules for the current directory.
+            Uses a targeted query of the summary vector store filtered to the current
+            directory to ensure completeness, then prompts the LLM to identify rules
+            that only emerge when multiple files are considered together.
+        @param state Workflow state containing the finalized directory summary and
+                    vector store handles.
+        @return Updated state with an entry added to accumulated_business_rules for
+                the current directory.
+        """
+        current_dir = state["current_directory"]
+
+        if isinstance(self.llm, GenericFakeChatModel):
+            return {
+                "accumulated_business_rules": {
+                    current_dir: BusinessRulesOutput(
+                        directory_name=Path(current_dir).name,
+                        directory_path=current_dir,
+                        observed_rules=[],
+                        inferred_rules=[]
+                    )
+                }
+            }
+
+        try:
+            structured_llm = self.llm.with_structured_output(BusinessRulesOutput)
+
+            root_directory = state["directory_path"]
+            summary_collection = state["summary_collection"]
+            directory_summary = state["directory_summary"]
+
+            # Compute relative path for directory-scoped filtering
+            try:
+                rel_dir = os.path.relpath(current_dir, root_directory)
+            except ValueError:
+                rel_dir = current_dir
+            rel_dir = Path(rel_dir).as_posix()
+
+            # Fetch ALL documents from the summary collection, then post-filter
+            # to the current directory. This guarantees completeness unlike the
+            # RAG top-k approach used by retriever_node.
+            all_results = summary_collection.get(include=["documents", "metadatas"])
+            docs = all_results.get("documents", [])
+            metas = all_results.get("metadatas", [])
+
+            directory_file_summaries = []
+            for doc, meta in zip(docs, metas):
+                summary_path = self._normalize_path(str(meta.get("path", "")))
+                if self._matches_directory_summary_path(
+                    candidate_path=summary_path,
+                    target_abs_dir=current_dir,
+                    root_directory=root_directory,
+                    codebase_name=state["codebase_name"]
+                ):
+                    directory_file_summaries.append(
+                        self._format_summary_result(doc, meta, rel_dir)
+                    )
+
+            if not directory_file_summaries:
+                print(f"No file summaries found for {current_dir}, skipping business rules extraction.")
+                return {
+                    "accumulated_business_rules": {
+                        current_dir: BusinessRulesOutput(
+                            directory_name=Path(current_dir).name,
+                            directory_path=directory_summary.directory_path,
+                            observed_rules=[],
+                            inferred_rules=[]
+                        )
+                    }
+                }
+
+            formatted_file_summaries = "\n\n".join(directory_file_summaries)
+
+            system_message = """You are a principal software architect extracting business rules from a software directory.
+Your task is to identify rules that exist *between* files — policies, constraints, or behaviors that only emerge when multiple files or components are considered together.
+Focus strictly on what the code and summaries actually enforce, not general software patterns."""
+
+            prompt = f"""DIRECTORY: {current_dir}
+
+DIRECTORY SUMMARY:
+{directory_summary.purpose}
+
+FILE-LEVEL SUMMARIES FOR THIS DIRECTORY:
+{formatted_file_summaries}
+
+TASK:
+Extract business rules that are enforced across multiple files in this directory.
+Do not list rules that are entirely contained within a single file.
+
+OBSERVED RULES:
+Rules that are directly and explicitly evidenced by the file summaries above.
+List each as a single, concrete statement of what the system enforces across multiple files.
+
+INFERRED RULES:
+Rules that are implied by patterns across the files but not explicitly named.
+Begin each entry with "Inference:" and describe the implied rule and the evidence that suggests it.
+
+CONSTRAINTS:
+- Do not fabricate rules. Every rule must be traceable to at least two of the provided file summaries.
+- If no cross-file rules are visible, return empty lists — do not pad with generic observations.
+- Be specific. Avoid phrases like "enforces validation" — describe what is validated, against what constraint, and which files participate.
+- Ignore rules that are entirely internal to one file."""
+
+            messages = [("system", system_message), ("user", prompt)]
+            output = structured_llm.invoke(messages)
+
+            print(f"Extracted business rules for directory {current_dir}")
+            return {
+                "accumulated_business_rules": {current_dir: output}
+            }
+
+        except Exception as e:
+            print(f"Error during business rules extraction for {state['current_directory']}: {e}")
+            return {
+                "accumulated_business_rules": {
+                    state["current_directory"]: BusinessRulesOutput(
+                        directory_name=Path(state["current_directory"]).name,
+                        directory_path=state["current_directory"],
+                        observed_rules=[],
+                        inferred_rules=[]
+                    )
+                }
+            }
+
     def judgement_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
         @brief Evaluates the quality of the generated directory summary and determines if it meets the required standards.
@@ -789,7 +920,29 @@ class DirectoryAgent:
             "current_directory": next_dir,
             "child_summaries": {current_dir: directory_summary}
         }
-        
+
+    def rollup_writer_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Writes the accumulated business rules for all processed directories to a
+            single consolidated JSON file once the full codebase traversal is complete.
+        @param state Workflow state containing accumulated_business_rules and codebase_name.
+        @return Empty state update (no state fields are modified).
+        """
+        base_output_dir = state.get("output_directory", "./agent/directory_agent_output")
+        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
+        rules_dir = os.path.join(codebase_subdir, "business_rules")
+        os.makedirs(rules_dir, exist_ok=True)
+
+        output_path = os.path.join(rules_dir, "business_rules.json")
+        accumulated = state.get("accumulated_business_rules", {})
+        serialized = {dir_path: rules.model_dump() for dir_path, rules in accumulated.items()}
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(serialized, f, indent=2)
+
+        print(f"Business rules written to {output_path}")
+        return {}
+
     # Helper methods
     def _normalize_path(self, path_value: str) -> str:
         """
@@ -823,6 +976,58 @@ class DirectoryAgent:
 
         parent_dir = Path(candidate_path).parent.as_posix()
         return parent_dir == target_rel_dir or parent_dir.startswith(target_rel_dir + "/")
+
+    def _matches_directory_summary_path(self, candidate_path: str, target_abs_dir: str, root_directory: str, codebase_name: str) -> bool:
+        """
+        @brief Matches summary metadata paths against the current directory, even when
+            stored paths use mixed formats.
+
+        Summary metadata in the collection may be stored as:
+        - absolute source paths
+        - paths prefixed with the codebase name
+        - shorter relative paths from an older export format
+
+        This helper canonicalizes those variants into possible relative parent
+        directories and checks them against the current directory's relative path.
+
+        @param candidate_path The summary metadata path to evaluate.
+        @param target_abs_dir The absolute path of the directory currently being processed.
+        @param root_directory The absolute root path of the codebase.
+        @param codebase_name The name of the codebase being processed.
+        @return True if the summary path should be considered part of the current directory.
+        """
+        candidate_path = self._normalize_path(candidate_path)
+        if not candidate_path:
+            return False
+
+        target_rel_dir = self._normalize_path(os.path.relpath(target_abs_dir, root_directory)).strip("./") or "."
+        candidate_parent = Path(candidate_path).parent.as_posix().strip("./") or "."
+
+        candidate_parent_options = {candidate_parent}
+
+        if os.path.isabs(candidate_path):
+            try:
+                abs_rel_parent = self._normalize_path(os.path.relpath(Path(candidate_path), root_directory))
+                candidate_parent_options.add((Path(abs_rel_parent).parent.as_posix().strip("./") or "."))
+            except ValueError:
+                pass
+
+        codebase_prefix = f"{codebase_name}/"
+        if candidate_path.startswith(codebase_prefix):
+            stripped_parent = Path(candidate_path[len(codebase_prefix):]).parent.as_posix().strip("./") or "."
+            candidate_parent_options.add(stripped_parent)
+
+        for candidate_parent_option in candidate_parent_options:
+            if target_rel_dir == ".":
+                return True
+            if candidate_parent_option == target_rel_dir:
+                return True
+            if candidate_parent_option.startswith(target_rel_dir + "/"):
+                return True
+            if target_rel_dir.endswith("/" + candidate_parent_option):
+                return True
+
+        return False
 
     def _format_code_result(self, doc: str, meta: dict, rel_dir: str) -> str:
         """

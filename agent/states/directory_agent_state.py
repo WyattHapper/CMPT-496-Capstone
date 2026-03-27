@@ -4,7 +4,7 @@
 """
 
 from typing import TypedDict, Deque, Annotated, Any
-from agent.structured_output.directory_output import DirectoryOutput, JudgementOutput
+from agent.structured_output.directory_output import DirectoryOutput, JudgementOutput, BusinessRulesOutput
 from operator import add
 
 def merge_summaries(existing: dict, new: dict) -> dict:
@@ -13,6 +13,15 @@ def merge_summaries(existing: dict, new: dict) -> dict:
     @param existing The existing dictionary of directory summaries
     @param new The new dictionary of directory summaries to merge in
     @return A merged dictionary containing all summaries from both existing and new, with new summaries appended
+    """
+    return {**existing, **new}
+
+def merge_business_rules(existing: dict, new: dict) -> dict:
+    """
+    @brief Merges new business rule extractions into the existing dict
+    @param existing The existing dictionary of per-directory business rules
+    @param new The new dictionary of business rules to merge in
+    @return A merged dictionary containing all rules from both existing and new
     """
     return {**existing, **new}
 
@@ -88,3 +97,4 @@ class DirectoryGraphState(TypedDict):
     summary_acceptable: bool
     summary_feedback: str
     refinement_attempts: int
+    accumulated_business_rules: Annotated[dict[str, BusinessRulesOutput], merge_business_rules]
