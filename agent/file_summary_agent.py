@@ -385,6 +385,9 @@ Code:
             )
         ]
         out = await structured_llm.ainvoke(messages)
+        if isinstance(out, FileSummaryOutput):
+            for rule in out.business_rules:
+                rule.source_file = file_path
         return file_path, out, None
     except Exception as e:
         return file_path, None, e

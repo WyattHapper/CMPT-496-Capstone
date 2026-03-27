@@ -92,6 +92,7 @@ class BusinessRule(BaseModel):
     """
     model_config = ConfigDict(extra="forbid")
     rule: str = Field(..., description="A concise statement of a business rule implied by the code.")
+    source_file: Optional[str] = Field(None, description="Source file path this rule was extracted from. Populated by agent code post-LLM call, not by the LLM.")
 
 class FileSummaryOutput(BaseModel):
     """
