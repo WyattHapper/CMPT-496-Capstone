@@ -339,7 +339,7 @@ These are development-process rules, not product business rules. If a file conta
 
 Rules:
 - Only extract rules supported by code you can see. Do not speculate about cross-file behavior.
-- For each rule, provide a concise statement, an explanation of how the code implies it, and the relevant code snippets.
+- For each rule, provide a concise statement of the business rule
 - If no business rules are evident, return an empty list.
 
 Positive example — extract rules like these:
@@ -353,11 +353,7 @@ if (order.Items.Count == 0)
 
 Return:
 - rule: "Order total must be non-negative"
-  explanation: "The method throws an ArgumentException when the total is below zero, enforcing a non-negative total constraint."
-  supporting_code: ["if (order.Total < 0)\n    throw new ArgumentException(\"Order total cannot be negative\");"]
 - rule: "An order must contain at least one item to be processed"
-  explanation: "An InvalidOperationException is thrown when an order has no items, preventing empty orders from being processed."
-  supporting_code: ["if (order.Items.Count == 0)\n    throw new InvalidOperationException(\"Cannot process empty order\");"]
 
 Negative example — do NOT extract rules like these:
 Given this CI/CD configuration:
@@ -389,6 +385,9 @@ Code:
             )
         ]
         out = await structured_llm.ainvoke(messages)
+        if isinstance(out, FileSummaryOutput):
+            for rule in out.business_rules:
+                rule.source_file = file_path
         return file_path, out, None
     except Exception as e:
         return file_path, None, e
