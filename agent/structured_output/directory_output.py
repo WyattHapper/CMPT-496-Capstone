@@ -45,3 +45,13 @@ class JudgementOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     summary_acceptable: bool = Field(..., description="Whether the generated directory summary is satisfactory and meets the required standards.")
     feedback: Optional[str] = Field(default=None, description="Detailed information regarding the evaluation of the generated directory summary, including any identified strengths, weaknesses, or areas for improvement. This field may be left empty if the summary is deemed satisfactory or if specific feedback cannot be provided.")
+
+class BusinessRulesOutput(BaseModel):
+    """
+    @brief A pydantic BaseModel representing the business rules extracted from a directory.
+    """
+    model_config = ConfigDict(extra="forbid")
+    directory_name: str = Field(None, description="The name of the directory for which business rules were extracted. Filled in by code post LLM call")
+    directory_path: str = Field(None, description="The full relative path of the directory, from the root of the codebase. Filled in by code post LLM call")
+    observed_rules: list[str] = Field(default_factory=list, description="Business rules or domain policies that the system clearly enforces. Each rule should be a plain-language statement of what the system requires, allows, or prevents — without referencing implementation details like method signatures or design patterns. Do not provide evidence or reasoning, just list the buisness rule (when applicable)")
+    inferred_rules: list[str] = Field(default_factory=list, description="Business rules or domain policies that are implied by the system's behavior but not explicitly named. Each entry must begin with 'Inference:' and describe the implied rule in plain, non-technical language. Do not provide evidence or reasoning, just list the buisness rule (when applicable).")

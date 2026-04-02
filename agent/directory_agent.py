@@ -1,5 +1,5 @@
 from agent.states.directory_agent_state import DirectoryGraphState
-from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput
+from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput, BusinessRulesOutput
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
@@ -10,6 +10,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import deque
+import json
 
 class DirectoryAgent:
     def __init__(self, model = None):
@@ -44,7 +45,9 @@ class DirectoryAgent:
         builder.add_node("root_summarizer", self.root_summary_node)
         builder.add_node("judgement", self.judgement_node)
         builder.add_node("refinement", self.refinement_node)
+        builder.add_node("business_rules_extractor", self.business_rules_node)
         builder.add_node("writer", self.writer_node)
+        builder.add_node("rollup_writer", self.rollup_writer_node)
 
         # Set edges
         builder.set_entry_point("crawler")
@@ -59,13 +62,15 @@ class DirectoryAgent:
         builder.add_edge("root_summarizer", "judgement")
         builder.add_conditional_edges(
             "judgement",
-            lambda state: "writer" if state["summary_acceptable"] or state["refinement_attempts"] >= 2 else "refinement"
+            lambda state: "business_rules_extractor" if state["summary_acceptable"] or state["refinement_attempts"] >= 2 else "refinement"
         )
         builder.add_edge("refinement", "judgement")
+        builder.add_edge("business_rules_extractor", "writer")
         builder.add_conditional_edges(
             "writer",
-            lambda state: "retriever" if state["current_directory"] else END
+            lambda state: "retriever" if state["current_directory"] else "rollup_writer"
         )
+        builder.add_edge("rollup_writer", END)
 
         return builder.compile()
     
@@ -109,7 +114,8 @@ class DirectoryAgent:
             "summary_collection": summary_collection,
             "summary_acceptable": False,
             "summary_feedback": "",
-            "refinement_attempts": 0
+            "refinement_attempts": 0,
+            "accumulated_business_rules": {}
         }
 
         return self.graph.invoke(initial_state)
@@ -516,43 +522,49 @@ class DirectoryAgent:
             summary_context = "\n\n".join(state["summary_context"])
             code_context = "\n\n".join(state["code_context"])
             
-            system_message = """You are a principal software architect writing a root-level codebase summary for a business analyst.
-                                Your job is to explain what the system appears to enforce, why those rules matter, and how responsibilities are distributed across the codebase.
-                                Prioritize business meaning over implementation trivia while staying strictly evidence-based."""
+            system_message = """You are a principal software architect writing a comprehensive root-level codebase summary.
+Your audience includes technical leads, stakeholders, and new developers seeking to understand the entire system.
+Your task is to synthesize information about all major subsystems into a cohesive overview of what the codebase is, 
+how its parts work together, and what the overall system delivers."""
 
             prompt = f"""ROOT DIRECTORY TO ANALYZE: {state['current_directory']}
 
-                        INPUT DATA:
-                        1. CHILD DIRECTORY SUMMARIES:
-                        {formatted_child_summaries if formatted_child_summaries else "None"}
+INPUT DATA (in order of priority):
+1. CHILD DIRECTORY SUMMARIES (primary basis for root-level synthesis):
+{formatted_child_summaries if formatted_child_summaries else "None"}
 
-                        2. FILE-LEVEL SUMMARIES:
-                        {summary_context if summary_context else "None"}
+2. FILE-LEVEL SUMMARIES (secondary — use to fill gaps and provide detail):
+{summary_context if summary_context else "None"}
 
-                        3. CODE SNIPPETS:
-                        {code_context if code_context else "None"}
+3. CODE SNIPPETS (tertiary — reference only if necessary for clarification):
+{code_context if code_context else "None"}
 
-                        TASK:
-                        Produce a root-level summary of the entire codebase that emphasizes business rules, core responsibilities, and operational implications.
+TASK:
+Write a comprehensive root-level summary of the entire codebase that explains the system as a whole to someone new to the project.
 
-                        RESPONSE SHAPE:
-                        - Purpose: multiple dense paragraphs that describe what the codebase is for and the major outcomes it enforces.
-                        - Responsibilities: a focused list of concrete responsibilities the overall system owns.
+YOUR SUMMARY MUST ANSWER:
+1. What is this codebase? (high-level purpose, problem domain, main use case)
+2. How are the major subsystems organized? (not just what each does, but how they relate and depend on each other)
+3. What are the main data flows or processing pipelines? (how does information move through the system?)
+4. What are the core capabilities the system provides? (end user or API perspective, not implementation details)
+5. What are the notable architectural patterns or constraints? (why is it structured this way?)
 
-                        QUALITY BAR:
-                        - Synthesize across sources. Do not produce a file-by-file recap.
-                        - Prefer statements of policy and behavior (what must happen, what is validated, what is restricted, what is guaranteed).
-                        - Separate domain policy from technical mechanism.
-                        - Use explicit inference labeling when needed: begin inferred claims with "Inference:".
-                        - If evidence is weak or conflicting, say so explicitly and describe the uncertainty.
-                        - Be specific and concrete; avoid generic phrases like "handles business logic".
-                        - Do not invent requirements, constraints, or workflows not supported by the context.
+RESPONSE SHAPE:
+- Purpose: multiple dense paragraphs covering the above five questions. Aim comprehensiveness over conceiseness, but avoid unnecessary detail. Use concrete language and specific examples from the provided context to support your statements.
+- Responsibilities: a list of the major capability areas or domains the system owns (5-10 items), named concisely.
+  Example good names: "Table formatting and rendering", "Column alignment and text wrapping", "Data source abstraction"
+  Example bad names: "formatting", "utilities", "core logic"
 
-                        PRIORITY:
-                        If there is tension between completeness and relevance, prioritize relevance to business analysts.
+QUALITY BAR:
+- Synthesize across subsystems. Do not recap each child directory in sequence.
+- Explain relationships and interdependencies between major parts, not just their isolated roles.
+- Be specific and concrete. Avoid vague phrases like "provides functionality", "handles processing", or "manages data".
+- If child summaries are thin or conflicting, acknowledge the gap rather than speculating.
+- Do not invent architectural patterns or design decisions not supported by the provided context.
 
-                        STYLE:
-                        Use precise, direct language. Avoid buzzwords and filler."""
+DIFFERENCE FROM INDIVIDUAL DIRECTORY SUMMARIES:
+This is a root-level synthesis. It should be noticeably more comprehensive and higher-level than individual directory summaries.
+Show how the parts connect and the overall shape of the system, not just what each part does in isolation."""
     
             messages = [("system", system_message), ("user", prompt)]
 
@@ -574,7 +586,151 @@ class DirectoryAgent:
                     directory_path = state["current_directory"],
                     purpose = f"Error generating summary: {e}")
         }
-        
+
+    def business_rules_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Extracts cross-file business rules for the current directory.
+            Uses a targeted query of the summary vector store filtered to the current
+            directory to ensure completeness, then prompts the LLM to identify rules
+            that only emerge when multiple files are considered together.
+        @param state Workflow state containing the finalized directory summary and
+                    vector store handles.
+        @return Updated state with an entry added to accumulated_business_rules for
+                the current directory.
+        """
+        current_dir = state["current_directory"]
+
+        root_directory = state["directory_path"]
+        try:
+            rel_dir = os.path.relpath(current_dir, root_directory)
+        except ValueError:
+            rel_dir = current_dir
+        rel_dir = Path(rel_dir).as_posix()
+
+        if isinstance(self.llm, GenericFakeChatModel):
+            return {
+                "accumulated_business_rules": {
+                    current_dir: BusinessRulesOutput(
+                        directory_name=Path(current_dir).name,
+                        directory_path=rel_dir,
+                        observed_rules=[],
+                        inferred_rules=[]
+                    )
+                }
+            }
+
+        try:
+            structured_llm = self.llm.with_structured_output(BusinessRulesOutput)
+
+            summary_collection = state["summary_collection"]
+            directory_summary = state["directory_summary"]
+
+            # Fetch ALL documents from the summary collection, then post-filter
+            # to the current directory. This guarantees completeness unlike the
+            # RAG top-k approach used by retriever_node.
+            all_results = summary_collection.get(include=["documents", "metadatas"])
+            docs = all_results.get("documents", [])
+            metas = all_results.get("metadatas", [])
+
+            directory_file_summaries = []
+            for doc, meta in zip(docs, metas):
+                summary_path = self._normalize_path(str(meta.get("path", "")))
+                if self._matches_directory_summary_path(
+                    candidate_path=summary_path,
+                    target_abs_dir=current_dir,
+                    root_directory=root_directory,
+                    codebase_name=state["codebase_name"]
+                ):
+                    directory_file_summaries.append(
+                        self._format_summary_result(doc, meta, rel_dir)
+                    )
+
+            if not directory_file_summaries:
+                print(f"No file summaries found for {current_dir}, skipping business rules extraction.")
+                return {
+                    "accumulated_business_rules": {
+                        current_dir: BusinessRulesOutput(
+                            directory_name=Path(current_dir).name,
+                            directory_path=rel_dir,
+                            observed_rules=[],
+                            inferred_rules=[]
+                        )
+                    }
+                }
+
+            formatted_file_summaries = "\n\n".join(directory_file_summaries)
+
+            system_message = """You are a business analyst extracting business rules and domain policies from a software system.
+                                Your task is to identify rules that exist *between* files — policies, constraints, or behaviors that only 
+                                emerge when multiple files or components are considered together. Focus strictly on what the code and summaries actually enforce, 
+                                not general software patterns."""
+
+
+            prompt = f"""DIRECTORY: {current_dir}
+
+                        DIRECTORY SUMMARY:
+                        {directory_summary.purpose}
+
+                        FILE-LEVEL SUMMARIES FOR THIS DIRECTORY:
+                        {formatted_file_summaries}
+
+                        TASK:
+                        Identify the business rules that exist *between* files — policies, constraints, or behaviors that only emerge when multiple files or components are considered together
+                        A business rule is a constraint, policy, or behavior that the system guarantees to its users — stated in terms of WHAT the system does, not HOW the code implements it.
+                        Do not list rules that are entirely contained within a single file.
+
+                        State rules in plain language that a non-technical stakeholder could understand.
+
+                        OBSERVED RULES:
+                        Rules that are directly and explicitly evidenced by the file summaries above.
+                        List each as a single, concrete statement of what the system requires, allows, or prevents across multiple files.
+
+                        INFERRED RULES:
+                        Rules that are implied by the system's behavior across the files but not explicitly named.
+                        Begin each entry with "Inference:" and describe the implied rule in plain, non-technical language.
+
+                        EXAMPLES OF GOOD BUSINESS RULES:
+                        - "Every row in a table must have the same number of columns as defined by the table header."
+                        - "Numeric values are right-aligned by default when displayed in table format."
+                        - "Table output can be redirected to any output destination, not just the console."
+
+                        EXAMPLES OF BAD RULES (do NOT produce these):
+                        - "The From<T> method uses reflection to map properties." (describes implementation mechanism)
+                        - "GetTextWidth calculates Unicode-aware widths." (technical implementation detail)
+                        - "The system provides functionality for data processing." (too vague)
+
+                        CONSTRAINTS:
+                        - Do not fabricate rules. Every rule must be grounded in the provided summaries.
+                        - If no cross-file buisness rules are visible, return empty lists — do not pad with generic observations.
+                        - Be specific. Instead of "enforces validation", say what is validated and what the constraint is.
+                        - Prefer plain, non-technical language. Avoid referencing programming constructs like method signatures, design patterns, or language-specific features.
+                        - Do not give evidence or reasoning in the output — only list the rules themselves in the structured format."""
+
+            messages = [("system", system_message), ("user", prompt)]
+            output = structured_llm.invoke(messages)
+
+            # Manually set directory_name and directory_path for consistency
+            output.directory_name = Path(current_dir).name
+            output.directory_path = rel_dir
+
+            print(f"Extracted business rules for directory {current_dir}")
+            return {
+                "accumulated_business_rules": {current_dir: output}
+            }
+
+        except Exception as e:
+            print(f"Error during business rules extraction for {state['current_directory']}: {e}")
+            return {
+                "accumulated_business_rules": {
+                    state["current_directory"]: BusinessRulesOutput(
+                        directory_name=Path(state["current_directory"]).name,
+                        directory_path=rel_dir,
+                        observed_rules=[],
+                        inferred_rules=[]
+                    )
+                }
+            }
+
     def judgement_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
         @brief Evaluates the quality of the generated directory summary and determines if it meets the required standards.
@@ -789,7 +945,29 @@ class DirectoryAgent:
             "current_directory": next_dir,
             "child_summaries": {current_dir: directory_summary}
         }
-        
+
+    def rollup_writer_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+        """
+        @brief Writes the accumulated business rules for all processed directories to a
+            single consolidated JSON file once the full codebase traversal is complete.
+        @param state Workflow state containing accumulated_business_rules and codebase_name.
+        @return Empty state update (no state fields are modified).
+        """
+        base_output_dir = state.get("output_directory", "./agent/directory_agent_output")
+        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
+        rules_dir = os.path.join(codebase_subdir, "business_rules")
+        os.makedirs(rules_dir, exist_ok=True)
+
+        output_path = os.path.join(rules_dir, "business_rules.json")
+        accumulated = state.get("accumulated_business_rules", {})
+        serialized = {dir_path: rules.model_dump() for dir_path, rules in accumulated.items()}
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(serialized, f, indent=2)
+
+        print(f"Business rules written to {output_path}")
+        return {}
+
     # Helper methods
     def _normalize_path(self, path_value: str) -> str:
         """
@@ -823,6 +1001,58 @@ class DirectoryAgent:
 
         parent_dir = Path(candidate_path).parent.as_posix()
         return parent_dir == target_rel_dir or parent_dir.startswith(target_rel_dir + "/")
+
+    def _matches_directory_summary_path(self, candidate_path: str, target_abs_dir: str, root_directory: str, codebase_name: str) -> bool:
+        """
+        @brief Matches summary metadata paths against the current directory, even when
+            stored paths use mixed formats.
+
+        Summary metadata in the collection may be stored as:
+        - absolute source paths
+        - paths prefixed with the codebase name
+        - shorter relative paths from an older export format
+
+        This helper canonicalizes those variants into possible relative parent
+        directories and checks them against the current directory's relative path.
+
+        @param candidate_path The summary metadata path to evaluate.
+        @param target_abs_dir The absolute path of the directory currently being processed.
+        @param root_directory The absolute root path of the codebase.
+        @param codebase_name The name of the codebase being processed.
+        @return True if the summary path should be considered part of the current directory.
+        """
+        candidate_path = self._normalize_path(candidate_path)
+        if not candidate_path:
+            return False
+
+        target_rel_dir = self._normalize_path(os.path.relpath(target_abs_dir, root_directory)).strip("./") or "."
+        candidate_parent = Path(candidate_path).parent.as_posix().strip("./") or "."
+
+        candidate_parent_options = {candidate_parent}
+
+        if os.path.isabs(candidate_path):
+            try:
+                abs_rel_parent = self._normalize_path(os.path.relpath(Path(candidate_path), root_directory))
+                candidate_parent_options.add((Path(abs_rel_parent).parent.as_posix().strip("./") or "."))
+            except ValueError:
+                pass
+
+        codebase_prefix = f"{codebase_name}/"
+        if candidate_path.startswith(codebase_prefix):
+            stripped_parent = Path(candidate_path[len(codebase_prefix):]).parent.as_posix().strip("./") or "."
+            candidate_parent_options.add(stripped_parent)
+
+        for candidate_parent_option in candidate_parent_options:
+            if target_rel_dir == ".":
+                return True
+            if candidate_parent_option == target_rel_dir:
+                return True
+            if candidate_parent_option.startswith(target_rel_dir + "/"):
+                return True
+            if target_rel_dir.endswith("/" + candidate_parent_option):
+                return True
+
+        return False
 
     def _format_code_result(self, doc: str, meta: dict, rel_dir: str) -> str:
         """
