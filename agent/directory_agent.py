@@ -633,6 +633,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             metas = all_results.get("metadatas", [])
 
             directory_file_summaries = []
+            matched_file_paths = set()
             for doc, meta in zip(docs, metas):
                 summary_path = self._normalize_path(str(meta.get("path", "")))
                 if self._matches_directory_summary_path(
@@ -644,9 +645,23 @@ Show how the parts connect and the overall shape of the system, not just what ea
                     directory_file_summaries.append(
                         self._format_summary_result(doc, meta, rel_dir)
                     )
+                    matched_file_paths.add(Path(summary_path).name)
 
             if not directory_file_summaries:
                 print(f"No file summaries found for {current_dir}, skipping business rules extraction.")
+                return {
+                    "accumulated_business_rules": {
+                        current_dir: BusinessRulesOutput(
+                            directory_name=Path(current_dir).name,
+                            directory_path=rel_dir,
+                            observed_rules=[],
+                            inferred_rules=[]
+                        )
+                    }
+                }
+
+            if len(matched_file_paths) < 2:
+                print(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.")
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -689,19 +704,21 @@ Show how the parts connect and the overall shape of the system, not just what ea
                         Rules that are implied by the system's behavior across the files but not explicitly named.
                         Begin each entry with "Inference:" and describe the implied rule in plain, non-technical language.
 
-                        EXAMPLES OF GOOD BUSINESS RULES:
-                        - "Every row in a table must have the same number of columns as defined by the table header."
-                        - "Numeric values are right-aligned by default when displayed in table format."
-                        - "Table output can be redirected to any output destination, not just the console."
+                        EXAMPLES OF GOOD CROSS-FILE BUSINESS RULES:
+                        - "A user cannot place an order unless their account has been verified and their payment method has been approved."
+                        - "Discount codes can only be applied once per customer per transaction, and the discount amount must not exceed the order total."
+                        - "All exported reports must use the same currency format and rounding rules that are applied during transaction processing."
 
                         EXAMPLES OF BAD RULES (do NOT produce these):
+                        - "Every row must have the same number of columns as the header." (this is a single-file rule, not cross-file)
                         - "The From<T> method uses reflection to map properties." (describes implementation mechanism)
                         - "GetTextWidth calculates Unicode-aware widths." (technical implementation detail)
+                        - "The validation rules defined in the configuration module are enforced by the processing module." (describes code architecture, not a business rule)
                         - "The system provides functionality for data processing." (too vague)
 
                         CONSTRAINTS:
                         - Do not fabricate rules. Every rule must be grounded in the provided summaries.
-                        - If no cross-file buisness rules are visible, return empty lists — do not pad with generic observations.
+                        - If no cross-file buisness rules are visible, return empty lists — do not put business rules that are conatained to a single file.
                         - Be specific. Instead of "enforces validation", say what is validated and what the constraint is.
                         - Prefer plain, non-technical language. Avoid referencing programming constructs like method signatures, design patterns, or language-specific features.
                         - Do not give evidence or reasoning in the output — only list the rules themselves in the structured format."""
