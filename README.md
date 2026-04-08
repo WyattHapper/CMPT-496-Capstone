@@ -70,3 +70,7 @@ Notes:
 ```powershell
 pytest .\test\lang_tests\directory_agent_test.py
 ```
+## Create Vectore Store
+```powershell
+python -m src.build_database <path_to_target_code>
+```
