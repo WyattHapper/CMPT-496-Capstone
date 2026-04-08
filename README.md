@@ -1,5 +1,15 @@
 # CMPT-496-Capstone
 
+## Purpose
+This repository contains a tool which can be used to perform analysis of large codebases. The tool creates as output:
+- Summaries of each file
+- Code structure information for each file, including PlantUML
+- Summaries of the contents of each directory
+- A summary of the entire repository
+- A list of business rules extracted from the codebase
+
+This is all completed using LangGraph, with an LLM acting as the generator of outputs. There is included a command line tool for running the project, in main.py.
+
 ## Requirements
 
 **Python 3.13+** is required for this project.
@@ -33,16 +43,6 @@ Download Python: [https://www.python.org/downloads/](https://www.python.org/down
 deactivate
 ```
 
-## To Run First Graph of LanGraph
-
-1. **Make sure you are in the root directory:**
-The current working directory must be root of project (i.e. the directort extension ends in 'CMPT-496-Capstone')
-
-2. **Run the script:**
-```powershell
-python .\agent\file_summary_agent.py 
-```
-
 ## Convert JSON summaries to Markdown
 
 ```powershell
@@ -65,12 +65,3 @@ Flags:
 
 Notes:
 - Run the command from the project root so the default input path resolves correctly.
-
-## How To Run LangGraph Test Cases
-```powershell
-pytest .\test\lang_tests\directory_agent_test.py
-```
-## Create Vectore Store
-```powershell
-python -m src.build_database <path_to_target_code>
-```
