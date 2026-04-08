@@ -8,7 +8,7 @@ condenses duplicates, validates each rule against vector-retrieved code context,
 from agent.states.BR_agent_state import BRGraphState
 from agent.structured_output.BR_output import (
     CondensedRule, ValidatedRule, DiscardedRule,
-    CondenserOutput, ValidatorOutput, Explanation
+    CondenserOutput, ValidatorOutput,
 )
 from agent.structured_output.file_summary_output import BusinessRule
 from langgraph.graph import StateGraph, START, END
@@ -21,9 +21,13 @@ import asyncio
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
-from collections import deque, defaultdict
+from collections import defaultdict
 
 MAX_CONCURRENCY = 10
+DEFAULT_CODEBASE_K = 15
+DEFAULT_FILE_SUMMARY_K = 5
+MAX_CODEBASE_K = 30
+MAX_FILE_SUMMARY_K = 10
 
 
 class BRAgent:
@@ -64,9 +68,9 @@ class BRAgent:
         Graph structure:
             condenser → retriever → validator → conditional → writer → END
 
-        Conditional routing from validator:
-            - If current_rule is set (need_more_context, or next rule popped) → retriever
-            - If current_rule is None (all rules processed) → writer
+        Conditional routing from condenser and validator:
+            - If current_rules is non-empty → retriever
+            - If current_rules is empty (all rules processed) → writer
         """
         builder = StateGraph(BRGraphState)
 
@@ -80,12 +84,12 @@ class BRAgent:
         builder.set_entry_point("condenser")
         builder.add_conditional_edges(
             "condenser",
-            lambda state: "retriever" if state.get("current_rule") else "writer"
+            lambda state: "retriever" if state.get("current_rules") else "writer"
         )
         builder.add_edge("retriever", "validator")
         builder.add_conditional_edges(
             "validator",
-            lambda state: "retriever" if state.get("current_rule") else "writer"
+            lambda state: "retriever" if state.get("current_rules") else "writer"
         )
         builder.add_edge("writer", END)
 
@@ -117,14 +121,12 @@ class BRAgent:
 
         initial_state = {
             "input_rules": input_rules,
-            "rules_queue": deque(),
-            "current_rule": None,
+            "current_rules": [],
             "validated_rules": [],
             "discarded_rules": [],
-            "code_context": [],
-            "summary_context": [],
-            "codebase_k": 15,
-            "file_summary_k": 5,
+            "rule_contexts": {},
+            "codebase_k": DEFAULT_CODEBASE_K,
+            "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
@@ -153,7 +155,7 @@ class BRAgent:
         Runs exactly once at the start of the graph.
 
         @param state Current workflow state containing input_rules and codebase_name.
-        @return Updated state with rules_queue and current_rule populated.
+        @return Updated state with current_rules and rule_contexts populated.
         """
         input_rules = state["input_rules"]
         codebase_name = state["codebase_name"]
@@ -161,8 +163,8 @@ class BRAgent:
         # Handle empty input
         if not input_rules:
             return {
-                "rules_queue": deque(),
-                "current_rule": None,
+                "current_rules": [],
+                "rule_contexts": {},
             }
 
         # Group rules by relative directory
@@ -187,9 +189,9 @@ class BRAgent:
                 if codebase_idx is not None:
                     rel_dir = Path(*parts[codebase_idx:]).as_posix()
                 else:
-                    rel_dir = Path(abs_dir).as_posix()
+                    rel_dir = Path(abs_dir).as_posix() if abs_dir else "."
             except (ValueError, TypeError):
-                rel_dir = abs_dir
+                rel_dir = abs_dir if abs_dir else "."
 
             dir_groups[rel_dir]["file_paths"].add(file_path)
             dir_groups[rel_dir]["rules"].extend(rules)
@@ -267,189 +269,256 @@ class BRAgent:
                     ))
                     rule_id += 1
 
-        # Populate queue and set first rule
-        if all_condensed:
-            rules_queue = deque(all_condensed[1:])
-            current_rule = all_condensed[0]
-        else:
-            rules_queue = deque()
-            current_rule = None
-
         print(f"Condensed {sum(len(g['rules']) for g in dir_groups.values())} input rules "
               f"into {len(all_condensed)} condensed rules across {len(dir_groups)} directory groups.")
 
         return {
-            "rules_queue": rules_queue,
-            "current_rule": current_rule,
+            "current_rules": all_condensed,
+            "rule_contexts": {},
         }
 
     def retriever_node(self, state: BRGraphState) -> BRGraphState:
         """
-        @brief Retrieves relevant code snippets and file summaries for the current business rule.
+        @brief Retrieves relevant code snippets and file summaries for all current business rules.
 
         @details
-        Queries two ChromaDB vector collections (code and summary) using the current rule's
-        text and source directory as the query. Results are prioritized in three tiers:
+        Iterates over every rule in current_rules and queries two ChromaDB vector
+        collections (code and summary) for each. Results are prioritized in three tiers:
             1. Results from the rule's source files (highest priority)
             2. Results from the rule's source directory
             3. All other results (fallback)
 
-        Retrieved context accumulates across retrieval iterations for the same rule.
-        Duplicates are filtered out using a set of previously retrieved items.
+        Per-rule context is stored in rule_contexts[rule.id] and accumulates across
+        retrieval iterations for the same rule (deduplication against prior results).
         Retrieval depth is controlled by codebase_k and file_summary_k, which may be
         increased by the validator on "need_more_context" decisions.
 
-        @param state Current workflow state containing current_rule and retrieval parameters.
-        @return Updated state with code_context and summary_context populated/extended.
-        @raises ValueError If current_rule is not set.
+        @param state Current workflow state containing current_rules and retrieval parameters.
+        @return Updated state with rule_contexts populated/extended.
+        @raises ValueError If current_rules is empty.
         """
-        current_rule = state.get("current_rule")
-        if not current_rule:
-            raise ValueError("No current rule to retrieve context for.")
+        current_rules = state.get("current_rules", [])
+        if not current_rules:
+            raise ValueError("No current rules to retrieve context for.")
 
         code_collection = state["code_collection"]
         summary_collection = state["summary_collection"]
-
-        source_directory = current_rule.source_directory
-        source_file_paths = current_rule.source_file_paths
-
-        # Build query text: rule text is the primary signal, directory is secondary context
-        query_text = f"{current_rule.rule} {source_directory}"
-
         code_k = state["codebase_k"]
         summary_k = state["file_summary_k"]
 
-        # Query both vector stores
-        code_results = code_collection.query(
-            query_texts=[query_text],
-            n_results=code_k
-        )
+        existing_contexts = state.get("rule_contexts", {})
+        updated_contexts = dict(existing_contexts)
 
-        summary_results = summary_collection.query(
-            query_texts=[query_text],
-            n_results=summary_k
-        )
+        for rule in current_rules:
+            source_directory = rule.source_directory
+            source_file_paths = rule.source_file_paths
+            query_text = f"{rule.rule} {source_directory}"
 
-        # Track existing context for deduplication
-        existing_code_context = set(state.get("code_context", []))
-        existing_summary_context = set(state.get("summary_context", []))
+            safe_code_k = min(code_k, code_collection.count()) or 1
+            safe_summary_k = min(summary_k, summary_collection.count()) or 1
 
-        # Process code results with three-tier prioritization
-        code_docs = code_results.get("documents", [[]])[0]
-        code_metas = code_results.get("metadatas", [[]])[0]
+            code_results = code_collection.query(
+                query_texts=[query_text],
+                n_results=safe_code_k
+            )
+            summary_results = summary_collection.query(
+                query_texts=[query_text],
+                n_results=safe_summary_k
+            )
 
-        source_file_code = []
-        directory_code = []
-        fallback_code = []
+            # Get existing per-rule context for deduplication (str key for JSON serialization safety)
+            rule_key = str(rule.id)
+            rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": []})
+            existing_code = set(rule_ctx["code_context"])
+            existing_summary = set(rule_ctx["summary_context"])
 
-        for doc, meta in zip(code_docs, code_metas):
-            file_path = self._normalize_path(meta.get("file", ""))
-            formatted = self._format_code_result(doc, meta, source_directory)
+            # Process code results with three-tier prioritization
+            code_docs = code_results.get("documents", [[]])[0]
+            code_metas = code_results.get("metadatas", [[]])[0]
 
-            if self._is_from_source_file(file_path, source_file_paths):
-                source_file_code.append(formatted)
-            elif self._is_in_directory(file_path, source_directory):
-                directory_code.append(formatted)
-            else:
-                fallback_code.append(formatted)
+            source_file_code, directory_code, fallback_code = [], [], []
+            for doc, meta in zip(code_docs, code_metas):
+                file_path = self._normalize_path(meta.get("file", ""))
+                formatted = self._format_code_result(doc, meta, source_directory)
+                if self._is_from_source_file(file_path, source_file_paths):
+                    source_file_code.append(formatted)
+                elif self._is_in_directory(file_path, source_directory):
+                    directory_code.append(formatted)
+                else:
+                    fallback_code.append(formatted)
 
-        # Process summary results with three-tier prioritization
-        summary_docs = summary_results.get("documents", [[]])[0]
-        summary_metas = summary_results.get("metadatas", [[]])[0]
+            # Process summary results with three-tier prioritization
+            summary_docs = summary_results.get("documents", [[]])[0]
+            summary_metas = summary_results.get("metadatas", [[]])[0]
 
-        source_file_summary = []
-        directory_summary = []
-        fallback_summary = []
+            source_file_summary, directory_summary, fallback_summary = [], [], []
+            for doc, meta in zip(summary_docs, summary_metas):
+                summary_path = self._normalize_path(meta.get("path", ""))
+                formatted = self._format_summary_result(doc, meta, source_directory)
+                if self._is_from_source_file(summary_path, source_file_paths):
+                    source_file_summary.append(formatted)
+                elif self._is_in_directory(summary_path, source_directory):
+                    directory_summary.append(formatted)
+                else:
+                    fallback_summary.append(formatted)
 
-        for doc, meta in zip(summary_docs, summary_metas):
-            summary_path = self._normalize_path(meta.get("path", ""))
-            formatted = self._format_summary_result(doc, meta, source_directory)
+            # Append new results (prioritized order, no duplicates)
+            new_code = list(rule_ctx["code_context"])
+            for item in source_file_code + directory_code + fallback_code:
+                if item not in existing_code:
+                    new_code.append(item)
 
-            if self._is_from_source_file(summary_path, source_file_paths):
-                source_file_summary.append(formatted)
-            elif self._is_in_directory(summary_path, source_directory):
-                directory_summary.append(formatted)
-            else:
-                fallback_summary.append(formatted)
+            new_summary = list(rule_ctx["summary_context"])
+            for item in source_file_summary + directory_summary + fallback_summary:
+                if item not in existing_summary:
+                    new_summary.append(item)
 
-        # Append new results to context (prioritized order, no duplicates)
-        updated_code_context = list(state.get("code_context", []))
-        updated_summary_context = list(state.get("summary_context", []))
-
-        for item in source_file_code + directory_code + fallback_code:
-            if item not in existing_code_context:
-                updated_code_context.append(item)
-
-        for item in source_file_summary + directory_summary + fallback_summary:
-            if item not in existing_summary_context:
-                updated_summary_context.append(item)
+            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
 
         return {
-            "code_context": updated_code_context,
-            "summary_context": updated_summary_context,
+            "rule_contexts": updated_contexts,
         }
 
     def validator_node(self, state: BRGraphState) -> BRGraphState:
         """
-        @brief Assesses context sufficiency and validates the current business rule in a single LLM call.
+        @brief Validates all current business rules against retrieved context in batched async LLM calls.
 
         @details
-        Implementation considerations:
-        - This node combines the responsibilities of context analysis and rule validation,
-          reducing the number of LLM calls per rule from two to one.
-        - Uses ValidatorOutput structured output with a Literal["need_more_context", "valid", "discard"]
-          decision field to force the LLM into one of three distinct outcomes.
-        - Prompt engineering is critical: the model must understand that "need_more_context" is a
-          legitimate and distinct outcome from "discard". The prompt should clearly differentiate:
-            * "need_more_context": the retrieved context is insufficient to make a judgement, and
-              more retrieval may help.
-            * "valid": the rule is supported by evidence in the retrieved context.
-            * "discard": the rule is not supported and additional retrieval is unlikely to help.
+        For each rule in current_rules, makes a single LLM call that assesses context
+        sufficiency and rule validity simultaneously, using ValidatorOutput structured output.
+        Calls are batched concurrently (up to MAX_CONCURRENCY) for speed.
 
-        On "need_more_context":
-        - Increase codebase_k and file_summary_k (bounded by maximum caps).
-          Suggested maximums: codebase_k max = 30, file_summary_k max = 10.
-        - If k values have reached the cap, force a decision (valid or discard) — do not allow
-          infinite retrieval loops.
-        - Keep current_rule unchanged so the conditional edge routes back to the retriever.
+        After all calls complete, results are partitioned:
+        - "valid" → ValidatedRule appended to validated_rules
+        - "discard" → DiscardedRule appended to discarded_rules
+        - "need_more_context" → rule kept for a second retrieval pass at max k values
 
-        On "valid":
-        - Create a ValidatedRule from the current CondensedRule and the LLM's Explanation.
-        - Return it as a single-element list (the Annotated[list, add] reducer will append it).
-        - Reset retrieval state: clear code_context, summary_context, reset codebase_k and
-          file_summary_k to defaults.
-        - Pop the next rule from rules_queue as current_rule, or set current_rule to None if
-          the queue is empty (triggering the writer via the conditional edge).
+        If k values are already at their maximums (final pass), "need_more_context" is
+        force-treated as a discard. This guarantees at most 2 LLM calls per rule.
 
-        On "discard":
-        - Create a DiscardedRule from the current CondensedRule and the LLM's discard_reason.
-        - Return it as a single-element list (the Annotated[list, add] reducer will append it).
-        - Reset retrieval state and advance to next rule, same as "valid".
-
-        @param state Current workflow state containing current_rule, contexts, and retrieval params.
-        @return Updated state reflecting the decision outcome.
+        @param state Current workflow state containing current_rules, rule_contexts, and retrieval params.
+        @return Updated state reflecting the decision outcomes for all rules.
         """
-        pass
+        current_rules = state.get("current_rules", [])
+        rule_contexts = state.get("rule_contexts", {})
+        codebase_k = state["codebase_k"]
+
+        is_final_pass = codebase_k >= MAX_CODEBASE_K
+
+        structured_llm = self.llm.with_structured_output(ValidatorOutput)
+
+        async def run_batch():
+            sem = asyncio.Semaphore(MAX_CONCURRENCY)
+            async def guarded(rule: CondensedRule):
+                async with sem:
+                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
+                    return await _validate_single_rule(
+                        structured_llm,
+                        rule,
+                        ctx["code_context"],
+                        ctx["summary_context"],
+                        is_final_pass,
+                    )
+            return await asyncio.gather(
+                *(guarded(r) for r in current_rules)
+            )
+
+        results = self._loop.run_until_complete(run_batch())
+
+        new_validated = []
+        new_discarded = []
+        needs_context = []
+
+        for rule, output, err in results:
+            if err is not None:
+                print(f"Validation error for rule {rule.id}: {err}")
+                new_discarded.append(DiscardedRule(
+                    id=rule.id,
+                    rule=rule.rule,
+                    source_directory=rule.source_directory,
+                    reason=f"Validation failed with error: {err}",
+                ))
+                continue
+
+            if output.decision == "valid":
+                new_validated.append(ValidatedRule(
+                    id=rule.id,
+                    rule=rule.rule,
+                    source_directory=rule.source_directory,
+                    explanation=output.explanation,
+                ))
+            elif output.decision == "discard":
+                new_discarded.append(DiscardedRule(
+                    id=rule.id,
+                    rule=rule.rule,
+                    source_directory=rule.source_directory,
+                    reason=output.discard_reason or "No reason provided.",
+                ))
+            elif output.decision == "need_more_context":
+                if is_final_pass:
+                    new_discarded.append(DiscardedRule(
+                        id=rule.id,
+                        rule=rule.rule,
+                        source_directory=rule.source_directory,
+                        reason="Insufficient evidence after maximum context retrieval.",
+                    ))
+                else:
+                    needs_context.append(rule)
+
+        print(f"Validation pass complete: {len(new_validated)} valid, "
+              f"{len(new_discarded)} discarded, {len(needs_context)} need more context.")
+
+        update: dict = {
+            "validated_rules": new_validated,
+            "discarded_rules": new_discarded,
+        }
+
+        if needs_context:
+            update["current_rules"] = needs_context
+            update["codebase_k"] = MAX_CODEBASE_K
+            update["file_summary_k"] = MAX_FILE_SUMMARY_K
+            # Keep only contexts for unresolved rules
+            update["rule_contexts"] = {str(r.id): rule_contexts.get(str(r.id), {"code_context": [], "summary_context": []})
+                                       for r in needs_context}
+        else:
+            update["current_rules"] = []
+            update["codebase_k"] = DEFAULT_CODEBASE_K
+            update["file_summary_k"] = DEFAULT_FILE_SUMMARY_K
+            update["rule_contexts"] = {}
+
+        return update
 
     def writer_node(self, state: BRGraphState) -> BRGraphState:
         """
         @brief Writes validated and discarded rules to JSON output files.
 
         @details
-        Implementation considerations:
-        - Serializes state["validated_rules"] to a JSON file containing all rules that
-          passed validation along with their Explanation evidence.
-        - Serializes state["discarded_rules"] to a separate JSON file for transparency
-          and debugging, containing all rejected rules with reasons.
-        - Output directory structure: {output_directory}/{codebase_name}/
-          with files like validated_rules.json and discarded_rules.json.
-        - Creates output directories if they don't exist.
-        - Runs exactly once at the end of the graph.
+        Serializes validated_rules and discarded_rules to separate JSON files
+        under {output_directory}/{codebase_name}/. Creates directories if needed.
+        Runs exactly once at the end of the graph.
 
         @param state Current workflow state containing validated_rules and discarded_rules.
         @return Empty dict (terminal node).
         """
-        pass
+        base_output_dir = state.get("output_directory", "./agent/BR_agent_output")
+        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
+        os.makedirs(codebase_subdir, exist_ok=True)
+
+        validated = state.get("validated_rules", [])
+        discarded = state.get("discarded_rules", [])
+
+        validated_path = os.path.join(codebase_subdir, "validated_rules.json")
+        with open(validated_path, "w", encoding="utf-8") as f:
+            json.dump([r.model_dump() for r in validated], f, indent=2)
+
+        discarded_path = os.path.join(codebase_subdir, "discarded_rules.json")
+        with open(discarded_path, "w", encoding="utf-8") as f:
+            json.dump([r.model_dump() for r in discarded], f, indent=2)
+
+        print(f"Wrote {len(validated)} validated rules to {validated_path}")
+        print(f"Wrote {len(discarded)} discarded rules to {discarded_path}")
+
+        return {}
 
     # Helper methods
 
@@ -488,10 +557,11 @@ class BRAgent:
         candidate_normalized = self._normalize_path(candidate_path)
         for source_path in source_file_paths:
             source_normalized = self._normalize_path(source_path)
-            # Check both exact match and suffix match (handles absolute vs relative paths)
             if candidate_normalized == source_normalized:
                 return True
-            if candidate_normalized.endswith(source_normalized) or source_normalized.endswith(candidate_normalized):
+            # Suffix match on path boundary (must align to a '/' separator)
+            if (candidate_normalized.endswith("/" + source_normalized)
+                    or source_normalized.endswith("/" + candidate_normalized)):
                 return True
         return False
 
@@ -553,39 +623,192 @@ async def _condense_group(structured_llm, directory: str, rules: list) -> tuple[
 
         prompt = f"""Directory: {directory}
 
-        Business rules to condense:
-        {rule_list}
+Business rules to condense:
+{rule_list}
 
-        MERGING GUIDELINES:
-        - Merge rules that express the same constraint or policy in different words.
-        - Merge rules that are specific instances of a more general pattern. When several rules each describe a similar aspect of the codebase's behaviour but for different cases, combine them into one general rule that captures the shared intent.
-        - When merging, produce a single clear statement that preserves the meaning of all merged rules. Do not lose important specifics unless they are redundant.
-        - Do NOT merge rules that govern different aspects of the system, even if they sound superficially similar.
-        - Do NOT invent new rules that are not supported by the originals.
-        - Do NOT discard a rule unless it is fully covered by another rule in the list.
-        - Rules that are already unique and distinct should be kept as-is.
+MERGING GUIDELINES:
+- Merge rules that express the same constraint or policy in different words.
+- Merge rules that are specific instances of a more general pattern. When several rules each describe a similar aspect of the codebase's behaviour but for different cases, combine them into one general rule that captures the shared intent.
+- When merging, produce a single clear statement that preserves the meaning of all merged rules. Do not lose important specifics unless they are redundant.
+- Do NOT merge rules that govern different aspects of the system, even if they sound superficially similar.
+- Do NOT invent new rules that are not supported by the originals.
+- Do NOT discard a rule unless it is fully covered by another rule in the list.
+- Rules that are already unique and distinct should be kept as-is.
 
-        POSITIVE EXAMPLE — rules that SHOULD be merged:
-        Input:
-        1. A number can be converted into its written French representation.
-        2. A number can be converted into its written Arabic representation.
-        3. A number can be converted into its written Spanish representation.
-        Output:
-        1. A number can be converted into written representations in various languages.
+POSITIVE EXAMPLE — rules that SHOULD be merged:
+Input:
+1. A number can be converted into its written French representation.
+2. A number can be converted into its written Arabic representation.
+3. A number can be converted into its written Spanish representation.
+Output:
+1. A number can be converted into written representations in various languages.
 
-        NEGATIVE EXAMPLE — rules that should NOT be merged:
-        Input:
-        1. Order total must be non-negative.
-        2. An order must contain at least one item to be processed.
-        These both relate to order validation, but they enforce different constraints (value range vs. item count). They must remain separate.
+NEGATIVE EXAMPLE — rules that should NOT be merged:
+Input:
+1. Order total must be non-negative.
+2. An order must contain at least one item to be processed.
+These both relate to order validation, but they enforce different constraints (value range vs. item count). They must remain separate.
 
-        Return the condensed list of business rules."""
+Return the condensed list of business rules."""
 
         messages = [("system", system_message), ("user", prompt)]
         output = await structured_llm.ainvoke(messages)
         return directory, output.condensed_rules, None
     except Exception as e:
         return directory, [], e
+
+
+async def _validate_single_rule(
+    structured_llm,
+    rule: CondensedRule,
+    code_context: list[str],
+    summary_context: list[str],
+    is_final_pass: bool,
+) -> tuple:
+    """
+    @brief Async helper that validates a single business rule against retrieved context.
+    @param structured_llm LLM configured with ValidatorOutput structured output.
+    @param rule The CondensedRule to validate.
+    @param code_context List of formatted code context strings for this rule.
+    @param summary_context List of formatted summary context strings for this rule.
+    @param is_final_pass If True, "need_more_context" is disallowed in the prompt.
+    @return Tuple of (rule, ValidatorOutput, error or None).
+    """
+    try:
+        code_text = "\n\n".join(code_context) if code_context else "None"
+        summary_text = "\n\n".join(summary_context) if summary_context else "None"
+
+        force_decision_clause = ""
+        if is_final_pass:
+            force_decision_clause = (
+                "\nIMPORTANT: This is the final retrieval pass — maximum context has been gathered. "
+                "\"need_more_context\" is NOT available as a decision. You MUST choose either \"valid\" or \"discard\"."
+            )
+
+        system_message = (
+            "You are a Senior Software Architect acting as a business rule auditor. "
+            "Your task is to determine whether a proposed business rule is genuinely supported "
+            "by the source code evidence provided. You must be precise and evidence-driven — "
+            "never confirm a rule based on assumptions."
+        )
+
+        prompt = f"""BUSINESS RULE TO VALIDATE:
+Rule ID: {rule.id}
+Rule: {rule.rule}
+Source directory: {rule.source_directory}
+Source files: {", ".join(rule.source_file_paths)}
+
+RETRIEVED CODE CONTEXT:
+{code_text}
+
+RETRIEVED FILE SUMMARY CONTEXT:
+{summary_text}
+
+WHAT IS A BUSINESS RULE:
+A business rule is a constraint, policy, threshold, validation, access control check, or behavioral requirement that governs how the software product behaves for its users or within its problem domain. It is NOT an implementation detail, architectural pattern, or DevOps/infrastructure concern.
+
+TASK:
+Determine whether the business rule above is supported by the retrieved code and summary context. Choose exactly one of three outcomes:
+
+1. **valid** — The rule IS supported by concrete evidence in the context. You can point to specific code snippets, method signatures, validation checks, conditional logic, or summary statements that directly enforce or implement the rule.
+
+2. **discard** — The rule is NOT supported, and additional retrieval is unlikely to help. Choose this when:
+   - The context covers the relevant area thoroughly but shows no evidence of the rule.
+   - The rule contradicts what the code actually does.
+   - The rule is too vague or generic to be grounded in any specific code behavior.
+   - The rule describes implementation mechanics rather than a business/domain constraint.
+
+3. **need_more_context** — The context is insufficient to make a confident judgement. Choose this ONLY when:
+   - The context contains partial hints (e.g., a method call to an unresolved external function) that suggest the rule MIGHT be supported with more code.
+   - The source directory or file area hasn't been well covered by retrieval yet.
+   - Do NOT choose this as a "safe" fallback. If the context is reasonably thorough and shows no evidence, choose "discard".
+{force_decision_clause}
+
+HANDLING BORDERLINE / PARTIAL EVIDENCE:
+- If the evidence only partially supports the rule (e.g., the code enforces a narrower version of the stated constraint), choose "valid" but note the narrower scope in your reasoning.
+- If the rule is broadly stated but the code only demonstrates one specific case, validate the specific case you can confirm and explain the gap in your reasoning.
+- If the code hints at the rule but the logic is ambiguous or incomplete, prefer "need_more_context" over "valid" on the first pass.
+
+RESPONSE INSTRUCTIONS:
+- If "valid": populate the `explanation` field with `evidence` (a dict mapping filenames to lists of relevant code snippets that support the rule) and `reasoning` (a clear explanation of how those snippets support the rule).
+- If "discard": populate the `discard_reason` field explaining why the rule is not supported.
+- If "need_more_context": leave both `explanation` and `discard_reason` as None.
+
+EXAMPLES:
+
+--- Example 1: VALID ---
+Rule: "A discount amount must not exceed the order total."
+Code context includes:
+  [CODE CHUNK]
+  File: src/Orders/OrderService.cs
+  Container: OrderService
+  Name: ApplyDiscount
+  Content:
+    public void ApplyDiscount(Order order, decimal discount) {{
+        if (discount > order.Total)
+            throw new ValidationException("Discount exceeds order total");
+        order.Discount = discount;
+    }}
+Expected output:
+{{
+  "decision": "valid",
+  "explanation": {{
+    "evidence": {{"OrderService.cs": ["if (discount > order.Total) throw new ValidationException(\\"Discount exceeds order total\\");"]}},
+    "reasoning": "The ApplyDiscount method explicitly checks that the discount does not exceed the order total and throws a ValidationException if it does, directly enforcing this business rule."
+  }},
+  "discard_reason": null
+}}
+
+--- Example 2: DISCARD ---
+Rule: "Users must verify their email before placing an order."
+Code context includes:
+  [CODE CHUNK]
+  File: src/Orders/OrderService.cs
+  Container: OrderService
+  Name: PlaceOrder
+  Content:
+    public Order PlaceOrder(User user, Cart cart) {{
+        ValidateCart(cart);
+        var order = new Order(user.Id, cart.Items, cart.Total);
+        _orderRepository.Save(order);
+        return order;
+    }}
+  [SUMMARY NODE]
+  Path: src/Orders/OrderService.cs
+  Content: "Handles order creation, cart validation, and persistence. No authentication or email verification logic present."
+Expected output:
+{{
+  "decision": "discard",
+  "explanation": null,
+  "discard_reason": "The PlaceOrder method validates the cart and creates the order without any email verification check. The file summary explicitly states no email verification logic is present. The rule is not supported."
+}}
+
+--- Example 3: NEED MORE CONTEXT ---
+Rule: "Tax is calculated based on the shipping destination's tax rate."
+Code context includes:
+  [CODE CHUNK]
+  File: src/Orders/OrderService.cs
+  Container: OrderService
+  Name: CalculateTotal
+  Content:
+    public decimal CalculateTotal(Cart cart, Address shippingAddress) {{
+        var subtotal = cart.Items.Sum(i => i.Price);
+        var tax = _taxService.ComputeTax(subtotal, shippingAddress);
+        return subtotal + tax;
+    }}
+Expected output:
+{{
+  "decision": "need_more_context",
+  "explanation": null,
+  "discard_reason": null
+}}
+(The method delegates tax computation to _taxService.ComputeTax, which is not in the retrieved context. More code from the TaxService class could confirm whether tax is indeed based on the shipping address's rate.)"""
+
+        messages = [("system", system_message), ("user", prompt)]
+        output = await structured_llm.ainvoke(messages)
+        return rule, output, None
+    except Exception as e:
+        return rule, None, e
 
 
 if __name__ == "__main__":

@@ -61,12 +61,13 @@ def processing_menu(errors: list):
         print("3. Create JSON Summaries Only")
         print("4. Create Summary Database from JSON Only")
         print("5. Create Directory Summaries Only")
-        print("6. Return to Main Menu")
+        print("6. Run Business Rule Validation Only")
+        print("7. Return to Main Menu")
         print("----------------------------------------")
-        choice = input("Select an option (1-6): ")
-        if choice == '6':
+        choice = input("Select an option (1-7): ")
+        if choice == '7':
             break
-        if choice in ['1', '2', '3', '4', '5']:
+        if choice in ['1', '2', '3', '4', '5', '6']:
             path_input = input("\nEnter the path to the codebase: ").strip()
             if not path_input: 
                 continue
@@ -79,12 +80,15 @@ def processing_menu(errors: list):
                 time.sleep(2)
                 continue
 
+            rules_path = str(Path("agent") / "file_summary_agent_output" / codebase_name / "business_rules" / "business_rules.json")
+
             if choice == '1':
                 if run_step("Code Vectorization", "src.build_database", [str(codebase)], errors):
                     if run_step("File Summary Generation", "agent.file_summary_agent", [str(codebase)], errors):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
                             if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
-                                print("\nFull pipeline completed successfully!")
+                                if run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors):
+                                    print("\nFull pipeline completed successfully!")
                 
                 input("\nPress enter to return to menu...")
 
@@ -102,6 +106,15 @@ def processing_menu(errors: list):
 
             elif choice == '5':
                 run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors)
+                input("\nTask finished. Press enter...")
+
+            elif choice == '6':
+                if not Path(rules_path).exists():
+                    print(f"Error: Business rules file not found at '{rules_path}'.")
+                    print("Please run 'Create JSON Summaries' first to generate business rules.")
+                    input("\nPress enter to return to menu...")
+                    continue
+                run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors)
                 input("\nTask finished. Press enter...")
 
 def view_collections(db_type: str):
@@ -193,7 +206,7 @@ def main_menu():
         print("========================================")
         print("   CODEBASE ANALYSIS SYSTEM - CLI")
         print("========================================")
-        print("1. Create Summaries & Index Codebase")
+        print("1. Run Analysis Tools")
         print("2. View Summary Collections")
         print("3. View Source Code Collections")
         print("4. View Errors")
