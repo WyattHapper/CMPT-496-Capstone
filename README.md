@@ -10,6 +10,13 @@ This repository contains a tool which can be used to perform analysis of large c
 
 This is all completed using LangGraph, with an LLM acting as the generator of outputs. There is included a command line tool for running the project, in main.py.
 
+## Notes
+- This tool is currently able to parse codebases written in C# or Javascript for the vector store component. Other languages are not supported.
+- The system defaults to using Gemini 3 Flash, given a valid API key in a .env file. Your API key should be titled "GOOGLE_API_KEY" in your .env file
+- The system is mostly set up to support the use of other models. Additional steps required: Either the agents should be instantiated and run manually, by passing in the desired model, or main.py should be modified slightly to do so
+- When running the tool, a filepath to the target codebase is needed. Use relative paths
+- It is recommended to store the target codebase in a directory in the root of the project called "targetCodebases", as this directory is already included in the .gitignore
+
 ## Requirements
 
 **Python 3.13+** is required for this project.
