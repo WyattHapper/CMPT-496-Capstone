@@ -42,7 +42,7 @@ Download Python: [https://www.python.org/downloads/](https://www.python.org/down
 
 4. **Run the program:**
    ```powershell
-   python test.py
+   python main.py
    ```
 
 ## Deactivate Virtual Environment
