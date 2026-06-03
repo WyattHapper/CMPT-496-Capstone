@@ -62,12 +62,13 @@ def processing_menu(errors: list):
         print("4. Create Summary Database from JSON Only")
         print("5. Create Directory Summaries Only")
         print("6. Run Business Rule Validation Only")
-        print("7. Return to Main Menu")
+        print("7. Run Unit Test Generation Only")
+        print("8. Return to Main Menu")
         print("----------------------------------------")
-        choice = input("Select an option (1-7): ")
-        if choice == '7':
+        choice = input("Select an option (1-8): ")
+        if choice == '8':
             break
-        if choice in ['1', '2', '3', '4', '5', '6']:
+        if choice in ['1', '2', '3', '4', '5', '6', '7']:
             path_input = input("\nEnter the path to the codebase: ").strip()
             if not path_input: 
                 continue
@@ -88,8 +89,8 @@ def processing_menu(errors: list):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
                             if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
                                 if run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors):
-                                    print("\nFull pipeline completed successfully!")
-                
+                                    if run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, rules_path], errors):
+                                        print("\nFull pipeline completed successfully!")
                 input("\nPress enter to return to menu...")
 
             elif choice == '2':
@@ -115,6 +116,15 @@ def processing_menu(errors: list):
                     input("\nPress enter to return to menu...")
                     continue
                 run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors)
+                input("\nTask finished. Press enter...")
+
+            elif choice == '7':
+                if not Path(rules_path).exists():
+                    print(f"Error: Business rules file not found at '{rules_path}'.")
+                    print("Please run 'Create JSON Summaries' first to generate business rules.")
+                    input("\nPress enter to return to menu...")
+                    continue
+                run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, rules_path], errors)
                 input("\nTask finished. Press enter...")
 
 def view_collections(db_type: str):
