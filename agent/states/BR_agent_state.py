@@ -7,6 +7,7 @@ structured state passed between nodes in the LangGraph execution graph.
 
 from typing import TypedDict, Annotated, Any
 from agent.structured_output.BR_output import CondensedRule, ValidatedRule, DiscardedRule
+from agent.structured_output.UT_output import UnitTest
 from agent.structured_output.file_summary_output import BusinessRule
 from operator import add
 
@@ -69,6 +70,7 @@ class BRGraphState(TypedDict):
     current_rules: list[CondensedRule]
     validated_rules: Annotated[list[ValidatedRule], add]
     discarded_rules: Annotated[list[DiscardedRule], add]
+    unit_tests: list[UnitTest]
     rule_contexts: dict[int, dict]
     codebase_k: int
     file_summary_k: int

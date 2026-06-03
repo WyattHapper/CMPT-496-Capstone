@@ -69,7 +69,7 @@ class BRGraphState(TypedDict):
     current_rules: list[CondensedRule]
     validated_rules: Annotated[list[ValidatedRule], add]
     discarded_rules: Annotated[list[DiscardedRule], add]
-    unit_tests: list[UnitTest]
+    unit_test: UnitTest
     rule_contexts: dict[int, dict]
     codebase_k: int
     file_summary_k: int

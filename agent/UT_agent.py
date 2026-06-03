@@ -10,6 +10,7 @@ from agent.structured_output.BR_output import (
     CondensedRule, ValidatedRule, DiscardedRule,
     CondenserOutput, ValidatorOutput,
 )
+from agent.structured_output.UT_output import UnitTest
 from agent.structured_output.file_summary_output import BusinessRule
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -78,6 +79,7 @@ class BRAgent:
         builder.add_node("condenser", self.condenser_node)
         builder.add_node("retriever", self.retriever_node)
         builder.add_node("validator", self.validator_node)
+        builder.add_node("test_generator", self.test_generator_node)
         builder.add_node("writer", self.writer_node)
 
         # Set edges
@@ -89,8 +91,9 @@ class BRAgent:
         builder.add_edge("retriever", "validator")
         builder.add_conditional_edges(
             "validator",
-            lambda state: "retriever" if state.get("current_rules") else "writer"
+            lambda state: "retriever" if state.get("current_rules") else ("test_generator" if state.get("validated_rules") else "writer")
         )
+        builder.add_edge("test_generator", "writer")
         builder.add_edge("writer", END)
 
         return builder.compile()
@@ -124,6 +127,7 @@ class BRAgent:
             "current_rules": [],
             "validated_rules": [],
             "discarded_rules": [],
+            "unit_tests": [],
             "rule_contexts": {},
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
@@ -488,6 +492,39 @@ class BRAgent:
 
         return update
 
+    def test_generator_node(self, state: BRGraphState) -> BRGraphState:
+        """
+        @brief Generates unit tests for validated business rules.
+
+        @details
+        Uses the same language model but structured output to produce a unit test string
+        for each rule that passed validation. The results are written to `unit_tests`
+        in the workflow state for the final writer node.
+        """
+        validated_rules = state.get("validated_rules", [])
+        if not validated_rules:
+            return {"unit_tests": []}
+
+        structured_llm = self.llm.with_structured_output(UnitTest)
+
+        async def run_batch():
+            sem = asyncio.Semaphore(MAX_CONCURRENCY)
+            async def guarded(rule: ValidatedRule):
+                async with sem:
+                    return await _generate_single_test(structured_llm, rule)
+            return await asyncio.gather(*(guarded(r) for r in validated_rules))
+
+        results = self._loop.run_until_complete(run_batch())
+
+        unit_tests = []
+        for rule, output, err in results:
+            if err is not None:
+                print(f"Unit test generation error for rule {rule.id}: {err}")
+                continue
+            unit_tests.append(UnitTest(unit_test=output.unit_test))
+
+        return {"unit_tests": unit_tests}
+
     def writer_node(self, state: BRGraphState) -> BRGraphState:
         """
         @brief Writes validated and discarded rules to JSON output files.
@@ -514,6 +551,13 @@ class BRAgent:
         discarded_path = os.path.join(codebase_subdir, "discarded_rules.json")
         with open(discarded_path, "w", encoding="utf-8") as f:
             json.dump([r.model_dump() for r in discarded], f, indent=2)
+
+        unit_tests = state.get("unit_tests", [])
+        if unit_tests:
+            unit_tests_path = os.path.join(codebase_subdir, "unit_tests.json")
+            with open(unit_tests_path, "w", encoding="utf-8") as f:
+                json.dump([u.model_dump() for u in unit_tests], f, indent=2)
+            print(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path}")
 
         print(f"Wrote {len(validated)} validated rules to {validated_path}")
         print(f"Wrote {len(discarded)} discarded rules to {discarded_path}")
@@ -812,21 +856,20 @@ Expected output:
 
 async def _generate_single_test(
     structured_llm,
-    rule: CondensedRule,
-    code_context: list[str],
-    summary_context: list[str],
-    is_final_pass: bool,
+    rule: ValidatedRule,
 ) -> tuple:
     try:
         system_message = (
-            "You are a Senior Software Architect acting as a business rule auditor. "
-            "Your task is to determine whether a proposed business rule is genuinely supported "
-            "by the source code evidence provided. You must be precise and evidence-driven — "
-            "never confirm a rule based on assumptions."
+            "You are a Senior Software Architect acting as a codebase tester. "
+            "Your task is to create a unit test based on the validated business rule provided."
         )
-        
-        prompt = (
-            ""
+
+        prompt = (f"""
+BUSINESS RULE TO CREATE TEST ON:
+Rule id: {rule.id}
+Rule: {rule.rule}
+
+Generate a single unit test in the target language for this rule. Return only the unit test code in the `unit_test` field of the structured output model."""
         )
 
         messages = [("system", system_message), ("user", prompt)]
