@@ -88,4 +88,6 @@ class UnitTest(BaseModel):
     @brief Represents unit tests generated that correspond to a validated business rule
     """
     model_config = ConfigDict(extra="forbid")
-    unit_test: str = Field(..., description = "Unit test corresponding to a business rule")
+    id: int = Field(..., description="Stable unique identifier matching the ValidatedRule ID.")
+    rule: str = Field(..., description="The business rule statement that this unit test corresponds to.")
+    unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")

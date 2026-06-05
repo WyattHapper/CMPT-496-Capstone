@@ -488,7 +488,8 @@ class BRAgent:
             update["current_rules"] = []
             update["codebase_k"] = DEFAULT_CODEBASE_K
             update["file_summary_k"] = DEFAULT_FILE_SUMMARY_K
-            update["rule_contexts"] = {}
+            # Preserve context for validated rules so the test generator can use actual code evidence.
+            update["rule_contexts"] = rule_contexts
 
         return update
 
@@ -505,13 +506,15 @@ class BRAgent:
         if not validated_rules:
             return {"unit_tests": []}
 
+        rule_contexts = state.get("rule_contexts", {})
         structured_llm = self.llm.with_structured_output(UnitTest)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
             async def guarded(rule: ValidatedRule):
                 async with sem:
-                    return await _generate_single_test(structured_llm, rule)
+                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
+                    return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
             return await asyncio.gather(*(guarded(r) for r in validated_rules))
 
         results = self._loop.run_until_complete(run_batch())
@@ -521,7 +524,7 @@ class BRAgent:
             if err is not None:
                 print(f"Unit test generation error for rule {rule.id}: {err}")
                 continue
-            unit_tests.append(UnitTest(unit_test=output.unit_test))
+            unit_tests.append(UnitTest(unit_test=output.unit_test, id=rule.id, rule=rule.rule))
 
         return {"unit_tests": unit_tests}
 
@@ -857,20 +860,39 @@ Expected output:
 async def _generate_single_test(
     structured_llm,
     rule: ValidatedRule,
+    code_context: list[str],
+    summary_context: list[str],
 ) -> tuple:
     try:
+        code_text = "\n\n".join(code_context) if code_context else "None"
+        summary_text = "\n\n".join(summary_context) if summary_context else "None"
+
         system_message = (
-            "You are a Senior Software Architect acting as a codebase tester. "
-            "Your task is to create a unit test based on the validated business rule provided."
+            "You are a Senior Software Architect and codebase tester. "
+            "Your task is to generate a concrete unit test for the validated business rule using the provided code and summary context."
         )
 
-        prompt = (f"""
-BUSINESS RULE TO CREATE TEST ON:
-Rule id: {rule.id}
+        prompt = f"""
+BUSINESS RULE:
+Id: {rule.id}
 Rule: {rule.rule}
+Source directory: {rule.source_directory}
 
-Generate a single unit test in the target language for this rule. Return only the unit test code in the `unit_test` field of the structured output model."""
-        )
+RETRIEVED CODE CONTEXT:
+{code_text}
+
+RETRIEVED FILE SUMMARY CONTEXT:
+{summary_text}
+
+TASK:
+- Use the given code and summary context to identify how the rule is enforced.
+- Generate a realistic, executable unit test in the target language and testing framework used by the repository.
+- The unit test must be directly related to the rule and not just repeat the rule text.
+- Do not invent new classes or functions that are not present in the codebase.
+- The unit test should not contain raw code characters such as (newline, indentation). Instead, format the test as a string with clear structure.
+
+If the code context is insufficient, produce the best possible focused unit test that exercises the relevant rule behavior from the available evidence.
+"""
 
         messages = [("system", system_message), ("user", prompt)]
         output = await structured_llm.ainvoke(messages)
