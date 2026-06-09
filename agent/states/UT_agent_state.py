@@ -1,44 +1,33 @@
 """
-@file BR_agent_state.py
-@brief Defines the shared state structure used by the BR Agent (G3) workflow.
-@details This module defines the BRGraphState TypedDict, which represents the
+@file UT_agent_state.py
+@brief Defines the shared state structure used by the UT Agent (G3) workflow.
+@details This module defines the UTGraphState TypedDict, which represents the
 structured state passed between nodes in the LangGraph execution graph.
 """
 
 from typing import TypedDict, Annotated, Any
-from agent.structured_output.UT_output import CondensedRule, ValidatedRule, DiscardedRule, UnitTest
-from agent.structured_output.file_summary_output import BusinessRule
+from agent.structured_output.UT_output import ValidatedRule, UnitTest
 from operator import add
 
 
-class BRGraphState(TypedDict):
+class UTGraphState(TypedDict):
     """
-    @brief Represents the shared state passed between nodes in the BR Agent workflow graph.
-
-    @var input_rules
-        Raw business rules from G1/G2. Dictionary keyed by file or directory path,
-        with values being lists of BusinessRule objects. This is the unprocessed
-        input to the graph, consumed only by the condenser node.
-
-    @var current_rules
-        List of condensed rules currently being processed. Populated by the
-        condenser node with all condensed rules, then narrowed by the validator
-        to only rules needing more context on subsequent passes. An empty list
-        triggers the writer node via the conditional edge.
+    @brief Represents the shared state passed between nodes in the UT Agent workflow graph.
 
     @var validated_rules
         Accumulating list of rules that passed validation with supporting evidence.
         Uses an additive reducer so each validator invocation appends without
         overwriting previous results.
 
-    @var discarded_rules
-        Accumulating list of rules that were rejected during validation, along
-        with the reason for rejection. Uses an additive reducer.
+    @var unit_tests
+        Accumulating list of unit tests generated for validated rules.
+        Uses an additive reducer so each test generator invocation appends
+        without overwriting previous results.
 
     @var rule_contexts
         Per-rule retrieval context keyed by rule ID. Each value is a dict with
         "code_context" (list[str]) and "summary_context" (list[str]).
-        Populated by the retriever node and consumed by the validator.
+        Populated by the retriever node.
         Accumulates across retrieval iterations for the same rule.
 
     @var codebase_k
@@ -63,13 +52,10 @@ class BRGraphState(TypedDict):
 
     @var output_directory
         Base directory for writing output JSON files. Defaults to
-        ./agent/BR_agent_output if not specified.
+        ./agent/UT_agent_output if not specified.
     """
-    input_rules: dict[str, list[BusinessRule]]
-    current_rules: list[CondensedRule]
-    validated_rules: Annotated[list[ValidatedRule], add]
-    discarded_rules: Annotated[list[DiscardedRule], add]
-    unit_test: UnitTest
+    validated_rules: dict[str, list[ValidatedRule]]
+    unit_tests: Annotated[list[UnitTest], add]
     rule_contexts: dict[int, dict]
     codebase_k: int
     file_summary_k: int

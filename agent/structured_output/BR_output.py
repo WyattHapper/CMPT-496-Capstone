@@ -40,6 +40,7 @@ class ValidatedRule(BaseModel):
     id: int = Field(..., description="Stable unique identifier matching the CondensedRule ID.")
     rule: str = Field(..., description="The business rule statement.")
     source_directory: str = Field(..., description="The directory this rule pertains to.")
+    source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this rule was originally derived.")
     explanation: Explanation = Field(..., description="Evidence and reasoning supporting the rule's validity.")
 
 
@@ -51,6 +52,7 @@ class DiscardedRule(BaseModel):
     id: int = Field(..., description="Stable unique identifier matching the CondensedRule ID.")
     rule: str = Field(..., description="The business rule statement.")
     source_directory: str = Field(..., description="The directory this rule pertains to.")
+    source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this rule was originally derived.")
     reason: str = Field(..., description="Explanation of why the rule was discarded.")
 
 

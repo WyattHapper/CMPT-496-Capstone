@@ -1,0 +1,62 @@
+[
+  {
+    "id": 1,
+    "rule": "Tables can be created manually by defining columns and rows or automatically generated from collections of objects (POCOs).",
+    "unit_test": "[Fact] public void ConsoleTable_Creation_ShouldSupportManualAndPocoMethods() { var manualTable = new ConsoleTable(\"Name\", \"Age\"); manualTable.AddRow(\"John Doe\", 30); Assert.Equal(2, manualTable.Columns.Count); Assert.Single(manualTable.Rows); Assert.Equal(\"Name\", manualTable.Columns[0]); var pocoData = new List<SamplePoco> { new SamplePoco { Id = 1, Description = \"Test POCO\" } }; var autoTable = ConsoleTable.From(pocoData); Assert.Contains(\"Id\", autoTable.Columns); Assert.Contains(\"Description\", autoTable.Columns); Assert.Single(autoTable.Rows); } private class SamplePoco { public int Id { get; set; } public string Description { get; set; } }"
+  },
+  {
+    "id": 2,
+    "rule": "Table output and appearance are customizable through predefined visual styles\u2014including Default, Alternative, and Minimal\u2014and configuration settings such as column alignment.",
+    "unit_test": "[Fact] public void TableShouldSupportDifferentFormatsAndAlignment() { var table = new ConsoleTable(\"Id\", \"Name\").AddRow(1, \"Test\").Configure(o => o.NumberAlignment = Alignment.Right); var defaultStyle = table.ToString(); var alternativeStyle = table.ToStringAlternative(); var minimalStyle = table.ToMinimalString(); Assert.NotEqual(defaultStyle, alternativeStyle); Assert.NotEqual(defaultStyle, minimalStyle); Assert.NotEqual(alternativeStyle, minimalStyle); Assert.Equal(Alignment.Right, table.Options.NumberAlignment); }"
+  },
+  {
+    "id": 3,
+    "rule": "Table columns must be defined before adding rows, and the number of values in each row must match the number of defined columns.",
+    "unit_test": "[Fact] public void AddRow_ShouldThrowException_WhenColumnsAreMissingOrCountMismatches() { var table = new ConsoleTable(); var exception1 = Assert.Throws<System.Exception>(() => table.AddRow(\"test\")); Assert.Equal(\"Please set the columns first\", exception1.Message); table.AddColumn(new[] { \"Col1\", \"Col2\" }); var exception2 = Assert.Throws<System.Exception>(() => table.AddRow(\"only one\")); Assert.Contains(\"The number columns in the row (2) does not match the values (1)\", exception2.Message); table.AddRow(\"item1\", \"item2\"); Assert.Single(table.Rows); }"
+  },
+  {
+    "id": 4,
+    "rule": "Cell content exceeding the MaxWidth is automatically wrapped into sub-rows, using WordBreakDelimiters where possible to prevent mid-word splits.",
+    "unit_test": "[Fact]\npublic void ShouldWrapCellContentAtDelimiterWhenExceedingMaxWidth()\n{\n    // Arrange\n    var table = new ConsoleTable(\"Column1\");\n    table.MaxWidth = 10;\n    table.SetWordBreakDelimiter(' ');\n    \n    // \"LongWord1 LongWord2\" is 19 characters. \n    // MaxWidth is 10. The first 10 characters are \"LongWord1 \".\n    // However, to test the mid-word split logic, we use a string where the 10th char is inside a word.\n    // \"WordAlpha WordBeta\" -> 10 chars is \"WordAlpha \". Ends in space.\n    // \"WordAlpha123 WordBeta\" -> 10 chars is \"WordAlpha1\". \n    // LastIndexOf(' ') in \"WordAlpha1\" is 9.\n    table.AddRow(\"WordAlpha123 WordBeta\");\n\n    // Act\n    var result = table.ToString();\n\n    // Assert\n    // The logic in SetFormats should split \"WordAlpha123 WordBeta\" \n    // at the last space before MaxWidth (10).\n    // Expected Row 1: \"WordAlpha123\"\n    // Expected Row 2: \"WordBeta\"\n    \n    Assert.Contains(\"WordAlpha123\", result);\n    Assert.Contains(\"WordBeta\", result);\n\n    // Verify the internal Rows list was expanded to handle the wrap\n    // Initial Rows.Count was 1, should now be 2.\n    // ToString calls SetFormats which modifies the collection.\n    Assert.Equal(2, table.Rows.Count);\n}"
+  },
+  {
+    "id": 6,
+    "rule": "Visual width and table alignment calculations must account for Unicode character widths.",
+    "unit_test": "[Fact] public void ShouldMaintainTableAlignmentWhenUsingWideUnicodeCharacters() { var table = new ConsoleTable(\"Language\", \"Sample\"); table.AddRow(\"English\", \"Hello\"); table.AddRow(\"Chinese\", \"\u4f60\u597d\"); var output = table.ToString(); var lines = output.Split(new[] { '\\n', '\\r' }, StringSplitOptions.RemoveEmptyEntries); var englishRow = lines.FirstOrDefault(l => l.Contains(\"English\")); var chineseRow = lines.FirstOrDefault(l => l.Contains(\"Chinese\")); Assert.NotNull(englishRow); Assert.NotNull(chineseRow); Assert.Equal(englishRow.Length, chineseRow.Length); int englishValueWidth = ConsoleTable.GetTextWidth(\"Hello\"); int chineseValueWidth = ConsoleTable.GetTextWidth(\"\u4f60\u597d\"); Assert.Equal(5, englishValueWidth); Assert.Equal(4, chineseValueWidth); Assert.Contains(\"| English  | Hello  |\", output); Assert.Contains(\"| Chinese  | \u4f60\u597d   |\", output); }"
+  },
+  {
+    "id": 7,
+    "rule": "Tables can be populated from hierarchical dictionary data structures where outer keys represent row labels.",
+    "unit_test": "[Fact] public void FromDictionary_ShouldMapOuterKeysToFirstColumnAsRowLabels() { var data = new Dictionary<string, Dictionary<string, object>> { { \"Row1\", new Dictionary<string, object> { { \"Header1\", \"Val1\" } } }, { \"Row2\", new Dictionary<string, object> { { \"Header1\", \"Val2\" } } } }; var table = ConsoleTable.FromDictionary(data); var markdown = table.ToMarkDownString(); Assert.Contains(\"| Row1 | Val1 |\", markdown); Assert.Contains(\"| Row2 | Val2 |\", markdown); Assert.StartsWith(\"|   | Header1 |\", markdown.Trim()); }"
+  },
+  {
+    "id": 8,
+    "rule": "Table output supports mixed data types and correctly handles multi-byte/Unicode character widths.",
+    "unit_test": "[Fact] public void ShouldHandleMixedDataTypesAndUnicodeWidths() { var table = new ConsoleTable(\"ID\", \"Value\", \"UnicodeText\"); table.AddRow(1, 12.5, \"Hello World\"); table.AddRow(2, 100.0m, \"\u4f60\u597d\u4e16\u754c\"); table.AddRow(3, 0.99f, \"Emoji: \ud83d\ude80\"); var output = table.ToString().Replace(\"\\r\\n\", \"\\n\"); Assert.Contains(\"12.5\", output); Assert.Contains(\"100.0\", output); Assert.Contains(\"\u4f60\u597d\u4e16\u754c\", output); Assert.Contains(\"\ud83d\ude80\", output); var lines = output.Split('\\n'); var unicodeLine = lines.FirstOrDefault(l => l.Contains(\"\u4f60\u597d\u4e16\u754c\")); Assert.NotNull(unicodeLine); Assert.True(unicodeLine.Trim().StartsWith(\"|\") && unicodeLine.Trim().EndsWith(\"|\"), \"Unicode row alignment failed\"); }"
+  },
+  {
+    "id": 9,
+    "rule": "Table display and formatting options, such as numeric column alignment and row count footer visibility, are configurable.",
+    "unit_test": "[Fact] public void ShouldRespectConfigurationOptionsForAlignmentAndCountVisibility() { var data = new[] { new { Name = \"Item1\", Value = 100 } }; var table = ConsoleTable.From(data); table.Configure(o => { o.NumberAlignment = Alignment.Right; o.EnableCount = false; }); var result = table.ToString(); Assert.DoesNotContain(\"Count:\", result); var expected = \"\"\" -------------------  | Name  | Value     | -------------------  | Item1 |       100 | -------------------  \"\"\".Replace(\"\\r\\n\", \"\\n\"); Assert.Equal(expected.Trim(), result.Trim().Replace(\"\\r\\n\", \"\\n\")); }"
+  },
+  {
+    "id": 10,
+    "rule": "Table formatting and layout support Unicode character widths, configurable cell alignment, and multiple output styles such as Markdown and standard grids.",
+    "unit_test": "[Fact] public void TableShouldSupportUnicodeAlignmentAndMultipleStyles() { var rows = new[] { new { Text = \"\u6c49\u5b57Test\", Value = 123 } }; var table = ConsoleTable.From(rows).Configure(o => { o.NumberAlignment = Alignment.Right; o.EnableCount = false; }); string markdown = table.ToMarkDownString(); string standard = table.ToString(); Assert.Contains(\"| Text     | Value |\", markdown); Assert.Contains(\"| \u6c49\u5b57Test |   123 |\", markdown); Assert.Contains(\"| \u6c49\u5b57Test | 123   |\", standard); Assert.Contains(\"----------\", standard); }"
+  },
+  {
+    "id": 11,
+    "rule": "Table output is directed to the standard system console by default.",
+    "unit_test": "[Fact] public void OutputShouldDefaultToConsoleOut() { var users = new List<User> { new() { Name = \"Alexandre\" , Age = 36 } }; var table = ConsoleTable.From(users); Assert.Equal(table.Options.OutputTo, Console.Out); }"
+  },
+  {
+    "id": 12,
+    "rule": "Tables can be populated from various data sources including Lists, Dictionaries, DataTables, and Object Arrays.",
+    "unit_test": "[Fact] public void TestObjectArrayTablePopulation() { object[][] data = new object[][] { new object[] { \"Header1\", \"Header2\" }, new object[] { \"Value1\", \"Value2\" }, new object[] { \"Value3\", \"Value4\" } }; var table = ConsoleTable.From(data); Assert.Equal(2, table.Columns.Count); Assert.Equal(\"Header1\", table.Columns[0]); Assert.Equal(\"Header2\", table.Columns[1]); Assert.Equal(2, table.Rows.Count); Assert.Equal(\"Value1\", table.Rows[0][0]); Assert.Equal(\"Value4\", table.Rows[1][1]); }"
+  },
+  {
+    "id": 13,
+    "rule": "Table structure requires columns to be defined before rows are added, and row data must match the established column count.",
+    "unit_test": "[Fact] public void AddRow_ShouldEnforceColumnDefinitionAndCountMatch() { var table = new ConsoleTable(); var ex1 = Assert.Throws<Exception>(() => table.AddRow(\"one\", \"two\")); Assert.Equal(\"Please set the columns first\", ex1.Message); table.AddColumn(new[] { \"Col1\", \"Col2\" }); var ex2 = Assert.Throws<Exception>(() => table.AddRow(\"only one\")); Assert.Contains(\"does not match the values\", ex2.Message); var ex3 = Assert.Throws<Exception>(() => table.AddRow(\"one\", \"two\", \"three\")); Assert.Contains(\"does not match the values\", ex3.Message); }"
+  }
+]

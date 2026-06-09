@@ -82,6 +82,7 @@ def processing_menu(errors: list):
                 continue
 
             rules_path = str(Path("agent") / "file_summary_agent_output" / codebase_name / "business_rules" / "business_rules.json")
+            validated_rules_path = str(Path("agent") / "BR_agent_output" / codebase_name / "validated_rules.json")
 
             if choice == '1':
                 if run_step("Code Vectorization", "src.build_database", [str(codebase)], errors):
@@ -89,7 +90,7 @@ def processing_menu(errors: list):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
                             if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
                                 if run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors):
-                                    if run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, rules_path], errors):
+                                    if run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, validated_rules_path], errors):
                                         print("\nFull pipeline completed successfully!")
                 input("\nPress enter to return to menu...")
 
@@ -119,12 +120,12 @@ def processing_menu(errors: list):
                 input("\nTask finished. Press enter...")
 
             elif choice == '7':
-                if not Path(rules_path).exists():
-                    print(f"Error: Business rules file not found at '{rules_path}'.")
-                    print("Please run 'Create JSON Summaries' first to generate business rules.")
+                if not Path(validated_rules_path).exists():
+                    print(f"Error: Validated rules file not found at '{validated_rules_path}'.")
+                    print("Please run 'Business Rule Validation' first to generate validated rules.")
                     input("\nPress enter to return to menu...")
                     continue
-                run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, rules_path], errors)
+                run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, validated_rules_path], errors)
                 input("\nTask finished. Press enter...")
 
 def view_collections(db_type: str):

@@ -445,6 +445,7 @@ class BRAgent:
                     id=rule.id,
                     rule=rule.rule,
                     source_directory=rule.source_directory,
+                    source_file_paths=rule.source_file_paths,
                     explanation=output.explanation,
                 ))
             elif output.decision == "discard":
@@ -452,6 +453,7 @@ class BRAgent:
                     id=rule.id,
                     rule=rule.rule,
                     source_directory=rule.source_directory,
+                    source_file_paths=rule.source_file_paths,
                     reason=output.discard_reason or "No reason provided.",
                 ))
             elif output.decision == "need_more_context":
@@ -460,6 +462,7 @@ class BRAgent:
                         id=rule.id,
                         rule=rule.rule,
                         source_directory=rule.source_directory,
+                        source_file_paths=rule.source_file_paths,
                         reason="Insufficient evidence after maximum context retrieval.",
                     ))
                 else:
