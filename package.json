@@ -1,26 +1,17 @@
 {
   "name": "cmpt-496-capstone",
   "version": "1.0.0",
-  "description": "This repository contains a tool which can be used to perform analysis of large codebases. The tool creates as output:\r - Summaries of each file\r - Code structure information for each file, including PlantUML\r - Summaries of the contents of each directory\r - A summary of the entire repository\r - A list of business rules extracted from the codebase",
-  "main": "index.js",
-  "directories": {
-    "test": "test"
-  },
+  "description": "Codebase Analysis System",
+  "main": "main.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "electron ."
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/WyattHapper/CMPT-496-Capstone.git"
+    "url": "https://github.com/WyattHapper/CMPT-496-Capstone.git"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/WyattHapper/CMPT-496-Capstone/issues"
-  },
-  "homepage": "https://github.com/WyattHapper/CMPT-496-Capstone#readme",
   "devDependencies": {
     "electron": "^42.4.0"
   }
