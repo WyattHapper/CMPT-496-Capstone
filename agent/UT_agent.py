@@ -69,6 +69,7 @@ class UTAgent:
             - If current_rules is non-empty → retriever
             - If current_rules is empty (all rules processed) → writer
         """
+
         builder = StateGraph(UTGraphState)
 
         # Set nodes
@@ -84,7 +85,7 @@ class UTAgent:
 
         return builder.compile()
 
-    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str):
+    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str, codebase_path: str):
         """
         @brief Executes the UTAgent workflow.
         @param input_rules Dictionary of validated business rules from BR_agent output. Keys are file or directory paths,
@@ -96,7 +97,7 @@ class UTAgent:
         db_dir = (script_dir.parent / "vectorStores").resolve()
 
         embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        client = chromadb.PersistentClient(path=str(db_dir))
+        client = chromadb.PersistentClient(path=str(db_dir)) 
 
         code_collection = client.get_collection(
             name=f"{codebase_name}_code_db",
@@ -117,6 +118,7 @@ class UTAgent:
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
+            "codebase_path": codebase_path,
             "output_directory": "./agent/UT_agent_output",
         }
 
@@ -425,10 +427,11 @@ if __name__ == "__main__":
     @details Loads business rules from a JSON file and runs the validation pipeline.
     """
     if len(sys.argv) != 3:
-        print("Usage: python -m agent.BR_agent <codebase_name> <rules_json_path>")
+        print("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
         sys.exit(1)
 
-    codebase_name = sys.argv[1]
+    codebase = sys.argv[1]
+    codebase_name = os.path.basename(codebase)
     rules_path = sys.argv[2]
 
     with open(rules_path, "r", encoding="utf-8") as f:
@@ -438,5 +441,5 @@ if __name__ == "__main__":
     input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]   
 
     agent = UTAgent()
-    agent.run(input_rules, codebase_name)
+    agent.run(input_rules, codebase_name, codebase)
     print("UTAgent has completed its task!")
