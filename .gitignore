@@ -14,3 +14,4 @@ agent/BR_agent_output/
 agent/BR_agent_output/*
 agent/BR_agent_output/*/*.json
 node_modules/
+.venv/

@@ -2,12 +2,83 @@
 <html>
 <head>
     <title>Codebase Analysis System</title>
-</head>
-<body>
-    <h1>Codebase Analysis System</h1>
 
-    <button>Run Analysis</button>
-    <button>View Summaries</button>
-    <button>View Errors</button>
+    <style>
+        .page {
+            display: none;
+        }
+
+        .active {
+            display: block;
+        }
+
+        button {
+            margin: 5px;
+            padding: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- HOME PAGE -->
+    <div id="homePage" class="page active">
+
+        <h1>Codebase Analysis System</h1>
+
+        <button id="analysisBtn">Run Analysis</button>
+        <button id="summaryBtn">View Summaries</button>
+        <button id="sourceBtn">View Sources</button>
+        <button id="errorBtn">View Errors</button>
+        <button id="exitBtn">Exit</button>
+
+    </div>
+
+    <!-- ANALYSIS PAGE -->
+    <div id="analysisPage" class="page">
+
+        <h1>Analysis</h1>
+
+        <button id="analysisBackBtn">Back</button>
+
+        <div id="analysisOutput"></div>
+
+    </div>
+
+    <!-- SUMMARY PAGE -->
+    <div id="summaryPage" class="page">
+
+        <h1>Summaries</h1>
+
+        <button id="summaryBackBtn">Back</button>
+
+        <div id="summaryOutput"></div>
+
+    </div>
+
+    <!-- SOURCE PAGE -->
+    <div id="sourcePage" class="page">
+
+        <h1>Source Collections</h1>
+
+        <button id="sourceBackBtn">Back</button>
+
+        <div id="sourceOutput"></div>
+
+    </div>
+
+    <!-- ERROR PAGE -->
+    <div id="errorPage" class="page">
+
+        <h1>Errors</h1>
+
+        <button id="errorBackBtn">Back</button>
+
+        <div id="errorOutput"></div>
+
+    </div>
+
+    <script src="renderer.js"></script>
+
 </body>
 </html>
