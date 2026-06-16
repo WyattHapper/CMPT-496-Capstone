@@ -63,12 +63,13 @@ def processing_menu(errors: list):
         print("5. Create Directory Summaries Only")
         print("6. Run Business Rule Validation Only")
         print("7. Run Unit Test Generation Only")
-        print("8. Return to Main Menu")
+        print("8. Run UML Generation Only")
+        print("9. Return to Main Menu")
         print("----------------------------------------")
-        choice = input("Select an option (1-8): ")
-        if choice == '8':
+        choice = input("Select an option (1-9): ")
+        if choice == '9':
             break
-        if choice in ['1', '2', '3', '4', '5', '6', '7']:
+        if choice in ['1', '2', '3', '4', '5', '6', '7', '8']:
             path_input = input("\nEnter the path to the codebase: ").strip()
             if not path_input: 
                 continue
@@ -83,6 +84,7 @@ def processing_menu(errors: list):
 
             rules_path = str(Path("agent") / "file_summary_agent_output" / codebase_name / "business_rules" / "business_rules.json")
             validated_rules_path = str(Path("agent") / "BR_agent_output" / codebase_name / "validated_rules.json")
+            dir_path = Path(f"agent/file_summary_agent_output/{codebase_name}")
 
             if choice == '1':
                 if run_step("Code Vectorization", "src.build_database", [str(codebase)], errors):
@@ -90,7 +92,10 @@ def processing_menu(errors: list):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
                             if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
                                 if run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors):
-                                    if run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, validated_rules_path], errors):
+                                    if run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path], errors):
+                                        summaries = [str(file) for file in dir_path.glob("*.json")]
+                                        for summary_path in summaries:
+                                            run_step("UML Generation", "utils.uml_json_to_pdf", [summary_path], errors)
                                         print("\nFull pipeline completed successfully!")
                 input("\nPress enter to return to menu...")
 
@@ -125,7 +130,18 @@ def processing_menu(errors: list):
                     print("Please run 'Business Rule Validation' first to generate validated rules.")
                     input("\nPress enter to return to menu...")
                     continue
-                run_step("Unit Test Generation", "agent.UT_agent", [codebase_name, validated_rules_path], errors)
+                run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path], errors)
+                input("\nTask finished. Press enter...")
+
+            elif choice == '8':
+                if not Path(dir_path).exists():
+                    print(f"Error: Summary files not found at '{dir_path}'.")
+                    print("Please run 'Create JSON Summaries' first to generate summaries.")
+                    input("\nPress enter to return to menu...")
+                    continue
+                summaries = [str(file) for file in dir_path.glob("*.json")]
+                for summary_path in summaries:
+                    run_step("UML Generation", "utils.uml_json_to_pdf", [summary_path], errors)
                 input("\nTask finished. Press enter...")
 
 def view_collections(db_type: str):
