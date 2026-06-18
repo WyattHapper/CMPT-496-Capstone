@@ -284,11 +284,14 @@ class UTAgent:
 
         unit_tests = state.get("unit_tests", [])
         if unit_tests:
-            unit_tests_path = os.path.join(codebase_subdir, "unit_tests.json")
-            with open(unit_tests_path, "w", encoding="utf-8") as f:
+            unit_tests_path_json = os.path.join(codebase_subdir, "unit_tests.json")
+            unit_tests_path_txt = os.path.join(codebase_subdir, "unit_tests.txt")
+            with open(unit_tests_path_json, "w", encoding="utf-8") as f:
                 json.dump([u.model_dump() for u in unit_tests], f, indent=2)
-            print(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path}")
-
+            with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
+                for test in unit_tests:
+                    file.write(test.unit_test + "\n\n")
+            print(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
         return {}
 
     # Helper methods
@@ -385,34 +388,43 @@ async def _generate_single_test(
     summary_context: list[str],
 ) -> tuple:
     try:
-        code_text = "\n\n".join(code_context) if code_context else "None"
-        summary_text = "\n\n".join(summary_context) if summary_context else "None"
+        code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
+        summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"
 
         system_message = (
-            "You are a Senior Software Architect and codebase tester. "
-            "Your task is to generate a concrete unit test for the validated business rule using the provided code and summary context."
+            "You are a Senior Software Architect and expert Automated Test Engineer. "
+            "Your sole objective is to output a syntactically flawless, concrete unit test method based "
+            "strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
         )
 
         prompt = f"""
-BUSINESS RULE:
-Id: {rule.id}
-Rule: {rule.rule}
-Source directory: {rule.source_directory}
+#### BUSINESS RULE TO TEST:
+- ID: {rule.id}
+- RULE STATEMENT: {rule.rule}
+- TARGET DIRECTORY: {rule.source_directory}
+- EXPLANATION FOR VALIDATION: {rule.explanation}
 
-RETRIEVED CODE CONTEXT:
+#### RETRIEVED SOURCE CODE CONTEXT:
 {code_text}
 
-RETRIEVED FILE SUMMARY CONTEXT:
+#### RETRIEVED FILE SUMMARY CONTEXT:
 {summary_text}
 
-TASK:
-- Use the given code and summary context to identify how the rule is enforced.
-- Generate a realistic, executable unit test in the target language and testing framework used by the repository.
-- The unit test must be directly related to the rule and not just repeat the rule text.
-- Do not invent new classes or functions that are not present in the codebase.
-- The unit test should not contain raw code characters such as (newline, indentation). Instead, format the test as a string with clear structure.
+### [REQUIRED TASK]
+---
+1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
+2. Generate exactly one realistic, structurally sound, executable unit test method.
+3. Match the exact programming language, naming conventions, and testing framework patterns visible in the provided contexts (e.g., xUnit, NUnit, pytest).
 
-If the code context is insufficient, produce the best possible focused unit test that exercises the relevant rule behavior from the available evidence.
+### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
+---
+- **NO IMPORTS:** Do not emit any `import`, `using`, or package references. Output *only* the test method block.
+- **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
+- **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
+- **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
+- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. 
+
+*Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
 """
 
         messages = [("system", system_message), ("user", prompt)]

@@ -39,6 +39,7 @@ PlantUML rendering:
 
 from __future__ import annotations
 
+import os
 import argparse
 import html
 import json
@@ -721,10 +722,11 @@ def build_story(
 def main() -> int:
     args = parse_args()
     input_path = Path(args.input).expanduser().resolve()
+    
     if not input_path.exists():
         print(f"Input file not found: {input_path}", file=sys.stderr)
         return 1
-
+    
     output_path = (
         Path(args.output).expanduser().resolve()
         if args.output

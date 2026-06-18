@@ -9,6 +9,7 @@ code and summaries.
 import os
 import subprocess
 import sys
+from xml.parsers.expat import errors
 import chromadb
 import time
 from pathlib import Path
@@ -46,6 +47,22 @@ def run_step(step_name: str, module: str, args: list, errors: list):
         print(f"\n[!] {err_msg}")
         errors.append(err_msg)
         return False
+    
+def uml_generation(dir_path: Path, errors: list):
+    """
+    @brief Generates UML diagrams from JSON summaries in the specified directory.
+    @details Iterates through all JSON files in the given directory, invoking the
+    UML generation utility for each file to produce corresponding PDF diagrams.
+    @param dir_path The path to the directory containing JSON summary files.
+    @param errors A list to collect any errors that occur during the process.
+    @return None
+    """
+    summaries = [str(file) for file in dir_path.glob("*.json")]
+    for summary_path in summaries:
+        if not run_step("UML Generation", "utils.uml_json_to_pdf", [summary_path], errors):
+            return False
+    return True
+
 
 def processing_menu(errors: list):
     """
@@ -93,10 +110,8 @@ def processing_menu(errors: list):
                             if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
                                 if run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors):
                                     if run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path], errors):
-                                        summaries = [str(file) for file in dir_path.glob("*.json")]
-                                        for summary_path in summaries:
-                                            run_step("UML Generation", "utils.uml_json_to_pdf", [summary_path], errors)
-                                        print("\nFull pipeline completed successfully!")
+                                        if uml_generation(dir_path, errors):
+                                            print("\nFull pipeline completed successfully!")
                 input("\nPress enter to return to menu...")
 
             elif choice == '2':
@@ -139,9 +154,7 @@ def processing_menu(errors: list):
                     print("Please run 'Create JSON Summaries' first to generate summaries.")
                     input("\nPress enter to return to menu...")
                     continue
-                summaries = [str(file) for file in dir_path.glob("*.json")]
-                for summary_path in summaries:
-                    run_step("UML Generation", "utils.uml_json_to_pdf", [summary_path], errors)
+                uml_generation(dir_path, errors)
                 input("\nTask finished. Press enter...")
 
 def view_collections(db_type: str):
