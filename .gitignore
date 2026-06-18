@@ -13,5 +13,9 @@ agent/directory_agent_output/
 agent/BR_agent_output/
 agent/BR_agent_output/*
 agent/BR_agent_output/*/*.json
+agent/UT_agent_output/
+agent/UT_agent_output/*
+agent/UT_agent_output/*/*.json
+agent/UT_agent_output/*/*.txt
 node_modules/
 .venv/
