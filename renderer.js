@@ -158,7 +158,7 @@ document.getElementById('errorBackBtn')
     ipcRenderer.send('run-app');
 });*/
 
-document.getElementById('analysisBtn')
+/*document.getElementById('analysisBtn')
     .addEventListener('click', () => {
 
         showPage('analysisPage');
@@ -176,10 +176,10 @@ document.getElementById('source').addEventListener('click', () => {
 
 document.getElementById('errors').addEventListener('click', () => {
     ipcRenderer.send('menu-option', '4');
-});
+});*/
 
-ipcRenderer.on('python-output', (event, text) => {
+/*ipcRenderer.on('python-output', (event, text) => {
 
     document.getElementById('analysisOutput').innerHTML +=
         `<pre>${text}</pre>`;
-});
+});*/
