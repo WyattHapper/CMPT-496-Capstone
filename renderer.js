@@ -51,6 +51,107 @@ document.getElementById('exitBtn').addEventListener('click', () => {
 
 });
 
+//options for the analysis page
+
+document.getElementById('codebaseAnalysisPipelineBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
+document.getElementById('createCodeDatabaseOnlyBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '2');
+    });
+
+document.getElementById('createJSONSummariesOnlyBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '3');
+    });
+
+document.getElementById('createSummaryDatabasefromJSONOnlyBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '4');
+    });
+
+document.getElementById('createDirectorySummariesOnlyBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '5');
+    });
+
+document.getElementById('runBusinessRuleValidationOnlyBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '6');
+    });
+
+document.getElementById('runUnitTestGenerationOnlyBtn')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '7');
+    });
+
+document.getElementById('runUMLGenerationOnly')
+    .addEventListener('click', () => {
+
+        //showPage('errorPage');
+
+        ipcRenderer.send('menu-option', '8');
+    });
+
+document.getElementById('analysisBackBtn')
+    .addEventListener('click', () => {
+
+        showPage('homePage');
+
+        ipcRenderer.send('menu-option', '9');
+    });
+
+//summary page buttons
+document.getElementById('summaryBackBtn')
+    .addEventListener('click', () => {
+
+        showPage('homePage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
+//Source code collections buttons
+document.getElementById('sourceBackBtn')
+    .addEventListener('click', () => {
+
+        showPage('homePage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
+//view errors buttons
+document.getElementById('errorBackBtn')
+    .addEventListener('click', () => {
+
+        showPage('homePage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
 /*document.getElementById('run').addEventListener('click', () => {
     ipcRenderer.send('menu-option', '1');
 
