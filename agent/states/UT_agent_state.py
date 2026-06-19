@@ -58,7 +58,7 @@ class UTGraphState(TypedDict):
         ./agent/UT_agent_output if not specified.
     """
     validated_rules: dict[str, list[ValidatedRule]]
-    unit_tests: Annotated[list[UnitTest], add]
+    unit_tests: list[UnitTest]
     rule_contexts: dict[int, dict]
     test_path: str
     codebase_k: int
