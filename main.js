@@ -23,6 +23,21 @@ ipcMain.on('exit-app', () => {
 
 });
 
+ipcMain.on('codebase-path', (event, path) => {
+
+    console.log("Path received:", path);
+
+    if (!pythonProcess) {
+        console.log("Python process is null!");
+        return;
+    }
+
+    console.log("Sending path to Python");
+
+    pythonProcess.stdin.write(path + '\n');
+
+});
+
 function createWindow() {
 
     const win = new BrowserWindow({
@@ -55,6 +70,42 @@ function createWindow() {
             cwd: __dirname
         }
     );
+
+    //add code for outputs to be shown
+
+    pythonProcess.stdout.on('data', (data) => {
+
+        const output = data.toString();
+
+        console.log(output);
+
+        if (
+            output.includes('CODEBASE ANALYSIS SYSTEM') ||
+            output.includes('Run Analysis Tools') ||
+            output.includes('View Summary Collections') ||
+            output.includes('View Source Code Collections') ||
+            output.includes('View Errors') ||
+            output.includes('Select an option')
+        ) {
+            return;
+        }
+
+        win.webContents.send(
+            'python-output',
+            output
+        );
+    });
+
+    pythonProcess.stderr.on('data', (data) => {
+
+        const text = data.toString();
+
+        win.webContents.send(
+            'python-output',
+            text
+        );
+
+    });
 
     pythonProcess.stdout.on('data', (data) => {
 

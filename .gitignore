@@ -19,3 +19,4 @@ agent/UT_agent_output/*/*.json
 agent/UT_agent_output/*/*.txt
 node_modules/
 .venv/
+.ConsoleTables-main/

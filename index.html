@@ -24,7 +24,7 @@
     <!-- HOME PAGE -->
     <div id="homePage" class="page active">
 
-        <h1>Codebase Analysis System - CLI</h1>
+        <h1>Codebase Analysis System</h1>
 
         <button id="analysisBtn">Run Analysis</button>
         <button id="summaryBtn">View Summaries</button>
@@ -49,8 +49,19 @@
         <button id="runUMLGenerationOnly">Run UML Generation Only</button>
         <button id="analysisBackBtn">Return to Main Menu</button>
 
-        <div id="analysisOutput"></div>
+        <!--<div id="analysisOutput"></div>-->
+        <h3>Output</h3>
+        <pre id="outputBox"></pre>
 
+    </div>
+
+    <!--Codebase Analysis Pipeline input and output page-->
+    <div id="codebasePipelinePage" class="page">
+        <h1>Codebase Analysis Pipeline</h1>
+        <button id="codebaseBackBtn">Back</button>
+        <a>Enter the path to the codebase: </a>
+        <input id="codebasePath" type="text" />
+        <button id="submitPathBtn">Submit</button>
     </div>
 
     <!-- SUMMARY PAGE -->

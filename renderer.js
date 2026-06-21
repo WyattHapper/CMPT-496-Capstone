@@ -8,9 +8,14 @@ function showPage(pageId) {
 
     document.getElementById(pageId).classList.add('active');
 }
+function clearOutput() {
+    document.getElementById('outputBox').textContent = '';
+}
 
 document.getElementById('analysisBtn')
     .addEventListener('click', () => {
+
+        clearOutput();
 
         showPage('analysisPage');
 
@@ -20,6 +25,8 @@ document.getElementById('analysisBtn')
 document.getElementById('summaryBtn')
     .addEventListener('click', () => {
 
+        clearOutput();
+
         showPage('summaryPage');
 
         ipcRenderer.send('menu-option', '2');
@@ -28,6 +35,8 @@ document.getElementById('summaryBtn')
 document.getElementById('sourceBtn')
     .addEventListener('click', () => {
 
+        clearOutput();
+
         showPage('sourcePage');
 
         ipcRenderer.send('menu-option', '3');
@@ -35,6 +44,8 @@ document.getElementById('sourceBtn')
 
 document.getElementById('errorBtn')
     .addEventListener('click', () => {
+
+        clearOutput();
 
         showPage('errorPage');
 
@@ -56,7 +67,9 @@ document.getElementById('exitBtn').addEventListener('click', () => {
 document.getElementById('codebaseAnalysisPipelineBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '1');
     });
@@ -64,7 +77,9 @@ document.getElementById('codebaseAnalysisPipelineBtn')
 document.getElementById('createCodeDatabaseOnlyBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '2');
     });
@@ -72,7 +87,9 @@ document.getElementById('createCodeDatabaseOnlyBtn')
 document.getElementById('createJSONSummariesOnlyBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '3');
     });
@@ -80,7 +97,9 @@ document.getElementById('createJSONSummariesOnlyBtn')
 document.getElementById('createSummaryDatabasefromJSONOnlyBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '4');
     });
@@ -88,7 +107,9 @@ document.getElementById('createSummaryDatabasefromJSONOnlyBtn')
 document.getElementById('createDirectorySummariesOnlyBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '5');
     });
@@ -96,7 +117,9 @@ document.getElementById('createDirectorySummariesOnlyBtn')
 document.getElementById('runBusinessRuleValidationOnlyBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '6');
     });
@@ -104,7 +127,9 @@ document.getElementById('runBusinessRuleValidationOnlyBtn')
 document.getElementById('runUnitTestGenerationOnlyBtn')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '7');
     });
@@ -112,13 +137,17 @@ document.getElementById('runUnitTestGenerationOnlyBtn')
 document.getElementById('runUMLGenerationOnly')
     .addEventListener('click', () => {
 
-        //showPage('errorPage');
+        clearOutput();
+
+        showPage('codebasePipelinePage');
 
         ipcRenderer.send('menu-option', '8');
     });
 
 document.getElementById('analysisBackBtn')
     .addEventListener('click', () => {
+
+        clearOutput();
 
         showPage('homePage');
 
@@ -129,6 +158,8 @@ document.getElementById('analysisBackBtn')
 document.getElementById('summaryBackBtn')
     .addEventListener('click', () => {
 
+        clearOutput();
+
         showPage('homePage');
 
         ipcRenderer.send('menu-option', '1');
@@ -137,6 +168,8 @@ document.getElementById('summaryBackBtn')
 //Source code collections buttons
 document.getElementById('sourceBackBtn')
     .addEventListener('click', () => {
+
+        clearOutput();
 
         showPage('homePage');
 
@@ -147,10 +180,51 @@ document.getElementById('sourceBackBtn')
 document.getElementById('errorBackBtn')
     .addEventListener('click', () => {
 
+        clearOutput();
+
         showPage('homePage');
 
         ipcRenderer.send('menu-option', '1');
     });
+
+//back buttons
+document.getElementById('codebaseBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('analysisPage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
+document.getElementById('submitPathBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('analysisPage');
+
+        const path =
+            document.getElementById('codebasePath').value;
+
+        ipcRenderer.send(
+            'codebase-path',
+            path
+        );
+
+    });
+
+//output
+ipcRenderer.on('python-output', (event, text) => {
+
+    const outputBox =
+        document.getElementById('outputBox');
+
+    outputBox.textContent += text;
+
+});
+
 
 /*document.getElementById('run').addEventListener('click', () => {
     ipcRenderer.send('menu-option', '1');
