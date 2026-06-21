@@ -3,20 +3,7 @@
 <head>
     <title>Codebase Analysis System</title>
 
-    <style>
-        .page {
-            display: none;
-        }
-
-        .active {
-            display: block;
-        }
-
-        button {
-            margin: 5px;
-            padding: 10px;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
@@ -26,11 +13,11 @@
 
         <h1>Codebase Analysis System</h1>
 
-        <button id="analysisBtn">Run Analysis</button>
-        <button id="summaryBtn">View Summaries</button>
-        <button id="sourceBtn">View Sources</button>
-        <button id="errorBtn">View Errors</button>
-        <button id="exitBtn">Exit</button>
+        <button class="btn-primary" id="analysisBtn">Run Analysis</button>
+        <button class="btn-primary" id="summaryBtn">View Summaries</button>
+        <button class="btn-primary" id="sourceBtn">View Sources</button>
+        <button class="btn-primary" id="errorBtn">View Errors</button>
+        <button class="btn-primary" id="exitBtn">Exit</button>
 
     </div>
 
@@ -39,15 +26,15 @@
 
         <h1>Analysis</h1>
 
-        <button id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
-        <button id="createCodeDatabaseOnlyBtn">Create Code Database Only</button>
-        <button id="createJSONSummariesOnlyBtn">Create JSON Summaries Only</button>
-        <button id="createSummaryDatabasefromJSONOnlyBtn">Create Summary Database from JSON Only</button>
-        <button id="createDirectorySummariesOnlyBtn">Create Directory Summaries Only</button>
-        <button id="runBusinessRuleValidationOnlyBtn">Run Business Rule Validation Only</button>
-        <button id="runUnitTestGenerationOnlyBtn">Run Unit Test Generation Only</button>
-        <button id="runUMLGenerationOnly">Run UML Generation Only</button>
-        <button id="analysisBackBtn">Return to Main Menu</button>
+        <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
+        <button class="btn-primary" id="createCodeDatabaseOnlyBtn">Create Code Database Only</button>
+        <button class="btn-primary" id="createJSONSummariesOnlyBtn">Create JSON Summaries Only</button>
+        <button class="btn-primary" id="createSummaryDatabasefromJSONOnlyBtn">Create Summary Database from JSON Only</button>
+        <button class="btn-primary" id="createDirectorySummariesOnlyBtn">Create Directory Summaries Only</button>
+        <button class="btn-primary" id="runBusinessRuleValidationOnlyBtn">Run Business Rule Validation Only</button>
+        <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Run Unit Test Generation Only</button>
+        <button class="btn-primary" id="runUMLGenerationOnly">Run UML Generation Only</button>
+        <button class="btn-primary" id="analysisBackBtn">Return to Main Menu</button>
 
         <!--<div id="analysisOutput"></div>-->
         <h3>Output</h3>
@@ -69,7 +56,7 @@
 
         <h1>Summaries</h1>
 
-        <button id="summaryBackBtn">Back</button>
+        <button class="btn-primary" id="summaryBackBtn">Back</button>
 
         <div id="summaryOutput"></div>
 
@@ -80,7 +67,7 @@
 
         <h1>Source Collections</h1>
 
-        <button id="sourceBackBtn">Back</button>
+        <button class="btn-primary" id="sourceBackBtn">Back</button>
 
         <div id="sourceOutput"></div>
 
@@ -91,7 +78,7 @@
 
         <h1>Errors</h1>
 
-        <button id="errorBackBtn">Back</button>
+        <button class="btn-primary" id="errorBackBtn">Back</button>
 
         <div id="errorOutput"></div>
 

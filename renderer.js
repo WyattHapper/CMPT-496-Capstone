@@ -257,3 +257,15 @@ document.getElementById('errors').addEventListener('click', () => {
     document.getElementById('analysisOutput').innerHTML +=
         `<pre>${text}</pre>`;
 });*/
+
+
+function toggleTheme() {
+  const newTheme =
+    document.body.dataset.theme === "dark"
+      ? "light"
+      : "dark";
+
+  document.body.dataset.theme = newTheme;
+
+  localStorage.setItem("theme", newTheme);
+}
