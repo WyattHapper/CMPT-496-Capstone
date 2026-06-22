@@ -85,6 +85,18 @@ body {
     color var(--transition);
 }
 
+h1{
+    font-size: 3rem;
+    color: var(--accent);
+
+}
+
+h2{
+    font-size: 1.5rem;
+    color: var(--text-secondary);
+    margin-bottom: 2rem;
+}
+
 /* =========================
    GLASS CARD
    ========================= */
@@ -186,7 +198,7 @@ body {
   text-align: center;
 }
 
-.page h1 {
+.page{
   margin-bottom: 0.5rem;
 }
 
@@ -194,6 +206,18 @@ body {
   width: 100%;
   max-width: 360px;
 }
+
+#analysisOptions,
+#pipelineOptions,
+#individualStepsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+  max-width: 700px;
+  align-items: center;
+}
+
 
 /* =========================
    PRIMARY BUTTON
@@ -209,11 +233,43 @@ body {
 
   border: none;
   color: white;
+  cursor: pointer;
+  box-shadow: #5E5DF0 0 10px 20px -10px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all var(--transition);
+
+}
+
+.btn-primary::before{
+  content: "";
+
+  position: absolute;
+  top: 0;
+  left: -120%;
+
+  width: 100%;
+  height: 100%;
+
+  transition: 0.6s;
 }
 
 .btn-primary:hover {
   filter: brightness(1.08);
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 10px 25px rgba(99, 102, 241, 0.25)
 }
+
+.btn-primary:hover::before {
+  left: 120%;
+}
+
+
+
 
 /* =========================
    INPUTS
@@ -310,4 +366,21 @@ body {
 
 .theme-toggle:hover {
   transform: rotate(15deg) scale(1.05);
+}
+
+.hidden{
+    display: none !important;
+}
+
+.unusable-btn{
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.back-btn{
+    background: #ccc;
+    cursor: pointer;
+    box-shadow: none;
+    color: #333;
 }

@@ -3,10 +3,10 @@ const { ipcRenderer } = require('electron');
 function showPage(pageId) {
 
     document.querySelectorAll('.page').forEach(page => {
-        page.classList.remove('active');
+        page.classList.add('hidden');
     });
 
-    document.getElementById(pageId).classList.add('active');
+    document.getElementById(pageId).classList.remove('hidden');
 }
 function clearOutput() {
     document.getElementById('outputBox').textContent = '';
@@ -18,6 +18,7 @@ document.getElementById('analysisBtn')
         clearOutput();
 
         showPage('analysisPage');
+
 
         ipcRenderer.send('menu-option', '1');
     });
@@ -213,6 +214,15 @@ document.getElementById('submitPathBtn')
             path
         );
 
+    });
+
+document.getElementById('individualStepsBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        document.getElementById('individualStepsContainer').classList.toggle('hidden');
+        document.getElementById('pipelineOptions').classList.toggle('hidden');
     });
 
 //output
