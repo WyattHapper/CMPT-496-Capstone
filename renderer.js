@@ -224,36 +224,3 @@ ipcRenderer.on('python-output', (event, text) => {
     outputBox.textContent += text;
 
 });
-
-
-/*document.getElementById('run').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '1');
-
-    ipcRenderer.send('run-app');
-});*/
-
-/*document.getElementById('analysisBtn')
-    .addEventListener('click', () => {
-
-        showPage('analysisPage');
-
-        ipcRenderer.send('menu-option', '1');
-    });
-
-document.getElementById('summary').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '2');
-});
-
-document.getElementById('source').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '3');
-});
-
-document.getElementById('errors').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '4');
-});*/
-
-/*ipcRenderer.on('python-output', (event, text) => {
-
-    document.getElementById('analysisOutput').innerHTML +=
-        `<pre>${text}</pre>`;
-});*/
