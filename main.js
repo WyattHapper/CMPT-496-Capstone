@@ -4,7 +4,7 @@ const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 
-require('electron-reloader')(__dirname);
+require('electron-reloader')(module);
 
 let pythonProcess = null;
 
