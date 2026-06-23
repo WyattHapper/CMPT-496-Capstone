@@ -80,7 +80,7 @@ function createWindow() {
 
     //add code for outputs to be shown
 
-    pythonProcess.stdout.on('data', (data) => {
+    /*pythonProcess.stdout.on('data', (data) => {
 
         const output = data.toString();
 
@@ -101,6 +101,23 @@ function createWindow() {
             'python-output',
             output
         );
+    });*/
+
+    pythonProcess.stdout.on('data', (data) => {
+
+        let output = data.toString();
+
+        output = output.replace(
+            /={10,}[\s\S]*?Select an option.*?:/g,
+            ''
+        );
+
+        if (output.trim()) {
+            win.webContents.send(
+                'python-output',
+                output
+            );
+        }
     });
 
     pythonProcess.stderr.on('data', (data) => {
@@ -120,7 +137,7 @@ function createWindow() {
 
         console.log(output); // <-- prints to PowerShell
 
-        win.webContents.send('python-output', output);
+        //win.webContents.send('python-output', output);
     });
 }
 
