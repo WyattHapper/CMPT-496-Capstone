@@ -276,12 +276,12 @@ h2{
    ========================= */
 
 .input-glass {
-  width: 100%;
+  width: 70%;
 
   padding: 1rem;
 
   border-radius: 14px;
-  border: 1px solid var(--glass-border);
+  border: 1px solid black;
 
   background: var(--glass-bg);
 

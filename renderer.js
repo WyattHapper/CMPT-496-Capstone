@@ -213,8 +213,11 @@ document.getElementById('submitPathBtn')
             'codebase-path',
             path
         );
+        
+        document.getElementById("analysisOutput").classList.remove("hidden");
 
     });
+
 
 document.getElementById('individualStepsBtn')
     .addEventListener('click', () => {
@@ -223,6 +226,19 @@ document.getElementById('individualStepsBtn')
 
         document.getElementById('individualStepsContainer').classList.toggle('hidden');
         document.getElementById('pipelineOptions').classList.toggle('hidden');
+        document.getElementById('backToFullPipelineBtn').classList.toggle('hidden');
+        document.getElementById('analysisBackBtn').classList.toggle('hidden');
+    });
+
+document.getElementById('backToFullPipelineBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        document.getElementById('individualStepsContainer').classList.toggle('hidden');
+        document.getElementById('pipelineOptions').classList.toggle('hidden');
+        document.getElementById('backToFullPipelineBtn').classList.toggle('hidden');
+        document.getElementById('analysisBackBtn').classList.toggle('hidden');
     });
 
 //output

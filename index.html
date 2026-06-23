@@ -47,6 +47,7 @@
                 <button class="btn-primary" id="runBusinessRuleValidationOnlyBtn">Business Rule Validation</button>
                 <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Unit Test Generation</button>
                 <button class="btn-primary" id="runUMLGenerationOnly">UML Generation</button>
+                <button class="btn-primary back-btn hidden" id="backToFullPipelineBtn">Back</button>
             </div>
 
             <button class="btn-primary back-btn" id="analysisBackBtn">Return to Main Menu</button>
@@ -62,10 +63,11 @@
     <!--Codebase Analysis Pipeline input and output page-->
     <div id="codebasePipelinePage" class="page hidden">
         <h1>Codebase Analysis Pipeline</h1>
-        <button id="codebaseBackBtn" class="back-btn">Back</button>
+        
         <a>Enter the path to the codebase: </a>
-        <input id="codebasePath" type="text" />
-        <button id="submitPathBtn">Submit</button>
+        <input class="input-glass"id="codebasePath" type="text" />
+        <button class="btn-primary" id="submitPathBtn">Submit</button>
+        <button class="btn-primary back-btn" id="codebaseBackBtn">Back</button>
     </div>
 
     <!-- SUMMARY PAGE -->
