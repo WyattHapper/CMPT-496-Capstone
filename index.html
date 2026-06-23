@@ -3,20 +3,7 @@
 <head>
     <title>Codebase Analysis System</title>
 
-    <style>
-        .page {
-            display: none;
-        }
-
-        .active {
-            display: block;
-        }
-
-        button {
-            margin: 5px;
-            padding: 10px;
-        }
-    </style>
+    <link rel="stylesheet" href="style.css">
 </head>
 
 <body>
@@ -24,75 +11,93 @@
     <!-- HOME PAGE -->
     <div id="homePage" class="page active">
 
-        <h1>Codebase Analysis System</h1>
+        <h1>TBD2</h1>
+        <h2>Codebase Analysis System</h2>
 
-        <button id="analysisBtn">Run Analysis</button>
-        <button id="summaryBtn">View Summaries</button>
-        <button id="sourceBtn">View Sources</button>
-        <button id="errorBtn">View Errors</button>
-        <button id="exitBtn">Exit</button>
+        <button class="btn-primary" id="analysisBtn">Run Analysis</button>
+        <button class="btn-primary unusable-btn" id="summaryBtn">View Summaries</button>
+        <button class="btn-primary unusable-btn" id="sourceBtn">View Sources</button>
+        <button class="btn-primary unusable-btn" id="errorBtn">View Errors</button>
+        <button class="btn-primary back-btn" id="exitBtn">Exit</button>
 
     </div>
 
     <!-- ANALYSIS PAGE -->
-    <div id="analysisPage" class="page">
+    <div id="analysisPage" class="page hidden">
 
         <h1>Analysis</h1>
 
-        <button id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
-        <button id="createCodeDatabaseOnlyBtn">Create Code Database Only</button>
-        <button id="createJSONSummariesOnlyBtn">Create JSON Summaries Only</button>
-        <button id="createSummaryDatabasefromJSONOnlyBtn">Create Summary Database from JSON Only</button>
-        <button id="createDirectorySummariesOnlyBtn">Create Directory Summaries Only</button>
-        <button id="runBusinessRuleValidationOnlyBtn">Run Business Rule Validation Only</button>
-        <button id="runUnitTestGenerationOnlyBtn">Run Unit Test Generation Only</button>
-        <button id="runUMLGenerationOnly">Run UML Generation Only</button>
-        <button id="analysisBackBtn">Return to Main Menu</button>
+        <div id="analysisOptions">
 
-        <!--<div id="analysisOutput"></div>-->
-        <h3>Output</h3>
-        <pre id="outputBox"></pre>
+            <div id="pipelineOptions">
+               
+             <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
+             <button class="btn-primary" id="individualStepsBtn">Choose Individual Step(s)</button>
+            </div>
+
+
+            <div id="individualStepsContainer" class="hidden">
+
+                <h2>Run Individual Steps</h2>
+
+                <button class="btn-primary" id="createCodeDatabaseOnlyBtn">Create Code Database</button>
+                <button class="btn-primary" id="createJSONSummariesOnlyBtn">Create JSON Summaries</button>
+                <button class="btn-primary" id="createSummaryDatabasefromJSONOnlyBtn">Create Summary Database from JSON</button>
+                <button class="btn-primary" id="createDirectorySummariesOnlyBtn">Create Directory Summaries</button>
+                <button class="btn-primary" id="runBusinessRuleValidationOnlyBtn">Business Rule Validation</button>
+                <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Unit Test Generation</button>
+                <button class="btn-primary" id="runUMLGenerationOnly">UML Generation</button>
+                <button class="btn-primary back-btn hidden" id="backToFullPipelineBtn">Back</button>
+            </div>
+
+            <button class="btn-primary back-btn" id="analysisBackBtn">Return to Main Menu</button>
+        </div>
+
+        <div id="analysisOutput" class="hidden">
+            <h3>Output</h3>
+            <pre id="outputBox"></pre>
+        </div>
 
     </div>
 
     <!--Codebase Analysis Pipeline input and output page-->
-    <div id="codebasePipelinePage" class="page">
+    <div id="codebasePipelinePage" class="page hidden">
         <h1>Codebase Analysis Pipeline</h1>
-        <!--the back button sends the input '1', this is not the best functionality, it might be best just to get rid of the back -->
-        <button id="codebaseBackBtn">Back</button>
+        
         <a>Enter the path to the codebase: </a>
-        <input id="codebasePath" type="text" />
-        <button id="submitPathBtn">Submit</button>
+        <input class="input-glass"id="codebasePath" type="text" />
+        <button class="btn-primary" id="submitPathBtn">Submit</button>
+        <button class="btn-primary back-btn" id="codebaseBackBtn">Back</button>
     </div>
 
     <!-- SUMMARY PAGE -->
-    <div id="summaryPage" class="page">
+    <div id="summaryPage" class="page hidden">
 
         <h1>Summaries</h1>
 
-        <button id="summaryBackBtn">Back</button>
+        <button class="btn-primary back-btn" id="summaryBackBtn">Back</button>
 
         <div id="summaryOutput"></div>
 
     </div>
 
     <!-- SOURCE PAGE -->
-    <div id="sourcePage" class="page">
+    <div id="sourcePage" class="page hidden">
 
         <h1>Source Collections</h1>
 
-        <button id="sourceBackBtn">Back</button>
+        <button class="btn-primary back-btn" id="sourceBackBtn">Back</button>
 
         <div id="sourceOutput"></div>
 
     </div>
 
     <!-- ERROR PAGE -->
-    <div id="errorPage" class="page">
+    <div id="errorPage" class="page hidden">
 
         <h1>Errors</h1>
 
-        <button id="errorBackBtn">Back</button>
+        <button class="btn-primary back-btn" id="errorBackBtn">Back</button>
 
         <div id="errorOutput"></div>
 

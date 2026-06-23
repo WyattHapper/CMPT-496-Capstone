@@ -63,6 +63,32 @@ def uml_generation(dir_path: Path, errors: list):
             return False
     return True
 
+def get_api():
+    env_path = Path("./.env")
+    if env_path.exists():
+        while True:
+            clear_screen()
+            print("========================================")
+            print("WARNING: API key already exists.")
+            print("Are you sure you would like to continue?")
+            print("(Doing so will overwrite previous key)")
+            print("========================================")
+            print("1. Continue")
+            print("2. Exit")
+            choice = input("\nSelect option (1 or 2): ")
+            if choice == '2':
+                return False
+            elif choice == '1':
+                break
+    key = input("\nEnter LLM API key: ")
+    try:
+        with open(env_path, "w", encoding = "utf-8") as env:
+            env.write(f"GOOGLE_API_KEY={key}")
+    except:
+        input("\nUnable to add API key. Press Enter... ")
+        return False
+    input("\nAPI key successfully added! Press Enter... ")
+    return True
 
 def processing_menu(errors: list):
     """
@@ -247,21 +273,24 @@ def main_menu():
         print("   CODEBASE ANALYSIS SYSTEM - CLI")
         print("========================================")
         print("1. Run Analysis Tools")
-        print("2. View Summary Collections")
-        print("3. View Source Code Collections")
-        print("4. View Errors")
-        print("5. Exit")
+        print("2. Enter API Key")
+        print("3. View Summary Collections")
+        print("4. View Source Code Collections")
+        print("5. View Errors")
+        print("6. Exit")
         print("----------------------------------------")
         
-        choice = input("Select an option (1-5): ")
+        choice = input("Select an option (1-6): ")
 
         if choice == '1':
             processing_menu(errors)
         elif choice == '2':
-            view_collections(db_type="summary")
+            get_api()
         elif choice == '3':
-            view_collections(db_type="code")
+            view_collections(db_type="summary")
         elif choice == '4':
+            view_collections(db_type="code")
+        elif choice == '5':
             clear_screen()
             print("--- ERROR LOG ---")
             if errors:
@@ -270,7 +299,7 @@ def main_menu():
             else:
                 print("No errors recorded.")
             input("\nPress enter to return to menu...")
-        elif choice == '5':
+        elif choice == '6':
             print("Exiting system. Goodbye!")
             sys.exit()
         else:

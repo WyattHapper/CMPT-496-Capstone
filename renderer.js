@@ -3,10 +3,10 @@ const { ipcRenderer } = require('electron');
 function showPage(pageId) {
 
     document.querySelectorAll('.page').forEach(page => {
-        page.classList.remove('active');
+        page.classList.add('hidden');
     });
 
-    document.getElementById(pageId).classList.add('active');
+    document.getElementById(pageId).classList.remove('hidden');
 }
 function clearOutput() {
     document.getElementById('outputBox').textContent = '';
@@ -18,6 +18,7 @@ document.getElementById('analysisBtn')
         clearOutput();
 
         showPage('analysisPage');
+
 
         ipcRenderer.send('menu-option', '1');
     });
@@ -212,7 +213,32 @@ document.getElementById('submitPathBtn')
             'codebase-path',
             path
         );
+        
+        document.getElementById("analysisOutput").classList.remove("hidden");
 
+    });
+
+
+document.getElementById('individualStepsBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        document.getElementById('individualStepsContainer').classList.toggle('hidden');
+        document.getElementById('pipelineOptions').classList.toggle('hidden');
+        document.getElementById('backToFullPipelineBtn').classList.toggle('hidden');
+        document.getElementById('analysisBackBtn').classList.toggle('hidden');
+    });
+
+document.getElementById('backToFullPipelineBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        document.getElementById('individualStepsContainer').classList.toggle('hidden');
+        document.getElementById('pipelineOptions').classList.toggle('hidden');
+        document.getElementById('backToFullPipelineBtn').classList.toggle('hidden');
+        document.getElementById('analysisBackBtn').classList.toggle('hidden');
     });
 
 //output
@@ -224,3 +250,48 @@ ipcRenderer.on('python-output', (event, text) => {
     outputBox.textContent += text;
 
 });
+
+
+/*document.getElementById('run').addEventListener('click', () => {
+    ipcRenderer.send('menu-option', '1');
+
+    ipcRenderer.send('run-app');
+});*/
+
+/*document.getElementById('analysisBtn')
+    .addEventListener('click', () => {
+
+        showPage('analysisPage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
+document.getElementById('summary').addEventListener('click', () => {
+    ipcRenderer.send('menu-option', '2');
+});
+
+document.getElementById('source').addEventListener('click', () => {
+    ipcRenderer.send('menu-option', '3');
+});
+
+document.getElementById('errors').addEventListener('click', () => {
+    ipcRenderer.send('menu-option', '4');
+});*/
+
+/*ipcRenderer.on('python-output', (event, text) => {
+
+    document.getElementById('analysisOutput').innerHTML +=
+        `<pre>${text}</pre>`;
+});*/
+
+
+function toggleTheme() {
+  const newTheme =
+    document.body.dataset.theme === "dark"
+      ? "light"
+      : "dark";
+
+  document.body.dataset.theme = newTheme;
+
+  localStorage.setItem("theme", newTheme);
+}

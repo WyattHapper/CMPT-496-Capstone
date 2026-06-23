@@ -1,6 +1,10 @@
+
+
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
+
+require('electron-reloader')(module);
 
 let pythonProcess = null;
 
@@ -51,12 +55,15 @@ function createWindow() {
 
     win.loadFile('index.html');
 
-    const pythonPath = path.join(
-        __dirname,
-        '.venv',
-        'Scripts',
-        'python.exe'
-    );
+    
+
+    const os = require('os');
+    const path = require('path');
+
+    // Dynamically picks the correct folder structure for Mac vs Windows
+    const pythonPath = os.platform() === 'win32' 
+    ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
+    : path.join(__dirname, '.venv', 'bin', 'python');
 
     const scriptPath = path.join(
         __dirname,
