@@ -103,7 +103,7 @@ function createWindow() {
         );
     });*/
 
-    pythonProcess.stdout.on('data', (data) => {
+    /*pythonProcess.stdout.on('data', (data) => {
 
         let output = data.toString();
 
@@ -118,6 +118,27 @@ function createWindow() {
                 output
             );
         }
+    });
+
+    pythonProcess.stdout.on('data', (data) => {
+
+        const output = data.toString();
+
+        if (output.includes('PREVIEWING:')) {
+
+            win.webContents.send(
+                'collection-preview',
+                output
+            );
+
+            return;
+        }
+
+        win.webContents.send(
+            'python-output',
+            output
+        );
+
     });
 
     pythonProcess.stderr.on('data', (data) => {
@@ -138,6 +159,90 @@ function createWindow() {
         console.log(output); // <-- prints to PowerShell
 
         //win.webContents.send('python-output', output);
+    });
+
+    //this is used to extract the output from the source collections page and turn them into buttons
+    pythonProcess.stdout.on('data', (data) => {
+
+        const output = data.toString();
+
+        const matches =
+            output.match(/^\d+\.\s+.+$/gm);
+
+        if (matches) {
+
+            const collections = matches.map(line =>
+                line.replace(/^\d+\.\s+/, '')
+            );
+
+            win.webContents.send(
+                'collections-list',
+                collections
+            );
+
+            return;
+        }
+
+        win.webContents.send(
+            'python-output',
+            output
+        );
+
+    });*/
+
+    pythonProcess.stdout.on('data', (data) => {
+
+        const output = data.toString();
+
+        console.log(output);
+
+        // Collection buttons
+        const matches =
+            output.match(/^\d+\.\s+.+$/gm);
+
+        if (matches) {
+
+            const collections = matches.map(line =>
+                line.replace(/^\d+\.\s+/, '')
+            );
+
+            win.webContents.send(
+                'collections-list',
+                collections
+            );
+
+            return;
+        }
+
+        // Collection preview
+        if (output.includes('PREVIEWING:')) {
+
+            win.webContents.send(
+                'collection-preview',
+                output
+            );
+
+            return;
+        }
+
+        // Ignore menu text
+        if (
+            output.includes('CODEBASE ANALYSIS SYSTEM') ||
+            output.includes('Run Analysis Tools') ||
+            output.includes('View Summary Collections') ||
+            output.includes('View Source Code Collections') ||
+            output.includes('View Errors') ||
+            output.includes('Select an option')
+        ) {
+            return;
+        }
+
+        // Normal output
+        win.webContents.send(
+            'python-output',
+            output
+        );
+
     });
 }
 

@@ -8,8 +8,25 @@ function showPage(pageId) {
 
     document.getElementById(pageId).classList.remove('hidden');
 }
-function clearOutput() {
+/*function clearOutput() {
     document.getElementById('outputBox').textContent = '';
+}*/
+
+function clearOutput() {
+
+    const outputBox =
+        document.getElementById('outputBox');
+
+    if (outputBox) {
+        outputBox.textContent = '';
+    }
+
+    const sourceOutput =
+        document.getElementById('sourceOutput');
+
+    if (sourceOutput) {
+        sourceOutput.textContent = '';
+    }
 }
 
 document.getElementById('analysisBtn')
@@ -23,6 +40,8 @@ document.getElementById('analysisBtn')
         ipcRenderer.send('menu-option', '1');
     });
 
+    //the API key element needs to be placed here
+
 document.getElementById('summaryBtn')
     .addEventListener('click', () => {
 
@@ -30,7 +49,7 @@ document.getElementById('summaryBtn')
 
         showPage('summaryPage');
 
-        ipcRenderer.send('menu-option', '2');
+        ipcRenderer.send('menu-option', '3');
     });
 
 document.getElementById('sourceBtn')
@@ -40,7 +59,7 @@ document.getElementById('sourceBtn')
 
         showPage('sourcePage');
 
-        ipcRenderer.send('menu-option', '3');
+        ipcRenderer.send('menu-option', '4');
     });
 
 document.getElementById('errorBtn')
@@ -50,12 +69,12 @@ document.getElementById('errorBtn')
 
         showPage('errorPage');
 
-        ipcRenderer.send('menu-option', '4');
+        ipcRenderer.send('menu-option', '5');
     });
 
 document.getElementById('exitBtn').addEventListener('click', () => {
 
-    ipcRenderer.send('menu-option', '5');
+    ipcRenderer.send('menu-option', '6');
 
     setTimeout(() => {
         ipcRenderer.send('exit-app');
@@ -248,6 +267,51 @@ ipcRenderer.on('python-output', (event, text) => {
         document.getElementById('outputBox');
 
     outputBox.textContent += text;
+
+});
+
+ipcRenderer.on(
+    'collection-preview',
+    (event, text) => {
+
+        const previewBox =
+            document.getElementById(
+                'sourceOutput'
+            );
+
+        previewBox.textContent += text;
+
+    }
+);
+
+//this is used for the source collections page to display different options
+ipcRenderer.on('collections-list', (event, collections) => {
+
+    const container =
+        document.getElementById('collectionsContainer');
+
+    container.innerHTML = '';
+
+    collections.forEach((name, index) => {
+
+        const btn = document.createElement('button');
+
+        btn.textContent = name;
+
+        btn.className = 'collectionBtn';
+
+        btn.addEventListener('click', () => {
+
+            ipcRenderer.send(
+                'menu-option',
+                String(index + 1)
+            );
+
+        });
+
+        container.appendChild(btn);
+
+    });
 
 });
 
