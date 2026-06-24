@@ -1,8 +1,9 @@
-
-
 const { app, BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
+const fs = require("fs");
+const dotenv = require("dotenv");
+
 
 //require('electron-reloader')(module);
 
@@ -42,23 +43,67 @@ ipcMain.on('codebase-path', (event, path) => {
 
 });
 
+ipcMain.on('send-enter', () => {
+    if (!pythonProcess) {
+        console.log("Python process is null!");
+        return;
+    }
+
+    console.log("Sending Enter to Python");
+    pythonProcess.stdin.write('\n');
+});
+
+ipcMain.on("api-key", (event, apiKey) => {
+
+    if (!pythonProcess) {
+        console.log("Python process is null!");
+        return;
+    }
+    console.log("Received API key:", apiKey);
+    pythonProcess.stdin.write(apiKey + '\n');
+
+
+});
+
+function hasAPIKey() {
+    const envPath = path.join(__dirname, ".env");
+
+    if (!fs.existsSync(envPath)) {
+        return false;
+    }
+
+    const env = dotenv.parse(fs.readFileSync(envPath));
+
+    return (
+        typeof env.GOOGLE_API_KEY !== "undefined" &&
+        env.GOOGLE_API_KEY.trim() !== ""
+    );
+}
+
+ipcMain.handle("has-api-key", () => {
+    return hasAPIKey();
+});
+
 function createWindow() {
 
     const win = new BrowserWindow({
         width: 1200,
         height: 800,
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
+            preload: path.join(__dirname, "preload.js"), //added for the preload.js file to work
+            nodeIntegration: false, 
+            contextIsolation: true
         }
     });
+
+    
 
     win.loadFile('index.html');
 
     
 
     const os = require('os');
-    const path = require('path');
+    
 
     // Dynamically picks the correct folder structure for Mac vs Windows
     const pythonPath = os.platform() === 'win32' 

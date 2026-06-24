@@ -28,9 +28,15 @@
 
         <h1>Upload API Key</h1>
 
+        <h3 id="apiKeyMsg" class="hidden"> An API key is already connected would you like to replace it?</h3>
+        <button class="btn-primary hidden" id="replaceApiKeyBtn">Replace API Key</button>
+        <button class="btn-primary hidden" id="keepApiKeyBtn">Keep Current API Key</button>
+
         <input class="input-glass" id="apiKeyInput" type="text" placeholder="Enter API Key" />
         <button class="btn-primary" id="submitApiKeyBtn">Submit</button>
         <button class="btn-primary back-btn" id="apiBackBtn">Back</button>
+
+        
 
     </div>
 
@@ -87,9 +93,11 @@
 
         <h1>Summaries</h1>
 
-        <button class="btn-primary back-btn" id="summaryBackBtn">Back</button>
+        <h3 id="summariesSubheader">Collection Preview</h3>
+        <h3 class="hidden" id="noVectorStoresMsgSum">No vector stores found. Please generate summaries first.</h3>
 
         <div id="summaryOutput"></div>
+        <button class="btn-primary back-btn" id="summaryBackBtn">Back</button>
 
     </div>
 
@@ -98,13 +106,15 @@
 
         <h1>Source Collections</h1>
 
-        <div id="collectionsContainer"></div>
+        <!-- I don't think this is needed -->
+        <!-- <div id="collectionsContainer"></div> -->
 
-        <button class="btn-primary back-btn" id="sourceBackBtn">Back</button>
-
-        <h3>Collection Preview</h3>
+   
+        <h3 class="hidden" id="noVectorStoresMsgSrc">No vector stores found. Please generate summaries first.</h3>
+        <h3 id="sourceCollectionSubheader">Collection Preview</h3>
 
         <pre id="sourceOutput"></pre>
+        <button class="btn-primary back-btn" id="sourceBackBtn">Back</button>
 
     </div>
 
@@ -112,10 +122,13 @@
     <div id="errorPage" class="page hidden">
 
         <h1>Errors</h1>
+        <h3 class="hidden" id="noErrorsMsg">No vector stores found. Please generate summaries first.</h3>
+        <h3 id="errorSubheader">Error Log</h3>
+        <div id="errorOutput"></div>
 
         <button class="btn-primary back-btn" id="errorBackBtn">Back</button>
 
-        <div id="errorOutput"></div>
+       
 
     </div>
 
