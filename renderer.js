@@ -196,7 +196,7 @@ document.getElementById('apiBackBtn')
         ipcRenderer.send('menu-option', '1');
     });
 
-document.getElementById('submitAPIKeyBtn')
+document.getElementById('submitApiKeyBtn')
     .addEventListener('click', () => {
 
         clearOutput();
