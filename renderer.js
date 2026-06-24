@@ -29,6 +29,7 @@ function clearOutput() {
     }
 }
 
+// MENU BUTTONS
 document.getElementById('analysisBtn')
     .addEventListener('click', () => {
 
@@ -40,7 +41,16 @@ document.getElementById('analysisBtn')
         ipcRenderer.send('menu-option', '1');
     });
 
-    //the API key element needs to be placed here
+document.getElementById('apiBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('apiPage');
+
+
+        ipcRenderer.send('menu-option', '2');
+    });
 
 document.getElementById('summaryBtn')
     .addEventListener('click', () => {
@@ -172,6 +182,34 @@ document.getElementById('analysisBackBtn')
         showPage('homePage');
 
         ipcRenderer.send('menu-option', '9');
+    });
+
+//API PAGE BUTTONS
+
+document.getElementById('apiBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('homePage');
+
+        ipcRenderer.send('menu-option', '1');
+    });
+
+document.getElementById('submitAPIKeyBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('homePage');
+
+        const apiKey =
+            document.getElementById('apiKeyInput').value;
+
+        ipcRenderer.send(
+            'api-key',
+            apiKey
+        );
     });
 
 //summary page buttons
