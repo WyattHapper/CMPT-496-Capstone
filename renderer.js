@@ -412,12 +412,23 @@ document.getElementById('codebaseBackBtn')
         window.electronAPI.sendMenuOption('1');
     });
 
-document.getElementById('submitPathBtn')
+document.getElementById('outputBackBtn')
     .addEventListener('click', () => {
 
         clearOutput();
 
         showPage('analysisPage');
+
+        window.electronAPI.sendMenuOption('1');
+    });
+
+document.getElementById('submitPathBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        //showPage('analysisPage');
+        showPage('outputPage')
 
         const path =
             document.getElementById('codebasePath').value;
