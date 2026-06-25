@@ -748,12 +748,13 @@ def main() -> int:
 
     image_paths: dict[str, Optional[Path]] = {}
     try:
+        rel_puml = data.get("relationship_plantuml", "").replace("\\n", "\n")
         image_paths["relationship_plantuml"] = render_plantuml(
-            data.get("relationship_plantuml", ""),
+            rel_puml,
             "relationship_diagram",
             temp_dir,
             args,
-        )
+)
 
         for idx, type_info in enumerate(data.get("types") or []):
             image_paths[f"type_{idx}"] = render_plantuml(

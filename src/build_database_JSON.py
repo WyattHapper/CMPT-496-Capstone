@@ -52,9 +52,13 @@ def build_database(codebase_name: str) -> None:
     @param codebase_name str: The name of the codebase folder to index.
     @return None
     """
-    script_dir = Path(__file__).parent.resolve()
-    json_dir = (script_dir.parent / "agent" / "file_summary_agent_output" / codebase_name).resolve()
-    db_dir = (script_dir.parent / "vectorStores").resolve()
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys.executable).parent
+    else:
+        base_dir = Path(__file__).parent.parent
+
+    json_dir = (base_dir / "agent" / "file_summary_agent_output" / codebase_name).resolve()
+    db_dir = (base_dir / "vectorStores").resolve()
 
     if not json_dir.exists() or not json_dir.is_dir():
         print(f"Error: The provided JSON directory '{json_dir}' does not exist or is not a directory.")

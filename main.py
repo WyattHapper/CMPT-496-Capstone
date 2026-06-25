@@ -14,6 +14,11 @@ import chromadb
 import time
 from pathlib import Path
 
+if getattr(sys, 'frozen', False):
+    APP_DIR = Path(sys.executable).parent
+else:
+    APP_DIR = Path(__file__).parent
+
 def clear_screen():
     """
     @brief Clears the terminal screen for better readability.
@@ -23,27 +28,81 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 def run_step(step_name: str, module: str, args: list, errors: list):
-    """
-    @brief Executes a subprocess for a given step in the pipeline.
-    """
+    os.chdir(APP_DIR)
     print(f"Running step: {step_name}...")
     start = time.perf_counter()
     try:
-        # result.returncode is 0 if success, something else if it crashed
-        result = subprocess.run([sys.executable, "-m", module] + args, text=True)
+        from src.build_database import build_database as _build_db
+        from src.build_database_JSON import build_database as _build_db_json
+        from agent.file_summary_agent import FileSummaryAgent
+        from agent.directory_agent import DirectoryAgent
+        from agent.BR_agent import BRAgent
+        from agent.UT_agent import UTAgent
+        from utils.uml_json_to_pdf import main as _uml_main
+        from agent.structured_output.file_summary_output import BusinessRule
+        from agent.structured_output.UT_output import ValidatedRule
+        import json
+
+        def run_file_summary(args):
+            agent = FileSummaryAgent()
+            agent.run(args[0])
+
+        def run_directory(args):
+            agent = DirectoryAgent()
+            agent.run(args[0])
+
+        def run_br(args):
+            codebase_name, rules_path = args[0], args[1]
+            with open(rules_path, "r", encoding="utf-8") as f:
+                raw_rules = json.load(f)
+            input_rules = {
+                path: [BusinessRule(**rule) for rule in rules]
+                for path, rules in raw_rules.items()
+            }
+            agent = BRAgent()
+            agent.run(input_rules, codebase_name)
+
+        def run_ut(args):
+            codebase_path, rules_path = str(args[0]), args[1]
+            codebase_name = Path(codebase_path).name
+            with open(rules_path, "r", encoding="utf-8") as f:
+                raw_rules = json.load(f)
+            input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]
+            agent = UTAgent()
+            agent.run(input_rules, codebase_name, codebase_path)
         
-        if result.returncode != 0:
-            err_msg = f"{step_name} failed with exit code {result.returncode}."
-            print(f"\n[!] {err_msg}")
-            errors.append(err_msg)
-            return False
+        def run_uml(args):
+            old_argv = sys.argv
+            jar_path = APP_DIR / "plantuml.jar"
+            if not jar_path.exists():
+                jar_path = Path.home() / "plantuml.jar"
+            sys.argv = ['uml_json_to_pdf', args[0], '--plantuml-jar', str(jar_path)]
+            try:
+                _uml_main()
+            finally:
+                sys.argv = old_argv
+
+        dispatch = {
+            "src.build_database":       lambda args: _build_db(args[0]),
+            "src.build_database_JSON":  lambda args: _build_db_json(args[0]),
+            "agent.file_summary_agent": run_file_summary,
+            "agent.directory_agent":    run_directory,
+            "agent.BR_agent":           run_br,
+            "agent.UT_agent":           run_ut,
+            "utils.uml_json_to_pdf":    run_uml,
+        }
+
+        if module not in dispatch:
+            raise RuntimeError(f"Unknown module: {module}")
+
+        dispatch[module](args)
 
         elapsed = time.perf_counter() - start
         print(f"{step_name} completed in {elapsed:.2f} seconds.")
         return True
 
     except Exception as e:
-        err_msg = f"Failed to launch {step_name}: {e}"
+        err_msg = f"Failed to run {step_name}: {e}"
         print(f"\n[!] {err_msg}")
         errors.append(err_msg)
         return False
@@ -64,7 +123,8 @@ def uml_generation(dir_path: Path, errors: list):
     return True
 
 def get_api():
-    env_path = Path("./.env")
+    os.chdir(APP_DIR)
+    env_path = APP_DIR / ".env"
     if env_path.exists():
         while True:
             clear_screen()
@@ -84,8 +144,8 @@ def get_api():
     try:
         with open(env_path, "w", encoding = "utf-8") as env:
             env.write(f"GOOGLE_API_KEY={key}")
-    except:
-        input("\nUnable to add API key. Press Enter... ")
+    except Exception as e:
+        input(f"\nUnable to add API key: {e}. Press Enter... ")
         return False
     input("\nAPI key successfully added! Press Enter... ")
     return True
@@ -192,6 +252,7 @@ def view_collections(db_type: str):
     @param db_type The type of database to view; expected values are 'summary' or 'source'.
     @return None
     """
+    os.chdir(APP_DIR)
     clear_screen()
     db_dir = Path("vectorStores").resolve()
     if not db_dir.exists():

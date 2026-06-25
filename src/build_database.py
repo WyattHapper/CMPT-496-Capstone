@@ -24,9 +24,13 @@ def build_database(source_path: str) -> None:
     
     @note The database is stored in a directory named 'vectorStores' at the project root.
     """
-    script_dir = Path(__file__).parent
-    source_dir = (Path(script_dir).parent / source_path).resolve()
-    db_dir = (Path(script_dir).parent / "vectorStores").resolve()
+    if getattr(sys, 'frozen', False):
+        base_dir = Path(sys.executable).parent
+    else:
+        base_dir = Path(__file__).parent.parent
+
+    source_dir = (base_dir / source_path).resolve()
+    db_dir = (base_dir / "vectorStores").resolve()
     db_name = f"{source_dir.name}_code_db"
 
     # Create the vectoreStores directory if it doesn't exist

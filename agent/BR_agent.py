@@ -103,8 +103,12 @@ class BRAgent:
         @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
         @return Final state of the graph after execution.
         """
-        script_dir = Path(__file__).parent.resolve()
-        db_dir = (script_dir.parent / "vectorStores").resolve()
+        if getattr(sys, 'frozen', False):
+            base_dir = Path(sys.executable).parent
+        else:
+            base_dir = Path(__file__).parent.parent
+
+        db_dir = (base_dir / "vectorStores").resolve()
 
         embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
         client = chromadb.PersistentClient(path=str(db_dir))
