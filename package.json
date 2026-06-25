@@ -15,5 +15,8 @@
   "devDependencies": {
     "electron": "^42.4.0",
     "electron-reloader": "^1.2.3"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
   }
 }
