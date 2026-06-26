@@ -68,7 +68,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    options=['-u'],
+    options=[('-u', None, 'OPTION'), ('Xutf8', None, 'OPTION')],
 )
 coll = COLLECT(
     exe,

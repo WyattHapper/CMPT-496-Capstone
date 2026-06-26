@@ -66,18 +66,25 @@ ipcMain.on("api-key", (event, apiKey) => {
 });
 
 function hasAPIKey() {
-    const envPath = path.join(__dirname, ".env");
+    const envPaths = [
+        path.join(__dirname, ".env"),
+        path.join(__dirname, 'releases', 'main', ".env")
+    ];
 
-    if (!fs.existsSync(envPath)) {
-        return false;
+    for (const envPath of envPaths) {
+        if (!fs.existsSync(envPath)) continue;
+
+        const env = dotenv.parse(fs.readFileSync(envPath));
+
+        if (
+            typeof env.GOOGLE_API_KEY !== "undefined" &&
+            env.GOOGLE_API_KEY.trim() !== ""
+        ) {
+            return true;
+        }
     }
 
-    const env = dotenv.parse(fs.readFileSync(envPath));
-
-    return (
-        typeof env.GOOGLE_API_KEY !== "undefined" &&
-        env.GOOGLE_API_KEY.trim() !== ""
-    );
+    return false;
 }
 
 ipcMain.handle("has-api-key", () => {
@@ -102,24 +109,13 @@ function createWindow() {
 
     
 
-    const os = require('os');
-    
-
-    // Dynamically picks the correct folder structure for Mac vs Windows
-    const pythonPath = os.platform() === 'win32' 
-    ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
-    : path.join(__dirname, '.venv', 'bin', 'python');
-
-    const scriptPath = path.join(
-        __dirname,
-        'main.py'
-    );
+    const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
 
     pythonProcess = spawn(
-        pythonPath,
-        [scriptPath],
+        exePath,
+        [],
         {
-            cwd: __dirname
+            cwd: path.join(__dirname, 'releases', 'main')
         }
     );
 

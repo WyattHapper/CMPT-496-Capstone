@@ -6,9 +6,11 @@ summarization pipeline, manage vector databases, and preview indexed source
 code and summaries.
 """
 
+import sys
+sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
+
 import os
 import subprocess
-import sys
 from xml.parsers.expat import errors
 import chromadb
 import time
