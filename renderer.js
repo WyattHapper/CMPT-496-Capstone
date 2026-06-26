@@ -493,6 +493,7 @@ window.electronAPI.onAnalysisPythonOutput((text) => {
 
 });
 
+//NO idea if this works at all yet, fiar warning
 window.electronAPI.onSummaryPythonOutput((text) => {
 
     const summaryOutputBox =

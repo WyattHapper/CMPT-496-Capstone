@@ -401,7 +401,7 @@ h2{
     margin: 0 auto;
     padding: 1rem;
     border-radius: 14px;
-    border: 1px solid black;
+    border: 1px solid 5E5DF0;
     background: var(--glass-bg);
     backdrop-filter: blur(12px);
     color: var(--text-primary);
