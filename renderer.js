@@ -2,13 +2,10 @@
 // Variables top determine if a step has been completed or not -- will help with prompting text without having to pull from the output
 let ranFullPipline = false; // Flag to track if the full pipeline has been run
 
-let ranCodeDatabase = false; // Flag to track if the code database has been run
-let ranJSONSummaries = false; // Flag to track if the JSON summaries have been run
-let ranSummaryDB = false; // Flag to track if the summary database has been run
-let ranCreateDirectorySummaries = false; // Flag to track if the create directory summaries has been run
-let ranBusinessRuleValidation = false; // Flag to track if the business rule validation has been run
-let ranUnitTestGeneration = false; // Flag to track if the unit test generation has been run
-let ranUMLGeneration = false; // Flag to track if the UML generation has been run
+let summariesMade = false; // Flag to track if summaries have been made
+let sourcesMade = false; // Flag to track if source collections have been made
+let errorsMade = false; // flag totrack if source collections have been made
+
 
 // Checks if the API key has been set
 const envPath = ".env";
@@ -86,14 +83,14 @@ function showPage(pageId) {
 
     document.getElementById(pageId).classList.remove('hidden');
 }
-/*function clearOutput() {
-    document.getElementById('outputBox').textContent = '';
-}*/
 
+
+
+// clears oput anything from the screen that does not need to be there
 function clearOutput() {
 
     const outputBox =
-        document.getElementById('outputBox');
+        document.getElementById('analysisOutputBox');
 
     if (outputBox) {
         outputBox.textContent = '';
@@ -105,6 +102,24 @@ function clearOutput() {
     if (sourceOutput) {
         sourceOutput.textContent = '';
     }
+
+    const summaryOutputBox =
+        document.getElementById('summaryOutputBox');
+
+    if (summaryOutputBox) {
+        summaryOutputBox.textContent = '';
+    }
+
+    const summaryOutputContainer =
+        document.getElementById('summaryOutput');
+
+    if (summaryOutputContainer) {
+        summaryOutputContainer.querySelectorAll('.summary-file-btn').forEach((button) => {
+            button.remove();
+        });
+    }
+
+    summaryPendingLine = '';
 }
 
 // MENU BUTTONS
@@ -129,8 +144,11 @@ document.getElementById('apiBtn')
         if (hasAPI) {
             
             overwriteApiUi();
+
         } else {
+
             newApiUi();
+
         }
 
 
@@ -143,7 +161,7 @@ document.getElementById('summaryBtn')
         clearOutput();
 
         showPage('summaryPage');
-        if (!ranFullPipline && !ranJSONSummaries && !ranSummaryDB) { //Not sure if these are the exact steps needed to be completed before the source page can be viewed, but this is a start
+        if (!summariesMade) { 
             const noVecSumEl = document.getElementById('noVectorStoresMsgSum');
             if (noVecSumEl) noVecSumEl.classList.remove('hidden');
 
@@ -163,7 +181,7 @@ document.getElementById('sourceBtn')
         clearOutput();
 
         showPage('sourcePage');
-        if (!ranFullPipline && !ranJSONSummaries && !ranSummaryDB) { //Not sure if these are the exact steps needed to be completed before the source page can be viewed, but this is a start
+        if (!sourcesMade) { 
             const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
             if (noVecSrcEl) noVecSrcEl.classList.remove('hidden');
 
@@ -186,7 +204,7 @@ document.getElementById('errorBtn')
         clearOutput();
 
         showPage('errorPage');
-        if (!ranFullPipline && !ranJSONSummaries && !ranSummaryDB) { //Not sure if these are the exact steps needed to be completed before the source page can be viewed, but this is a start
+        if (!errorsMade) { 
             const noErrorsMsgEl = document.getElementById('noErrorsMsg');
             if (noErrorsMsgEl) noErrorsMsgEl.classList.remove('hidden');
 
@@ -462,9 +480,9 @@ document.getElementById('backToFullPipelineBtn')
         document.getElementById('analysisBackBtn').classList.toggle('hidden');
     });
 
+
+
 //output
-
-
 let pendingLine = '';
 let lastLine = '';
 let summaryPendingLine = '';
@@ -472,18 +490,20 @@ let summaryPendingLine = '';
 window.electronAPI.onAnalysisPythonOutput((text) => {
 
     const outputBox =
-        document.getElementById('outputBox');
+        document.getElementById('analysisOutputBox');
 
     if (!outputBox) {
         return;
     }
 
+    //split up the output by lines and take out all the random characters that are being outputted by the python script
     pendingLine += text.replace(/\r/g, '');
 
     const parts = pendingLine.split('\n');
 
     pendingLine = parts.pop();
 
+    //once newline character is found print it in the box to let the user know it is getting used
     if (parts.length > 0) {
         lastLine = parts[parts.length - 1];
     }
@@ -493,9 +513,11 @@ window.electronAPI.onAnalysisPythonOutput((text) => {
 
 });
 
-//NO idea if this works at all yet, fiar warning
+//NO idea if this works at all yet, this is supposed to faciliate buttons being made for the summary page
+//working on function or if statemnt tocheck if this operation yields any button so we can display "There is no summary text" otherwise
 window.electronAPI.onSummaryPythonOutput((text) => {
 
+    // declarations
     const summaryOutputBox =
         document.getElementById('summaryOutputBox');
     const summaryOutputContainer =
@@ -505,14 +527,17 @@ window.electronAPI.onSummaryPythonOutput((text) => {
         return;
     }
 
+    //take out stray characters from the output and add it to the summary output box
     summaryPendingLine += text.replace(/\r/g, '');
 
+    //split the output into lines and process each line
     const parts = summaryPendingLine.split('\n');
     summaryPendingLine = parts.pop();
 
     parts.forEach((line) => {
         summaryOutputBox.textContent += line + '\n';
-
+        
+        //button creation by line
         const match = line.match(/^\s*(\d+)\.\s*(.+)$/);
         if (match) {
             const button = document.createElement('button');

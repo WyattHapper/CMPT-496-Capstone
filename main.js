@@ -5,6 +5,8 @@ const fs = require("fs");
 const dotenv = require("dotenv");
 
 
+
+
 //require('electron-reloader')(module);
 
 let pythonProcess = null;
@@ -123,119 +125,8 @@ function createWindow() {
         }
     );
 
-    //add code for outputs to be shown
+   
 
-    /*pythonProcess.stdout.on('data', (data) => {
-
-        const output = data.toString();
-
-        console.log(output);
-
-        if (
-            output.includes('CODEBASE ANALYSIS SYSTEM') ||
-            output.includes('Run Analysis Tools') ||
-            output.includes('View Summary Collections') ||
-            output.includes('View Source Code Collections') ||
-            output.includes('View Errors') ||
-            output.includes('Select an option')
-        ) {
-            return;
-        }
-
-        win.webContents.send(
-            'python-output',
-            output
-        );
-    });*/
-
-    /*pythonProcess.stdout.on('data', (data) => {
-
-        let output = data.toString();
-
-        output = output.replace(
-            /={10,}[\s\S]*?Select an option.*?:/g,
-            ''
-        );
-
-        if (output.trim()) {
-            win.webContents.send(
-                'python-output',
-                output
-            );
-        }
-    });
-
-    pythonProcess.stdout.on('data', (data) => {
-
-        const output = data.toString();
-
-        if (output.includes('PREVIEWING:')) {
-
-            win.webContents.send(
-                'collection-preview',
-                output
-            );
-
-            return;
-        }
-
-        win.webContents.send(
-            'python-output',
-            output
-        );
-
-    });
-
-    
-
-    pythonProcess.stderr.on('data', (data) => {
-
-        const text = data.toString();
-
-        win.webContents.send(
-            'python-output',
-            text
-        );
-
-    });
-
-    pythonProcess.stdout.on('data', (data) => {
-
-        const output = data.toString();
-
-        console.log(output); // <-- prints to PowerShell
-
-        //win.webContents.send('python-output', output);
-    });
-
-    //this is used to extract the output from the source collections page and turn them into buttons
-    pythonProcess.stdout.on('data', (data) => {
-
-        const output = data.toString();
-
-        const matches =
-            output.match(/^\d+\.\s+.+$/gm);
-
-        if (matches) {
-
-            const collections = matches.map(line =>
-                line.replace(/^\d+\.\s+/, '')
-            );
-
-            win.webContents.send(
-                'collections-list',
-                collections
-            );
-
-            return;
-        }
-
-        win.webContents.send(
-            'python-output',
-            output
-        );
-
-    });*/
 
     pythonProcess.stdout.on('data', (data) => {
 
@@ -247,7 +138,7 @@ function createWindow() {
             ''
         );
 
-        // Collection buttons
+        // Collection buttons (numbered list items)
         const matches =
             output.match(/^\d+\.\s+.+$/gm);
 
@@ -258,8 +149,8 @@ function createWindow() {
             );
 
             win.webContents.send(
-                'collections-list',
-                collections
+                'summary-output',
+                output
             );
 
             return;
@@ -287,6 +178,10 @@ function createWindow() {
         ) {
             return;
         }
+
+       
+
+    
 
         // Normal output
         win.webContents.send(

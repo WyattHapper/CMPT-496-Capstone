@@ -408,6 +408,7 @@ h2{
     transition: all var(--transition);
 }
 
+#analysisOutputBox,
 #outputBox,
 #sourceOutput,
 #summaryOutputBox {

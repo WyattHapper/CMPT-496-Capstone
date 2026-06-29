@@ -45,6 +45,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
         });
     },
 
+    // Listen for Summary Python output (numbered list items into buttons)
+    onSummaryPythonOutput: (callback) => {
+        ipcRenderer.on("summary-output", (event, text) => {
+            callback(text);
+        });
+    },
+
 
     // onCollectionPreview: (callback) => {
     //     ipcRenderer.on("collection-preview", (event, text) => {
