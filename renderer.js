@@ -463,14 +463,71 @@ document.getElementById('backToFullPipelineBtn')
     });
 
 //output
-window.electronAPI.onPythonOutput((text) => {
+
+
+let pendingLine = '';
+let lastLine = '';
+let summaryPendingLine = '';
+
+window.electronAPI.onAnalysisPythonOutput((text) => {
 
     const outputBox =
         document.getElementById('outputBox');
 
-    outputBox.textContent += text;
+    if (!outputBox) {
+        return;
+    }
+
+    pendingLine += text.replace(/\r/g, '');
+
+    const parts = pendingLine.split('\n');
+
+    pendingLine = parts.pop();
+
+    if (parts.length > 0) {
+        lastLine = parts[parts.length - 1];
+    }
+
+    outputBox.textContent =
+        pendingLine || lastLine;
 
 });
+
+window.electronAPI.onSummaryPythonOutput((text) => {
+
+    const summaryOutputBox =
+        document.getElementById('summaryOutputBox');
+    const summaryOutputContainer =
+        document.getElementById('summaryOutput');
+
+    if (!summaryOutputBox || !summaryOutputContainer) {
+        return;
+    }
+
+    summaryPendingLine += text.replace(/\r/g, '');
+
+    const parts = summaryPendingLine.split('\n');
+    summaryPendingLine = parts.pop();
+
+    parts.forEach((line) => {
+        summaryOutputBox.textContent += line + '\n';
+
+        const match = line.match(/^\s*(\d+)\.\s*(.+)$/);
+        if (match) {
+            const button = document.createElement('button');
+            button.className = 'summary-file-btn btn-primary';
+            button.textContent = `${match[1]}. ${match[2]}`;
+
+            button.addEventListener('click', () => {
+                summaryOutputBox.textContent = `${match[1]}. ${match[2]}`;
+            });
+
+            summaryOutputContainer.appendChild(button);
+        }
+    });
+
+});
+
 
 // window.electronAPI.onCollectionPreview((text) => {
 

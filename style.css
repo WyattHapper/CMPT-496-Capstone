@@ -388,3 +388,80 @@ h2{
     box-shadow: none;
     color: #333;
 }
+
+/* OUTPUTS */
+#analysisOutput {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    width: 100%;
+    max-width: 700px;
+    margin: 0 auto;
+    padding: 1rem;
+    border-radius: 14px;
+    border: 1px solid black;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    color: var(--text-primary);
+    transition: all var(--transition);
+}
+
+#outputBox,
+#sourceOutput,
+#summaryOutputBox {
+    width: 100%;
+    max-width: 100%;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    text-align: left;
+    font-family: inherit;
+}
+
+#summaryOutput {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    width: 100%;
+    align-items: stretch;
+}
+
+.summary-file-btn {
+    width: 100%;
+    text-align: left;
+    justify-content: flex-start;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: normal;
+}
+
+/* OTHER */
+.loader {
+  /* Size and shape */
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  
+  /* The track (light gray) and the indicator (blue) */
+  border: 5px solid #EAEAEA;
+  border-top-color: #3498db;
+  
+  /* Animation loop */
+  animation: spin 1s linear infinite;
+}
+
+/* Rotation logic */
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

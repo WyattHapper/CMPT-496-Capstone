@@ -115,7 +115,11 @@ function createWindow() {
         exePath,
         [],
         {
-            cwd: path.join(__dirname, 'releases', 'main')
+            cwd: __dirname,
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: '1'
+            }
         }
     );
 
@@ -182,6 +186,8 @@ function createWindow() {
 
     });
 
+    
+
     pythonProcess.stderr.on('data', (data) => {
 
         const text = data.toString();
@@ -233,9 +239,13 @@ function createWindow() {
 
     pythonProcess.stdout.on('data', (data) => {
 
-        const output = data.toString();
+       let output = data.toString();
 
-        console.log(output);
+        // Remove terminal escape codes from Python CLI output
+        output = output.replace(
+            /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g,
+            ''
+        );
 
         // Collection buttons
         const matches =

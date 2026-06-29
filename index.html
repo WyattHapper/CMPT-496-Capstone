@@ -99,8 +99,8 @@
         <h1>Output</h1>
 
         <div id="analysisOutput" class="hidden">
-            <h3>Output</h3>
-            <pre id="outputBox"></pre>
+            <div class="loader"></div>
+            <pre id="analysisOutputBox"></pre>
         </div>
 
         <button class="btn-primary back-btn" id="outputBackBtn">Back</button>
@@ -114,7 +114,9 @@
         <h3 id="summariesSubheader">Collection Preview</h3>
         <h3 class="hidden" id="noVectorStoresMsgSum">No vector stores found. Please generate summaries first.</h3>
 
-        <div id="summaryOutput"></div>
+        <div id="summaryOutput">
+            <pre id="summaryOutputBox"></pre>
+        </div>
         <button class="btn-primary back-btn" id="summaryBackBtn">Back</button>
 
     </div>

@@ -39,7 +39,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
 
     // Listen for Python output
-    onPythonOutput: (callback) => {
+    onAnalysisPythonOutput: (callback) => {
         ipcRenderer.on("python-output", (event, text) => {
             callback(text);
         });
