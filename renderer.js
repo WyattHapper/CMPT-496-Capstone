@@ -161,17 +161,29 @@ document.getElementById('summaryBtn')
         clearOutput();
 
         showPage('summaryPage');
-        if (!summariesMade) { 
-            const noVecSumEl = document.getElementById('noVectorStoresMsgSum');
-            if (noVecSumEl) noVecSumEl.classList.remove('hidden');
 
-            const summaryOutputEl = document.getElementById('summaryOutput');
-            if (summaryOutputEl) summaryOutputEl.classList.add('hidden');
+        // Reset the page
+        const summaryOutputEl =
+            document.getElementById('summaryOutput');
 
-            const summariesSubheaderEl = document.getElementById('summariesSubheader');
-            if (summariesSubheaderEl) summariesSubheaderEl.classList.add('hidden');
-        }
+        const noVecSumEl =
+            document.getElementById('noVectorStoresMsgSum');
 
+        const summariesSubheaderEl =
+            document.getElementById('summariesSubheader');
+
+
+        if (summaryOutputEl)
+            summaryOutputEl.classList.remove('hidden');
+
+        if (noVecSumEl)
+            noVecSumEl.classList.add('hidden');
+
+        if (summariesSubheaderEl)
+            summariesSubheaderEl.classList.remove('hidden');
+
+
+        // Ask Python for summary collections
         window.electronAPI.sendMenuOption('3');
     });
 
@@ -513,47 +525,59 @@ window.electronAPI.onAnalysisPythonOutput((text) => {
 
 });
 
-//NO idea if this works at all yet, this is supposed to faciliate buttons being made for the summary page
-//working on function or if statemnt tocheck if this operation yields any button so we can display "There is no summary text" otherwise
+//creates buttons on summary page
 window.electronAPI.onSummaryPythonOutput((text) => {
 
-    // declarations
-    const summaryOutputBox =
-        document.getElementById('summaryOutputBox');
     const summaryOutputContainer =
-        document.getElementById('summaryOutput');
-
-    if (!summaryOutputBox || !summaryOutputContainer) {
-        return;
-    }
-
-    //take out stray characters from the output and add it to the summary output box
-    summaryPendingLine += text.replace(/\r/g, '');
-
-    //split the output into lines and process each line
-    const parts = summaryPendingLine.split('\n');
-    summaryPendingLine = parts.pop();
-
-    parts.forEach((line) => {
-        summaryOutputBox.textContent += line + '\n';
+        document.getElementById("summaryOutput");
         
-        //button creation by line
-        const match = line.match(/^\s*(\d+)\.\s*(.+)$/);
-        if (match) {
-            const button = document.createElement('button');
-            button.className = 'summary-file-btn btn-primary';
-            button.textContent = `${match[1]}. ${match[2]}`;
+    console.log("SUMMARY RECEIVED:");
+    console.log(text);
 
-            button.addEventListener('click', () => {
-                summaryOutputBox.textContent = `${match[1]}. ${match[2]}`;
-            });
+    // Remove any existing buttons
+    summaryOutputContainer
+        .querySelectorAll(".summary-file-btn")
+        .forEach(btn => btn.remove());
 
-            summaryOutputContainer.appendChild(button);
-        }
+    
+    text.split("\n").forEach(line => {
+
+        const match = line.match(/^\s*(\d+)\.\s*(.+)$/); // get rid of all those extra text
+
+        if (!match) return;
+
+        const optionNumber = match[1]; // number from the CLI to send to choose the button
+        const filename = match[2];
+
+        const button = document.createElement("button"); //create the buttons
+        button.className = "summary-file-btn btn-primary";
+        button.textContent = filename;
+
+        //when one of the buttons is clicked it will route you to the right page and clear the div out to fill with new text
+        button.addEventListener("click", () => {
+            console.log("Selected:", filename);
+            summaryOutputContainer.innerHTML = "";
+            window.electronAPI.sendMenuOption(optionNumber);
+        });
+
+        summaryOutputContainer.appendChild(button); //add the buttons to the output box
     });
 
+    document
+        .getElementById("noVectorStoresMsgSum")
+        .classList.add("hidden");
+
+    
 });
 
+window.electronAPI.onSummarySelectionOutput((text) => {
+
+    const summaryOutputContainer =
+        document.getElementById("summaryOutput");
+
+    summaryOutputContainer.textContent += text;
+
+});
 
 // window.electronAPI.onCollectionPreview((text) => {
 

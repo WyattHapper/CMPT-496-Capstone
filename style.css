@@ -426,7 +426,7 @@ h2{
     flex-direction: column;
     gap: 0.75rem;
     width: 100%;
-    align-items: stretch;
+    align-items: center;
 }
 
 .summary-file-btn {

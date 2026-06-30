@@ -13,12 +13,14 @@ let pythonProcess = null;
 
 ipcMain.on('menu-option', (event, option) => {
 
-    if (pythonProcess) {
-
-        console.log(`Sending option ${option}`);
-
-        pythonProcess.stdin.write(option + '\n');
+    if (!pythonProcess) {
+        console.log("Python process is null!");
+        return;
     }
+
+    console.log("Sending option:", option);
+   
+    pythonProcess.stdin.write(option + '\n');
 
 });
 
@@ -114,8 +116,8 @@ function createWindow() {
     const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
 
     pythonProcess = spawn(
-        exePath,
-        [],
+        "python3",
+        ["main.py"],
         {
             cwd: __dirname,
             env: {
@@ -140,12 +142,12 @@ function createWindow() {
 
         // Collection buttons (numbered list items)
         const matches =
-            output.match(/^\d+\.\s+.+$/gm);
+            output.match(/^\s*\d+\.\s+.+$/gm);
 
         if (matches) {
 
             const collections = matches.map(line =>
-                line.replace(/^\d+\.\s+/, '')
+                line.replace(/^\s*\d+\.\s+.+$/gm, '')
             );
 
             win.webContents.send(
