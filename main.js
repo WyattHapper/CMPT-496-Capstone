@@ -125,6 +125,29 @@ function createWindow() {
         }
     );
 
+
+    //this code below is used to point to main.js
+    /*const os = require("os");
+
+    const pythonPath =
+        os.platform() === "win32"
+            ? path.join(__dirname, ".venv", "Scripts", "python.exe")
+            : path.join(__dirname, ".venv", "bin", "python");
+
+    const scriptPath = path.join(__dirname, "main.py");
+
+    pythonProcess = spawn(
+        pythonPath,
+        [scriptPath],
+        {
+            cwd: __dirname,
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: "1"
+            }
+        }
+    );*/
+
    
 
 
