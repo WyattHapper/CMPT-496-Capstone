@@ -575,7 +575,17 @@ window.electronAPI.onSummarySelectionOutput((text) => {
     const summaryOutputContainer =
         document.getElementById("summaryOutput");
 
-    summaryOutputContainer.textContent += text;
+    if (!summaryOutputContainer) {
+        return;
+    }
+
+    summaryOutputContainer.innerHTML = "";
+
+    const previewBox = document.createElement("pre");
+    previewBox.className = "summary-preview-text";
+    previewBox.textContent = text;
+
+    summaryOutputContainer.appendChild(previewBox);
 
 });
 

@@ -225,7 +225,7 @@ function createWindow() {
         if (output.includes('PREVIEWING:')) {
 
             win.webContents.send(
-                'collection-preview',
+                'summary-selection-output',
                 output
             );
 

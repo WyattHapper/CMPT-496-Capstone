@@ -9,6 +9,8 @@ body{
     min-height: 100vh;
     align-items: center;
     justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 :root {
   --bg-primary: #f5f7fb;
@@ -430,7 +432,7 @@ h2{
 }
 
 .summary-file-btn {
-    width: 100%;
+    width: min(100%, 420px);
     text-align: left;
     justify-content: flex-start;
     padding: 0.85rem 1rem;
@@ -440,6 +442,22 @@ h2{
     color: var(--text-primary);
     font-weight: 600;
     white-space: normal;
+}
+
+.summary-preview-text {
+    display: block;
+    width: 100%;
+    max-width: 720px;
+    height: 60vh;
+    overflow-y: scroll;
+    overflow-x: hidden;
+    padding: 1rem;
+    border-radius: 14px;
+    background: rgba(255,255,255,0.18);
+    border: 1px solid rgba(255,255,255,0.2);
+    white-space: pre-wrap;
+    word-break: break-all;
+    text-align: left;
 }
 
 /* OTHER */
