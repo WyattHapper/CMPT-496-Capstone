@@ -113,7 +113,7 @@ function createWindow() {
 
     
 
-    const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
+   /* const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
 
     pythonProcess = spawn(
         "python3",
@@ -125,7 +125,47 @@ function createWindow() {
                 PYTHONUNBUFFERED: '1'
             }
         }
+    );*/
+
+    //the above code is giving errors with chromadb, I am using the code below to run on the virtual environment
+    const pythonPath = path.join(
+        __dirname,
+        ".venv",
+        "Scripts",
+        "python.exe"
     );
+
+    pythonProcess = spawn(
+        pythonPath,
+        [path.join(__dirname, "main.py")],
+        {
+            cwd: __dirname,
+            env: {
+                ...process.env,
+                PYTHONUNBUFFERED: "1"
+            }
+        }
+    );
+
+    // Debug logging
+    pythonProcess.stdout.on("data", (data) => {
+        console.log("STDOUT:");
+        console.log(data.toString());
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+        console.error("STDERR:");
+        console.error(data.toString());
+    });
+
+    pythonProcess.on("error", (err) => {
+        console.error("Failed to start Python:");
+        console.error(err);
+    });
+
+    pythonProcess.on("close", (code) => {
+        console.log("Python exited with code:", code);
+    });
 
 
     //this code below is used to point to main.js
