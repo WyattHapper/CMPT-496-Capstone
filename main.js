@@ -7,9 +7,11 @@ const dotenv = require("dotenv");
 
 
 
+
 //require('electron-reloader')(module);
 
 let pythonProcess = null;
+let inPreview = false;
 
 ipcMain.on('menu-option', (event, option) => {
 
@@ -222,16 +224,26 @@ function createWindow() {
         }
 
         // Collection preview
-        if (output.includes('PREVIEWING:')) {
-
-            win.webContents.send(
-                'summary-selection-output',
-                output
-            );
-
-            return;
+        if (output.includes("PREVIEWING:")) {
+            inPreview = true;
         }
 
+        if (inPreview) {
+
+            win.webContents.send(
+            "summary-selection-output",
+            output
+        );
+
+        // Detect when preview ends
+        if (output.includes("Press Enter") ||
+            output.includes("Select an option")) {
+
+            inPreview = false;
+        }
+
+        return;
+    }
         // Ignore menu text
         if (
             output.includes('CODEBASE ANALYSIS SYSTEM') ||

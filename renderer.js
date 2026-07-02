@@ -6,6 +6,8 @@ let summariesMade = false; // Flag to track if summaries have been made
 let sourcesMade = false; // Flag to track if source collections have been made
 let errorsMade = false; // flag totrack if source collections have been made
 
+let viewingSummaryPreview = false; // Flag to track if the user is viewing a summary preview
+
 
 // Checks if the API key has been set
 const envPath = ".env";
@@ -114,9 +116,14 @@ function clearOutput() {
         document.getElementById('summaryOutput');
 
     if (summaryOutputContainer) {
-        summaryOutputContainer.querySelectorAll('.summary-file-btn').forEach((button) => {
-            button.remove();
+        summaryOutputContainer.querySelectorAll('.summary-file-btn, .summary-preview-text')
+        .forEach((element) => {
+    
+            element.remove();
         });
+
+        summaryPreviewText = "";
+        viewingSummaryPreview = false;
     }
 
     summaryPendingLine = '';
@@ -410,10 +417,10 @@ document.getElementById('sourceBackBtn')
 
         showPage('homePage');
 
-        if (!ranFullPipline && !ranJSONSummaries && !ranSummaryDB) {
+        if (viewingSummaryPreview) {
             window.electronAPI.sendEnter();
         } else{
-            window.electronAPI.sendMenuOption('1');
+            window.electronAPI.sendMenuOption('b');
         }
     });
 //======================================================
@@ -528,6 +535,8 @@ window.electronAPI.onAnalysisPythonOutput((text) => {
 //creates buttons on summary page
 window.electronAPI.onSummaryPythonOutput((text) => {
 
+    viewingSummaryPreview = false;
+
     const summaryOutputContainer =
         document.getElementById("summaryOutput");
         
@@ -555,8 +564,12 @@ window.electronAPI.onSummaryPythonOutput((text) => {
 
         //when one of the buttons is clicked it will route you to the right page and clear the div out to fill with new text
         button.addEventListener("click", () => {
+            viewingSummaryPreview = true;
             console.log("Selected:", filename);
+
+            summaryPreviewText = "";
             summaryOutputContainer.innerHTML = "";
+
             window.electronAPI.sendMenuOption(optionNumber);
         });
 
@@ -570,23 +583,30 @@ window.electronAPI.onSummaryPythonOutput((text) => {
     
 });
 
+let summaryPreviewText = "";
+
 window.electronAPI.onSummarySelectionOutput((text) => {
 
-    const summaryOutputContainer =
+    const container =
         document.getElementById("summaryOutput");
 
-    if (!summaryOutputContainer) {
-        return;
+    let preview =
+        container.querySelector(".summary-preview-text");
+
+    if (!preview) {
+
+        container.innerHTML = "";
+
+        preview = document.createElement("pre");
+        preview.className = "summary-preview-text";
+
+        container.appendChild(preview);
+
+        summaryPreviewText = "";
     }
 
-    summaryOutputContainer.innerHTML = "";
-
-    const previewBox = document.createElement("pre");
-    previewBox.className = "summary-preview-text";
-    previewBox.textContent = text;
-
-    summaryOutputContainer.appendChild(previewBox);
-
+    summaryPreviewText += text;
+    preview.textContent = summaryPreviewText;
 });
 
 // window.electronAPI.onCollectionPreview((text) => {
