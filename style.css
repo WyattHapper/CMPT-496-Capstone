@@ -423,7 +423,8 @@ h2{
     font-family: inherit;
 }
 
-#summaryOutput {
+#summaryOutput,
+#sourceOutput {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
@@ -431,7 +432,7 @@ h2{
     align-items: center;
 }
 
-.summary-file-btn {
+.output-file-btn {
     width: min(100%, 420px);
     text-align: left;
     justify-content: flex-start;
@@ -444,7 +445,8 @@ h2{
     white-space: normal;
 }
 
-.summary-preview-text {
+.summary-preview-text,
+.source-preview-text {
     display: block;
     width: 100%;
     max-width: 720px;

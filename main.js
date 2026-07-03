@@ -12,6 +12,9 @@ const dotenv = require("dotenv");
 
 let pythonProcess = null;
 let inPreview = false;
+let activeCollectionMode = null;
+let collectionOutputActive = false;
+let collectionBuffer = '';
 
 ipcMain.on('menu-option', (event, option) => {
 
@@ -129,22 +132,23 @@ function createWindow() {
         }
     );*/
 
-    //the above code is giving errors with chromadb, I am using the code below to run on the virtual environment
-    const pythonPath = path.join(
-        __dirname,
-        ".venv",
-        "Scripts",
-        "python.exe"
-    );
+    const isWindows = process.platform === 'win32';
+    const isMac = process.platform === 'darwin';
+
+    const pythonPath = isWindows
+        ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
+        : isMac
+            ? 'python3'
+            : 'python3';
 
     pythonProcess = spawn(
         pythonPath,
-        [path.join(__dirname, "main.py")],
+        [path.join(__dirname, 'main.py')],
         {
             cwd: __dirname,
             env: {
                 ...process.env,
-                PYTHONUNBUFFERED: "1"
+                PYTHONUNBUFFERED: '1'
             }
         }
     );
@@ -197,54 +201,70 @@ function createWindow() {
 
     pythonProcess.stdout.on('data', (data) => {
 
-       let output = data.toString();
+        let output = data.toString();
 
-        // Remove terminal escape codes from Python CLI output
         output = output.replace(
             /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g,
             ''
         );
+        output = output.replace(/\x00|\u0000/g, '');
 
-        // Collection buttons (numbered list items)
-        const matches =
-            output.match(/^\s*\d+\.\s+.+$/gm);
-
-        if (matches) {
-
-            const collections = matches.map(line =>
-                line.replace(/^\s*\d+\.\s+.+$/gm, '')
-            );
-
-            win.webContents.send(
-                'summary-output',
-                output
-            );
-
-            return;
-        }
-
-        // Collection preview
-        if (output.includes("PREVIEWING:")) {
+        if (output.includes('PREVIEWING:')) {
             inPreview = true;
         }
 
         if (inPreview) {
+            const channel = activeCollectionMode === 'source'
+                ? 'source-selection-output'
+                : 'summary-selection-output';
 
-            win.webContents.send(
-            "summary-selection-output",
-            output
-        );
+            win.webContents.send(channel, output);
 
-        // Detect when preview ends
-        if (output.includes("Press Enter") ||
-            output.includes("Select an option")) {
+            if (
+                output.includes('Press Enter') ||
+                output.includes('Select an option') ||
+                output.includes('Select a number to preview')
+            ) {
+                inPreview = false;
+                activeCollectionMode = null;
+            }
 
-            inPreview = false;
+            return;
         }
 
-        return;
-    }
-        // Ignore menu text
+        if (collectionOutputActive) {
+            collectionBuffer += output;
+
+            const hasListItems = /^\s*\d+\.\s+/m.test(collectionBuffer);
+            const hasSelectionPrompt = /Select a number to preview|Select an option|Press Enter/i.test(collectionBuffer);
+
+            if (hasListItems || hasSelectionPrompt) {
+                const channel = activeCollectionMode === 'source'
+                    ? 'source-output'
+                    : 'summary-output';
+
+                win.webContents.send(channel, collectionBuffer);
+                collectionBuffer = '';
+                collectionOutputActive = false;
+            }
+
+            return;
+        }
+
+        if (output.includes('Available Summary Collections')) {
+            activeCollectionMode = 'summary';
+            collectionOutputActive = true;
+            collectionBuffer = output;
+            return;
+        }
+
+        if (output.includes('Available Code Collections')) {
+            activeCollectionMode = 'source';
+            collectionOutputActive = true;
+            collectionBuffer = output;
+            return;
+        }
+
         if (
             output.includes('CODEBASE ANALYSIS SYSTEM') ||
             output.includes('Run Analysis Tools') ||
@@ -256,16 +276,7 @@ function createWindow() {
             return;
         }
 
-       
-
-    
-
-        // Normal output
-        win.webContents.send(
-            'python-output',
-            output
-        );
-
+        win.webContents.send('python-output', output);
     });
 }
 

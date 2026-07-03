@@ -58,6 +58,18 @@ contextBridge.exposeInMainWorld("electronAPI", {
         });
     },
 
+    onSourcePythonOutput: (callback) => {
+        ipcRenderer.on("source-output", (event, text) => {
+            callback(text);
+        });
+    },
+
+    onSourceSelectionOutput: (callback) => {
+        ipcRenderer.on("source-selection-output", (event, text) => {
+            callback(text);
+        });
+    },
+
 
     // onCollectionPreview: (callback) => {
     //     ipcRenderer.on("collection-preview", (event, text) => {

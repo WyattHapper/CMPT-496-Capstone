@@ -7,6 +7,7 @@ let sourcesMade = false; // Flag to track if source collections have been made
 let errorsMade = false; // flag totrack if source collections have been made
 
 let viewingSummaryPreview = false; // Flag to track if the user is viewing a summary preview
+let viewingSourcePreview = false; // Flag to track if the user is viewing a source preview
 
 
 // Checks if the API key has been set
@@ -102,7 +103,17 @@ function clearOutput() {
         document.getElementById('sourceOutput');
 
     if (sourceOutput) {
-        sourceOutput.textContent = '';
+        sourceOutput.querySelectorAll('.source-file-btn, .source-preview-text')
+            .forEach((element) => {
+                element.remove();
+            });
+    }
+
+    const sourceOutputBox =
+        document.getElementById('sourceOutputBox');
+
+    if (sourceOutputBox) {
+        sourceOutputBox.textContent = '';
     }
 
     const summaryOutputBox =
@@ -124,6 +135,8 @@ function clearOutput() {
 
         summaryPreviewText = "";
         viewingSummaryPreview = false;
+        sourcePreviewText = "";
+        viewingSourcePreview = false;
     }
 
     summaryPendingLine = '';
@@ -200,21 +213,17 @@ document.getElementById('sourceBtn')
         clearOutput();
 
         showPage('sourcePage');
-        if (!sourcesMade) { 
-            const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
-            if (noVecSrcEl) noVecSrcEl.classList.remove('hidden');
 
-            const sourceOutputEl = document.getElementById('sourceOutput');
-            if (sourceOutputEl) sourceOutputEl.classList.add('hidden');
+        const sourceOutputEl = document.getElementById('sourceOutput');
+        if (sourceOutputEl) sourceOutputEl.classList.remove('hidden');
 
-            const sourceCollectionSubheaderEl = document.getElementById('sourceCollectionSubheader');
-            if (sourceCollectionSubheaderEl) sourceCollectionSubheaderEl.classList.add('hidden');
-        }
+        const sourceCollectionSubheaderEl = document.getElementById('sourceCollectionSubheader');
+        if (sourceCollectionSubheaderEl) sourceCollectionSubheaderEl.classList.remove('hidden');
+
+        const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
+        if (noVecSrcEl) noVecSrcEl.classList.add('hidden');
        
         window.electronAPI.sendMenuOption('4');
-        
-
-       
     });
 
 document.getElementById('errorBtn')
@@ -417,9 +426,9 @@ document.getElementById('sourceBackBtn')
 
         showPage('homePage');
 
-        if (viewingSummaryPreview) {
+        if (viewingSummaryPreview || viewingSourcePreview) {
             window.electronAPI.sendEnter();
-        } else{
+        } else {
             window.electronAPI.sendMenuOption('b');
         }
     });
@@ -545,13 +554,14 @@ window.electronAPI.onSummaryPythonOutput((text) => {
 
     // Remove any existing buttons
     summaryOutputContainer
-        .querySelectorAll(".summary-file-btn")
+        .querySelectorAll(".output-file-btn")
         .forEach(btn => btn.remove());
 
     
     text.split("\n").forEach(line => {
 
-        const match = line.match(/^\s*(\d+)\.\s*(.+)$/); // get rid of all those extra text
+        const cleanedLine = line.replace(/\x00|\u0000/g, '');
+        const match = cleanedLine.match(/^\s*(\d+)\.\s*(.+)$/); // get rid of all those extra text
 
         if (!match) return;
 
@@ -559,7 +569,7 @@ window.electronAPI.onSummaryPythonOutput((text) => {
         const filename = match[2];
 
         const button = document.createElement("button"); //create the buttons
-        button.className = "summary-file-btn btn-primary";
+        button.className = "output-file-btn btn-primary";
         button.textContent = filename;
 
         //when one of the buttons is clicked it will route you to the right page and clear the div out to fill with new text
@@ -607,6 +617,99 @@ window.electronAPI.onSummarySelectionOutput((text) => {
 
     summaryPreviewText += text;
     preview.textContent = summaryPreviewText;
+});
+
+let sourcePreviewText = "";
+
+window.electronAPI.onSourcePythonOutput((text) => {
+
+    viewingSourcePreview = false;
+
+    const sourceOutputContainer =
+        document.getElementById("sourceOutput");
+
+    const sourceOutputBox =
+        document.getElementById("sourceOutputBox");
+
+    if (sourceOutputContainer) {
+        sourceOutputContainer.classList.remove("hidden");
+    }
+
+    const sourceCollectionSubheaderEl =
+        document.getElementById("sourceCollectionSubheader");
+
+    if (sourceCollectionSubheaderEl) {
+        sourceCollectionSubheaderEl.classList.remove("hidden");
+    }
+
+    if (!sourceOutputContainer || !sourceOutputBox) {
+        return;
+    }
+
+    sourceOutputContainer
+        .querySelectorAll(".output-file-btn")
+        .forEach(btn => btn.remove());
+
+    sourceOutputBox.textContent = "";
+
+    text.split("\n").forEach(line => {
+
+        const cleanedLine = line.replace(/\x00|\u0000/g, '');
+        const match = cleanedLine.match(/^\s*(\d+)\.\s*(.+)$/);
+
+        if (!match) return;
+
+        const optionNumber = match[1];
+        const filename = match[2];
+
+        const button = document.createElement("button");
+        button.className = "output-file-btn btn-primary";
+        button.textContent = filename;
+
+        button.addEventListener("click", () => {
+            viewingSourcePreview = true;
+            sourcePreviewText = "";
+            sourceOutputContainer.innerHTML = "";
+
+            const preview = document.createElement("pre");
+            preview.className = "source-preview-text";
+            sourceOutputContainer.appendChild(preview);
+
+            window.electronAPI.sendMenuOption(optionNumber);
+        });
+
+        sourceOutputContainer.appendChild(button);
+    });
+
+    const noVecSrcEl = document.getElementById("noVectorStoresMsgSrc");
+    if (noVecSrcEl) {
+        noVecSrcEl.classList.add("hidden");
+    }
+
+    sourcesMade = true;
+});
+
+window.electronAPI.onSourceSelectionOutput((text) => {
+
+    const sourceOutputContainer =
+        document.getElementById("sourceOutput");
+
+    if (!sourceOutputContainer) {
+        return;
+    }
+
+    let preview = sourceOutputContainer.querySelector(".source-preview-text");
+
+    if (!preview) {
+        sourceOutputContainer.innerHTML = "";
+        preview = document.createElement("pre");
+        preview.className = "source-preview-text";
+        sourceOutputContainer.appendChild(preview);
+        sourcePreviewText = "";
+    }
+
+    sourcePreviewText += text;
+    preview.textContent = sourcePreviewText;
 });
 
 // window.electronAPI.onCollectionPreview((text) => {
