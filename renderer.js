@@ -99,6 +99,13 @@ function clearOutput() {
         outputBox.textContent = '';
     }
 
+    const errorOutput =
+        document.getElementById('errorOutput');
+
+    if (errorOutput) {
+        errorOutput.textContent = '';
+    }
+
     const sourceOutput =
         document.getElementById('sourceOutput');
 
@@ -236,8 +243,8 @@ document.getElementById('errorBtn')
             const noErrorsMsgEl = document.getElementById('noErrorsMsg');
             if (noErrorsMsgEl) noErrorsMsgEl.classList.remove('hidden');
 
-            const errorOutputEl = document.getElementById('errorOutput');
-            if (errorOutputEl) errorOutputEl.classList.add('hidden');
+            //const errorOutputEl = document.getElementById('errorOutput');
+            //if (errorOutputEl) errorOutputEl.classList.add('hidden');
 
             const errorSubheaderEl = document.getElementById('errorSubheader');
             if (errorSubheaderEl) errorSubheaderEl.classList.add('hidden');
@@ -543,6 +550,21 @@ window.electronAPI.onAnalysisPythonOutput((text) => {
     outputBox.textContent =
         pendingLine || lastLine;
 
+});
+
+window.electronAPI.onErrorOutput((text) => {
+
+    console.log("Received error output:");
+    console.log(text);
+
+    const outputBox = document.getElementById("errorOutput");
+
+    if (!outputBox) {
+        console.log("Couldn't find errorOutput element!");
+        return;
+    }
+
+    outputBox.textContent += text;
 });
 
 //creates buttons on summary page

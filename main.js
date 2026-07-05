@@ -209,6 +209,18 @@ function createWindow() {
         );
         output = output.replace(/\x00|\u0000/g, '');
 
+        // Error page
+        if (
+            output.includes("--- ERROR LOG ---") ||
+            output.includes("[ERROR")
+        ) {
+            console.log("Sending error-output:");
+            console.log(output);
+
+            win.webContents.send("error-output", output);
+            return;
+        }
+
         if (output.includes('PREVIEWING:')) {
             inPreview = true;
         }
