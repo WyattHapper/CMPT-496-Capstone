@@ -415,7 +415,11 @@ document.getElementById('summaryBackBtn')
 
         showPage('homePage');
 
-        window.electronAPI.sendMenuOption('1');
+         if (viewingSummaryPreview || viewingSourcePreview) {
+            window.electronAPI.sendEnter();
+        } else {
+            window.electronAPI.sendMenuOption('b');
+        }
     });
 
 //Source code collections buttons
@@ -628,29 +632,17 @@ window.electronAPI.onSourcePythonOutput((text) => {
     const sourceOutputContainer =
         document.getElementById("sourceOutput");
 
-    const sourceOutputBox =
-        document.getElementById("sourceOutputBox");
+    
+    console.log("SOURCE RECEIVED:");
+    console.log(text);
 
-    if (sourceOutputContainer) {
-        sourceOutputContainer.classList.remove("hidden");
-    }
-
-    const sourceCollectionSubheaderEl =
-        document.getElementById("sourceCollectionSubheader");
-
-    if (sourceCollectionSubheaderEl) {
-        sourceCollectionSubheaderEl.classList.remove("hidden");
-    }
-
-    if (!sourceOutputContainer || !sourceOutputBox) {
-        return;
-    }
+    
 
     sourceOutputContainer
         .querySelectorAll(".output-file-btn")
         .forEach(btn => btn.remove());
 
-    sourceOutputBox.textContent = "";
+    
 
     text.split("\n").forEach(line => {
 
@@ -668,25 +660,24 @@ window.electronAPI.onSourcePythonOutput((text) => {
 
         button.addEventListener("click", () => {
             viewingSourcePreview = true;
+            console.log("Selected:", filename);
+
             sourcePreviewText = "";
             sourceOutputContainer.innerHTML = "";
 
-            const preview = document.createElement("pre");
-            preview.className = "source-preview-text";
-            sourceOutputContainer.appendChild(preview);
-
+           
             window.electronAPI.sendMenuOption(optionNumber);
         });
 
         sourceOutputContainer.appendChild(button);
     });
 
-    const noVecSrcEl = document.getElementById("noVectorStoresMsgSrc");
-    if (noVecSrcEl) {
-        noVecSrcEl.classList.add("hidden");
-    }
+    document
+        .getElementById("noVectorStoresMsgSum")
+        .classList.add("hidden");
 
-    sourcesMade = true;
+
+   
 });
 
 window.electronAPI.onSourceSelectionOutput((text) => {
@@ -694,17 +685,18 @@ window.electronAPI.onSourceSelectionOutput((text) => {
     const sourceOutputContainer =
         document.getElementById("sourceOutput");
 
-    if (!sourceOutputContainer) {
-        return;
-    }
-
-    let preview = sourceOutputContainer.querySelector(".source-preview-text");
+    let preview = 
+    sourceOutputContainer.querySelector(".source-preview-text");
 
     if (!preview) {
+
         sourceOutputContainer.innerHTML = "";
+
         preview = document.createElement("pre");
         preview.className = "source-preview-text";
+
         sourceOutputContainer.appendChild(preview);
+
         sourcePreviewText = "";
     }
 
