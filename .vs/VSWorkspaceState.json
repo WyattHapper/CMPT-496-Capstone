@@ -1,7 +1,9 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\agent",
+    "\\releases"
   ],
-  "SelectedNode": "\\renderer.js",
+  "SelectedNode": "\\main.py",
   "PreviewInSolutionExplorer": false
 }

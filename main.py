@@ -179,7 +179,7 @@ def select_rules(validated_rules_path):
         print("   Validated Rules Selection")
         print("================================")
         for rule in raw_rules:
-            print(f"\n{rule["id"]}. {rule["rule"]}")
+            print(f"\n{rule['id']}. {rule['rule']}")
         choice = input("Select the rules you would like to generate tests for (Seperate the IDs with commas) or select every rule (All): ").lower()
         if choice == "all":
             return []
