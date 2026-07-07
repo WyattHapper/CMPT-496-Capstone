@@ -5,8 +5,8 @@
 generates unit tests and writes the results to JSON.
 """
 
-from agent.states.UT_agent_state import UTGraphState
-from agent.structured_output.UT_output import (
+from agent.states.UTV_agent_state import UTVGraphState
+from agent.structured_output.UTV_output import (
     ValidatedRule, UnitTest
 )
 from langgraph.graph import StateGraph, START, END
@@ -30,7 +30,7 @@ MAX_RETRIES = 3
 DELAY = 1  # seconds
 
 
-class UTAgent:
+class UTVAgent:
     """
     @brief LangGraph-based agent for generating unit tests based on business rules.
 
@@ -72,7 +72,7 @@ class UTAgent:
             - If current_rules is empty (all rules processed) → writer
         """
 
-        builder = StateGraph(UTGraphState)
+        builder = StateGraph(UTVGraphState)
 
         # Set nodes
         builder.add_node("retriever", self.retriever_node)
@@ -135,7 +135,7 @@ class UTAgent:
             self._loop.close()
             self._loop = None
     
-    def retriever_node(self, state: UTGraphState) -> UTGraphState:
+    def retriever_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Retrieves relevant code snippets and file summaries for all current validated business rules.
 
@@ -237,7 +237,7 @@ class UTAgent:
             "rule_contexts": updated_contexts,
         }
 
-    def test_generator_node(self, state: UTGraphState) -> UTGraphState:
+    def test_generator_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Generates unit tests for validated business rules.
 
@@ -272,7 +272,7 @@ class UTAgent:
 
         return {"unit_tests": unit_tests}
 
-    def writer_node(self, state: UTGraphState) -> UTGraphState:
+    def writer_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Writes unit tests to JSON output files.
 
@@ -446,3 +446,26 @@ You must bridge the gap between the abstract Business Rule and the concrete Sour
         return rule, output, None
     except Exception as e:
         return rule, None, e
+
+if __name__ == "__main__":
+    """
+    @brief Script entry point for running BRAgent.
+    @details Loads business rules from a JSON file and runs the validation pipeline.
+    """
+    if len(sys.argv) != 3:
+        print("Usage: python -m agent.UTV_agent <codebase_path> <rules_json_path>")
+        sys.exit(1)
+
+    codebase = sys.argv[1]
+    codebase_name = os.path.basename(codebase)
+    rules_path = sys.argv[2]
+
+    with open(rules_path, "r", encoding="utf-8") as f:
+        raw_rules = json.load(f)
+
+    # Convert raw JSON dicts back to BusinessRule objects
+    input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]   
+
+    agent = UTVAgent()
+    agent.run(input_rules, codebase_name, codebase)
+    print("UTVAgent has completed its task!")

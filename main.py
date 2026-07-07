@@ -14,6 +14,7 @@ import subprocess
 from xml.parsers.expat import errors
 import chromadb
 import time
+import json
 from pathlib import Path
 
 if getattr(sys, 'frozen', False):
@@ -40,6 +41,7 @@ def run_step(step_name: str, module: str, args: list, errors: list):
         from agent.directory_agent import DirectoryAgent
         from agent.BR_agent import BRAgent
         from agent.UT_agent import UTAgent
+        from agent.UTV_agent import UTVAgent
         from utils.uml_json_to_pdf import main as _uml_main
         from agent.structured_output.file_summary_output import BusinessRule
         from agent.structured_output.UT_output import ValidatedRule
@@ -65,12 +67,27 @@ def run_step(step_name: str, module: str, args: list, errors: list):
             agent.run(input_rules, codebase_name)
 
         def run_ut(args):
+            codebase_path, rules_path, input_ids = str(args[0]), args[1], args[2]
+            codebase_name = Path(codebase_path).name
+            with open(rules_path, "r", encoding="utf-8") as f:
+                raw_rules = json.load(f)
+            if len(input_ids) == 0:
+                input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]
+            else:
+                input_rules = []
+                for rule in raw_rules:
+                    if rule["id"] in input_ids:
+                        input_rules.append(ValidatedRule.model_validate(rule))
+            agent = UTAgent()
+            agent.run(input_rules, codebase_name, codebase_path)
+
+        def run_utv(args):
             codebase_path, rules_path = str(args[0]), args[1]
             codebase_name = Path(codebase_path).name
             with open(rules_path, "r", encoding="utf-8") as f:
                 raw_rules = json.load(f)
             input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]
-            agent = UTAgent()
+            agent = UTVAgent()
             agent.run(input_rules, codebase_name, codebase_path)
         
         def run_uml(args):
@@ -91,6 +108,7 @@ def run_step(step_name: str, module: str, args: list, errors: list):
             "agent.directory_agent":    run_directory,
             "agent.BR_agent":           run_br,
             "agent.UT_agent":           run_ut,
+            "agent.UTV_agent":          run_utv,
             "utils.uml_json_to_pdf":    run_uml,
         }
 
@@ -152,6 +170,26 @@ def get_api():
     input("\nAPI key successfully added! Press Enter... ")
     return True
 
+def select_rules(validated_rules_path):
+    with open(validated_rules_path, "r", encoding="utf-8") as file:
+        raw_rules = json.load(file)
+    while True:
+        os.system("cls" if os.name == "nt" else "clear")
+        print("================================")
+        print("   Validated Rules Selection")
+        print("================================")
+        for rule in raw_rules:
+            print(f"\n{rule["id"]}. {rule["rule"]}")
+        choice = input("Select the rules you would like to generate tests for (Seperate the IDs with commas) or select every rule (All): ").lower()
+        if choice == "all":
+            return []
+        try: 
+            selections = [int(id.strip()) for id in choice.split(",")]
+        except:
+            input("Invalid output please try again.")
+            continue
+        return selections
+    
 def processing_menu(errors: list):
     """
     @brief Sub-menu for initiating the summarization process.
@@ -167,14 +205,15 @@ def processing_menu(errors: list):
         print("4. Create Summary Database from JSON Only")
         print("5. Create Directory Summaries Only")
         print("6. Run Business Rule Validation Only")
-        print("7. Run Unit Test Generation Only")
-        print("8. Run UML Generation Only")
-        print("9. Return to Main Menu")
+        print("7. Run UML Generation Only")
+        print("8. Run Unit Test Generation Only")
+        print("9. Run Unit Test Validation Only")
+        print("10. Return to Main Menu")
         print("----------------------------------------")
-        choice = input("Select an option (1-9): ")
-        if choice == '9':
+        choice = input("Select an option (1-10): ")
+        if choice == '10':
             break
-        if choice in ['1', '2', '3', '4', '5', '6', '7', '8']:
+        if choice in ['1', '2', '3', '4', '5', '6', '7', '8', '9']:
             path_input = input("\nEnter the path to the codebase: ").strip()
             if not path_input: 
                 continue
@@ -197,8 +236,9 @@ def processing_menu(errors: list):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
                             if run_step("Directory Summary Generation", "agent.directory_agent", [str(codebase)], errors):
                                 if run_step("Business Rule Validation", "agent.BR_agent", [codebase_name, rules_path], errors):
-                                    if run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path], errors):
-                                        if uml_generation(dir_path, errors):
+                                    if uml_generation(dir_path, errors):
+                                        if run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path, []], errors):
+                                            #if run_step("Unit Test Validation", "agent.UTV_agent", [codebase, validated_rules_path], errors):
                                             print("\nFull pipeline completed successfully!")
                 input("\nPress enter to return to menu...")
 
@@ -228,15 +268,6 @@ def processing_menu(errors: list):
                 input("\nTask finished. Press enter...")
 
             elif choice == '7':
-                if not Path(validated_rules_path).exists():
-                    print(f"Error: Validated rules file not found at '{validated_rules_path}'.")
-                    print("Please run 'Business Rule Validation' first to generate validated rules.")
-                    input("\nPress enter to return to menu...")
-                    continue
-                run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path], errors)
-                input("\nTask finished. Press enter...")
-
-            elif choice == '8':
                 if not Path(dir_path).exists():
                     print(f"Error: Summary files not found at '{dir_path}'.")
                     print("Please run 'Create JSON Summaries' first to generate summaries.")
@@ -245,6 +276,26 @@ def processing_menu(errors: list):
                 uml_generation(dir_path, errors)
                 input("\nTask finished. Press enter...")
 
+            elif choice == '8':
+                if not Path(validated_rules_path).exists():
+                    print(f"Error: Validated rules file not found at '{validated_rules_path}'.")
+                    print("Please run 'Business Rule Validation' first to generate validated rules.")
+                    input("\nPress enter to return to menu...")
+                    continue
+                input_ids = select_rules(validated_rules_path)
+                run_step("Unit Test Generation", "agent.UT_agent", [codebase, validated_rules_path, input_ids], errors)
+                input("\nTask finished. Press enter...")
+
+            elif choice == '9':
+                if not Path(validated_rules_path).exists():
+                    print(f"Error: Validated rules file not found at '{validated_rules_path}'.")
+                    print("Please run 'Business Rule Validation' first to generate validated rules.")
+                    input("\nPress enter to return to menu...")
+                    continue
+                run_step("Unit Test Validation", "agent.UTV_agent", [codebase, validated_rules_path], errors)
+                input("\nTask finished. Press enter...")
+
+            
 def view_collections(db_type: str):
     """
     @brief Displays existing collections and allows the user to preview their contents.
