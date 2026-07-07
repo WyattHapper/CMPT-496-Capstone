@@ -1,14 +1,31 @@
 
-// Variables top determine if a step has been completed or not -- will help with prompting text without having to pull from the output
-let ranFullPipline = false; // Flag to track if the full pipeline has been run
+// ============================================
+// Backend State
+// ============================================
 
-let summariesMade = false; // Flag to track if summaries have been made
-let sourcesMade = false; // Flag to track if source collections have been made
-let errorsMade = false; // flag totrack if source collections have been made
+let ranFullPipeline = false;
 
-let viewingSummaryPreview = false; // Flag to track if the user is viewing a summary preview
-let viewingSourcePreview = false; // Flag to track if the user is viewing a source preview
+let summariesMade = false;
+let sourcesMade = false;
+let errorsMade = false;
 
+
+// Currently selected codebase
+let selectedCodebasePath = "";
+
+
+// Collection preview state
+let viewingSummaryPreview = false;
+let viewingSourcePreview = false;
+
+
+// Preview text buffers
+let summaryPreviewText = "";
+let sourcePreviewText = "";
+
+
+// Backend response buffer
+let backendOutputBuffer = "";
 
 // Checks if the API key has been set
 const envPath = ".env";
@@ -77,6 +94,51 @@ window.electronAPI.hasAPIKey()
         }
 
     });
+
+// ============================================
+// Backend Communication Helpers
+// ============================================
+
+
+async function runBackendCommand(
+    command,
+    args = {}
+){
+
+    console.log(
+        "Command:",
+        command,
+        args
+    );
+
+
+    return await window.electronAPI.executeCommand(
+        command,
+        args
+    );
+
+}
+
+
+
+async function runPreviewCommand(
+    action,
+    args = {}
+){
+
+    console.log(
+        "Preview:",
+        action,
+        args
+    );
+
+
+    return await window.electronAPI.previewCommand(
+        action,
+        args
+    );
+
+}
 
 function showPage(pageId) {
 
@@ -158,7 +220,7 @@ document.getElementById('analysisBtn')
         showPage('analysisPage');
 
 
-        window.electronAPI.sendMenuOption('1');
+    
     });
 
 document.getElementById('apiBtn')
@@ -179,7 +241,7 @@ document.getElementById('apiBtn')
         }
 
 
-        window.electronAPI.sendMenuOption('2');
+    
     });
 
 document.getElementById('summaryBtn')
@@ -210,8 +272,11 @@ document.getElementById('summaryBtn')
             summariesSubheaderEl.classList.remove('hidden');
 
 
-        // Ask Python for summary collections
-        window.electronAPI.sendMenuOption('3');
+        runPreviewCommand(
+        "list",
+        {
+         db_type:"summary"
+        });
     });
 
 document.getElementById('sourceBtn')
@@ -230,7 +295,11 @@ document.getElementById('sourceBtn')
         const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
         if (noVecSrcEl) noVecSrcEl.classList.add('hidden');
        
-        window.electronAPI.sendMenuOption('4');
+        runPreviewCommand(
+        "list",
+        {
+         db_type:"source"
+        });
     });
 
 document.getElementById('errorBtn')
@@ -250,12 +319,11 @@ document.getElementById('errorBtn')
             if (errorSubheaderEl) errorSubheaderEl.classList.add('hidden');
         }
 
-        window.electronAPI.sendMenuOption('5');
     });
 
 document.getElementById('exitBtn').addEventListener('click', () => {
 
-    window.electronAPI.sendMenuOption('6');
+
 
     setTimeout(() => {
         window.electronAPI.exitApp();
@@ -268,81 +336,85 @@ document.getElementById('exitBtn').addEventListener('click', () => {
 document.getElementById('codebaseAnalysisPipelineBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('1');
+        runBackendCommand(
+        "full_pipeline",
+        {
+            codebase:selectedCodebasePath
+        });
     });
 
 document.getElementById('createCodeDatabaseOnlyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('2');
+        runBackendCommand(
+            "build_database",
+        {
+            codebase:selectedCodebasePath
+        });
     });
 
 document.getElementById('createJSONSummariesOnlyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('3');
+        runBackendCommand(
+            "file_summary",
+        {
+            codebase:selectedCodebasePath
+        });
     });
 
 document.getElementById('createSummaryDatabasefromJSONOnlyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('4');
+        runBackendCommand(
+        "build_summary_database",
+        {
+            codebase:selectedCodebasePath
+        });
     });
 
 document.getElementById('createDirectorySummariesOnlyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('5');
+        runBackendCommand(
+            "directory_summary",
+            {
+                codebase:selectedCodebasePath
+            }
+        );
     });
 
 document.getElementById('runBusinessRuleValidationOnlyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('6');
+        runBackendCommand(
+            "validate_business_rules",
+            {
+                codebase:selectedCodebasePath
+            }
+        );
     });
 
 document.getElementById('runUnitTestGenerationOnlyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('7');
+       runBackendCommand(
+            "generate_unit_tests",
+            {
+                codebase:selectedCodebasePath
+            }
+        );
     });
 
 document.getElementById('runUMLGenerationOnly')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('codebasePipelinePage');
-
-        window.electronAPI.sendMenuOption('8');
+        runBackendCommand(
+            "generate_uml",
+            {
+                codebase:selectedCodebasePath
+            }
+        );
     });
 
 document.getElementById('analysisBackBtn')
@@ -351,8 +423,6 @@ document.getElementById('analysisBackBtn')
         clearOutput();
 
         showPage('homePage');
-
-        window.electronAPI.sendMenuOption('9');
     });
 //======================================================
 //API PAGE BUTTONS
@@ -364,8 +434,6 @@ document.getElementById('apiBackBtn')
         clearOutput();
 
         showPage('homePage');
-
-        window.electronAPI.sendMenuOption('1');
     });
 
 document.getElementById('submitApiKeyBtn')
@@ -381,8 +449,11 @@ document.getElementById('submitApiKeyBtn')
         const apiKey =
             document.getElementById('apiKeyInput').value;
 
-        window.electronAPI.sendAPIKey(apiKey);
-        window.electronAPI.sendEnter();
+        runBackendCommand(
+        "set_api_key",
+        {
+            api_key: apiKey
+        });
 
     });
 
@@ -391,8 +462,6 @@ document.getElementById('replaceApiKeyBtn')
 
         console.log("Replace API Key button clicked");
         clearOutput();
-
-        window.electronAPI.sendMenuOption('1');
 
         newApiUi();
         document.getElementById('apiBackBtn').classList.add('hidden');
@@ -406,8 +475,6 @@ document.getElementById('keepApiKeyBtn')
 
         showPage('homePage');
 
-
-        window.electronAPI.sendMenuOption('2');
     });
 
         
@@ -416,33 +483,29 @@ document.getElementById('keepApiKeyBtn')
 //summary page buttons
 //======================================================
 document.getElementById('summaryBackBtn')
-    .addEventListener('click', () => {
+.addEventListener('click', () => {
 
-        clearOutput();
+    clearOutput();
 
-        showPage('homePage');
+    showPage('homePage');
 
-         if (viewingSummaryPreview || viewingSourcePreview) {
-            window.electronAPI.sendEnter();
-        } else {
-            window.electronAPI.sendMenuOption('b');
-        }
-    });
+    viewingSummaryPreview = false;
 
+});
+
+//======================================================
 //Source code collections buttons
+//======================================================
 document.getElementById('sourceBackBtn')
-    .addEventListener('click', () => {
+.addEventListener('click', () => {
 
-        clearOutput();
+    clearOutput();
 
-        showPage('homePage');
+    showPage('homePage');
 
-        if (viewingSummaryPreview || viewingSourcePreview) {
-            window.electronAPI.sendEnter();
-        } else {
-            window.electronAPI.sendMenuOption('b');
-        }
-    });
+    viewingSourcePreview = false;
+
+});
 //======================================================
 //view errors buttons
 //======================================================
@@ -452,8 +515,6 @@ document.getElementById('errorBackBtn')
         clearOutput();
 
         showPage('homePage');
-
-        window.electronAPI.sendMenuOption('1');
     });
 
 //======================================================
@@ -465,8 +526,6 @@ document.getElementById('codebaseBackBtn')
         clearOutput();
 
         showPage('analysisPage');
-
-        window.electronAPI.sendMenuOption('1');
     });
 
 document.getElementById('outputBackBtn')
@@ -475,27 +534,39 @@ document.getElementById('outputBackBtn')
         clearOutput();
 
         showPage('analysisPage');
-
-        window.electronAPI.sendMenuOption('1');
     });
 
 document.getElementById('submitPathBtn')
-    .addEventListener('click', () => {
+.addEventListener('click', () => {
 
-        clearOutput();
 
-        //showPage('analysisPage');
-        showPage('outputPage')
+    clearOutput();
 
-        const path =
-            document.getElementById('codebasePath').value;
 
-        window.electronAPI.sendCodebasePath(path);
-        
-        document.getElementById("analysisOutput").classList.remove("hidden");
+    showPage('outputPage');
 
-    });
 
+    selectedCodebasePath =
+        document.getElementById(
+            'codebasePath'
+        ).value;
+
+
+
+    runBackendCommand(
+        "set_codebase",
+        {
+            path:selectedCodebasePath
+        }
+    );
+
+
+    document
+        .getElementById("analysisOutput")
+        .classList
+        .remove("hidden");
+
+});
 
 document.getElementById('individualStepsBtn')
     .addEventListener('click', () => {
@@ -526,278 +597,207 @@ let pendingLine = '';
 let lastLine = '';
 let summaryPendingLine = '';
 
-window.electronAPI.onAnalysisPythonOutput((text) => {
+// ============================================
+// Backend Response Handler
+// ============================================
 
-    const outputBox =
-        document.getElementById('analysisOutputBox');
 
-    if (!outputBox) {
-        return;
-    }
+window.electronAPI.onBackendResponse(
+    (response)=>{
 
-    //split up the output by lines and take out all the random characters that are being outputted by the python script
-    pendingLine += text.replace(/\r/g, '');
 
-    const parts = pendingLine.split('\n');
+        console.log(
+            "Backend response:",
+            response
+        );
 
-    pendingLine = parts.pop();
-
-    //once newline character is found print it in the box to let the user know it is getting used
-    if (parts.length > 0) {
-        lastLine = parts[parts.length - 1];
-    }
-
-    outputBox.textContent =
-        pendingLine || lastLine;
-
-});
-
-window.electronAPI.onErrorOutput((text) => {
-
-    console.log("Received error output:");
-    console.log(text);
-
-    const outputBox = document.getElementById("errorOutput");
-
-    if (!outputBox) {
-        console.log("Couldn't find errorOutput element!");
-        return;
-    }
-
-    outputBox.textContent += text;
-});
-
-//creates buttons on summary page
-window.electronAPI.onSummaryPythonOutput((text) => {
-
-    viewingSummaryPreview = false;
-
-    const summaryOutputContainer =
-        document.getElementById("summaryOutput");
-        
-    console.log("SUMMARY RECEIVED:");
-    console.log(text);
-
-    // Remove any existing buttons
-    summaryOutputContainer
-        .querySelectorAll(".output-file-btn")
-        .forEach(btn => btn.remove());
-
+        if(!response){
+            return;
+        }
     
-    text.split("\n").forEach(line => {
+        // ERROR HANDLING
+        if(!response.success){
+            errorsMade = true;
 
-        const cleanedLine = line.replace(/\x00|\u0000/g, '');
-        const match = cleanedLine.match(/^\s*(\d+)\.\s*(.+)$/); // get rid of all those extra text
+            const errorBox =
+                document.getElementById(
+                    "errorOutput"
+                );
 
-        if (!match) return;
+            if(errorBox){
 
-        const optionNumber = match[1]; // number from the CLI to send to choose the button
-        const filename = match[2];
+                errorBox.textContent +=
+                    response.error + "\n";
 
-        const button = document.createElement("button"); //create the buttons
-        button.className = "output-file-btn btn-primary";
-        button.textContent = filename;
+            }
+            return;
+        }
+        // NORMAL OUTPUT
+        if(response.message){
 
-        //when one of the buttons is clicked it will route you to the right page and clear the div out to fill with new text
-        button.addEventListener("click", () => {
-            viewingSummaryPreview = true;
-            console.log("Selected:", filename);
 
-            summaryPreviewText = "";
-            summaryOutputContainer.innerHTML = "";
+            const outputBox =
+                document.getElementById(
+                    "analysisOutputBox"
+                );
 
-            window.electronAPI.sendMenuOption(optionNumber);
-        });
+            if(outputBox){
 
-        summaryOutputContainer.appendChild(button); //add the buttons to the output box
-    });
+                outputBox.textContent +=
+                    response.message + "\n";
+            }
+        }
 
-    document
-        .getElementById("noVectorStoresMsgSum")
-        .classList.add("hidden");
+        // COLLECTION LIST RESPONSE
+        if(response.collections){
 
-    
-});
 
-let summaryPreviewText = "";
+            renderCollections(
+                response.collections,
+                response.db_type
+            );
+        }
 
-window.electronAPI.onSummarySelectionOutput((text) => {
+        // COLLECTION PREVIEW RESPONSE
+        if(response.preview){
+
+            renderCollectionPreview(
+                response.preview,
+                response.db_type
+            );
+
+        }
+    }
+);
+
+// ============================================
+// Collection List Rendering
+// ============================================
+
+
+function renderCollections(
+    collections,
+    dbType
+){
+
+
+    console.log(
+        "Collections:",
+        collections
+    );
+
 
     const container =
-        document.getElementById("summaryOutput");
+        dbType === "summary"
+            ? document.getElementById(
+                "summaryOutput"
+            )
+            :
+            document.getElementById(
+                "sourceOutput"
+            );
 
-    let preview =
-        container.querySelector(".summary-preview-text");
 
-    if (!preview) {
-
-        container.innerHTML = "";
-
-        preview = document.createElement("pre");
-        preview.className = "summary-preview-text";
-
-        container.appendChild(preview);
-
-        summaryPreviewText = "";
+    if(!container){
+        return;
     }
 
-    summaryPreviewText += text;
-    preview.textContent = summaryPreviewText;
-});
 
-let sourcePreviewText = "";
-
-window.electronAPI.onSourcePythonOutput((text) => {
-
-    viewingSourcePreview = false;
-
-    const sourceOutputContainer =
-        document.getElementById("sourceOutput");
-
-    
-    console.log("SOURCE RECEIVED:");
-    console.log(text);
-
-    
-
-    sourceOutputContainer
-        .querySelectorAll(".output-file-btn")
-        .forEach(btn => btn.remove());
-
-    
-
-    text.split("\n").forEach(line => {
-
-        const cleanedLine = line.replace(/\x00|\u0000/g, '');
-        const match = cleanedLine.match(/^\s*(\d+)\.\s*(.+)$/);
-
-        if (!match) return;
-
-        const optionNumber = match[1];
-        const filename = match[2];
-
-        const button = document.createElement("button");
-        button.className = "output-file-btn btn-primary";
-        button.textContent = filename;
-
-        button.addEventListener("click", () => {
-            viewingSourcePreview = true;
-            console.log("Selected:", filename);
-
-            sourcePreviewText = "";
-            sourceOutputContainer.innerHTML = "";
-
-           
-            window.electronAPI.sendMenuOption(optionNumber);
-        });
-
-        sourceOutputContainer.appendChild(button);
-    });
-
-    document
-        .getElementById("noVectorStoresMsgSum")
-        .classList.add("hidden");
+    container.innerHTML = "";
 
 
-   
-});
 
-window.electronAPI.onSourceSelectionOutput((text) => {
+    collections.forEach(
+        (collection)=>{
 
-    const sourceOutputContainer =
-        document.getElementById("sourceOutput");
 
-    let preview = 
-    sourceOutputContainer.querySelector(".source-preview-text");
+            const button =
+                document.createElement(
+                    "button"
+                );
 
-    if (!preview) {
+            button.className =
+                "output-file-btn btn-primary";
 
-        sourceOutputContainer.innerHTML = "";
+            button.textContent =
+                collection;
 
-        preview = document.createElement("pre");
-        preview.className = "source-preview-text";
+            button.addEventListener(
+                "click",
+                ()=>{
+                    if(dbType==="summary"){
 
-        sourceOutputContainer.appendChild(preview);
+                        viewingSummaryPreview=true;
+                    }
+                    else{
 
-        sourcePreviewText = "";
+                        viewingSourcePreview=true;
+                    }
+                    runPreviewCommand(
+                        "preview",
+                        {
+                            db_type:dbType,
+                            collection:collection
+                        }
+                    );
+                }
+            );
+            container.appendChild(
+                button
+            );
+        }
+    );
+}
+
+// ============================================
+// Collection Preview Rendering
+// ============================================
+
+
+function renderCollectionPreview(
+    preview,
+    dbType
+){
+    let container;
+    if(dbType==="summary"){
+
+        container =
+            document.getElementById(
+                "summaryOutput"
+            );
+    }
+    else{
+        container =
+            document.getElementById(
+                "sourceOutput"
+            );
+    }
+    if(!container){
+        return;
     }
 
-    sourcePreviewText += text;
-    preview.textContent = sourcePreviewText;
-});
+    container.innerHTML="";
 
-// window.electronAPI.onCollectionPreview((text) => {
+    const pre =
+        document.createElement(
+            "pre"
+        );
 
-//         const previewBox =
-//             document.getElementById(
-//                 'sourceOutput'
-//             );
+    pre.className =
+        dbType==="summary"
+            ?
+            "summary-preview-text"
+            :
+            "source-preview-text";
 
-//         previewBox.textContent += text;
-
-//     }
-// );
-
-// //this is used for the source collections page to display different options
-// window.electronAPI.onCollectionsList((collections) => {
-
-//     const container =
-//         document.getElementById('collectionsContainer');
-
-//     container.innerHTML = '';
-
-//     collections.forEach((name, index) => {
-
-//         const btn = document.createElement('button');
-
-//         btn.textContent = name;
-
-//         btn.className = 'collectionBtn';
-
-//         btn.addEventListener('click', () => {
-
-//             window.electronAPI.sendMenuOption(String(index + 1));
-
-//         });
-
-//         container.appendChild(btn);
-
-//     });
-
-// });
+    pre.textContent =
+        preview;
+    container.appendChild(
+        pre
+    );
 
 
-/*document.getElementById('run').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '1');
-
-    ipcRenderer.send('run-app');
-});*/
-
-/*document.getElementById('analysisBtn')
-    .addEventListener('click', () => {
-
-        showPage('analysisPage');
-
-        ipcRenderer.send('menu-option', '1');
-    });
-
-document.getElementById('summary').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '2');
-});
-
-document.getElementById('source').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '3');
-});
-
-document.getElementById('errors').addEventListener('click', () => {
-    ipcRenderer.send('menu-option', '4');
-});*/
-
-/*ipcRenderer.on('python-output', (event, text) => {
-
-    document.getElementById('analysisOutput').innerHTML +=
-        `<pre>${text}</pre>`;
-});*/
+}
 
 
 function toggleTheme() {

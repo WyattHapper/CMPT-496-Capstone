@@ -20,46 +20,36 @@ class CommandDispatcher:
         self.commands = Commands()
 
         self.routes = {
-            # Database commands
-            "build_database":
-                self.commands.build_database,
-
-            "build_summary_database":
-                self.commands.build_summary_database,
 
 
-            # Summary generation commands
-            "generate_file_summaries":
-                self.commands.generate_file_summaries,
+            # Database
+            "build_database": self.commands.build_database,
+            "build_summary_database": self.commands.build_summary_database,
 
-            "generate_directory_summaries":
-                self.commands.generate_directory_summaries,
+            # File summaries
+            "file_summary":self.commands.generate_file_summaries,
 
+            "generate_file_summaries": self.commands.generate_file_summaries,
 
-            # Rule / testing commands
-            "validate_business_rules":
-                self.commands.validate_business_rules,
+            # Directory summaries
+            "directory_summary": self.commands.generate_directory_summaries,
 
-            "generate_unit_tests":
-                self.commands.generate_unit_tests,
+            "generate_directory_summaries": self.commands.generate_directory_summaries,
 
+            # Business rules / tests
+            "validate_business_rules": self.commands.validate_business_rules,
+            "generate_unit_tests": self.commands.generate_unit_tests,
 
-            # UML commands
-            "generate_uml":
-                self.commands.generate_uml,
+            # UML
+            "generate_uml": self.commands.generate_uml,
+            "generate_all_uml": self.commands.generate_all_uml,
 
-            "generate_all_uml":
-                self.commands.generate_all_uml,
-
-
-            # Configuration
-            "set_api_key":
-                self.commands.set_api_key,
-
-
+            # API
+            "set_api_key": self.commands.set_api_key,
+            
             # Pipeline
-            "full_pipeline":
-                self.commands.full_pipeline,
+            "full_pipeline": self.commands.full_pipeline,
+
         }
 
 
@@ -86,5 +76,14 @@ class CommandDispatcher:
 
 
         handler = self.routes[command]
+        try:
 
-        return handler(**kwargs)
+            return handler(**kwargs)
+
+        except Exception as e:
+
+            return {
+                "success":False,
+                "error":str(e),
+                "command":command
+            }

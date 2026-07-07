@@ -5,302 +5,372 @@ const fs = require("fs");
 const dotenv = require("dotenv");
 
 
-
-
-
-//require('electron-reloader')(module);
-
 let pythonProcess = null;
-let inPreview = false;
-let activeCollectionMode = null;
-let collectionOutputActive = false;
-let collectionBuffer = '';
-
-ipcMain.on('menu-option', (event, option) => {
-
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-
-    console.log("Sending option:", option);
-   
-    pythonProcess.stdin.write(option + '\n');
-
-});
-
-ipcMain.on('exit-app', () => {
-
-    console.log("Exit requested");
-
-    app.quit();
-
-});
-
-ipcMain.on('codebase-path', (event, path) => {
-
-    console.log("Path received:", path);
-
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-
-    console.log("Sending path to Python");
-
-    pythonProcess.stdin.write(path + '\n');
-
-});
-
-ipcMain.on('send-enter', () => {
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-
-    console.log("Sending Enter to Python");
-    pythonProcess.stdin.write('\n');
-});
-
-ipcMain.on("api-key", (event, apiKey) => {
-
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-    console.log("Received API key:", apiKey);
-    pythonProcess.stdin.write(apiKey + '\n');
-
-
-});
+let mainWindow = null;
+// ----------------------------------------------------
+// API KEY CHECK
+// ----------------------------------------------------
 
 function hasAPIKey() {
+
     const envPaths = [
         path.join(__dirname, ".env"),
-        path.join(__dirname, 'releases', 'main', ".env")
+        path.join(__dirname, "releases", "main", ".env")
     ];
-
     for (const envPath of envPaths) {
-        if (!fs.existsSync(envPath)) continue;
 
-        const env = dotenv.parse(fs.readFileSync(envPath));
-
+        if (!fs.existsSync(envPath))
+            continue;
+        const env = dotenv.parse(
+            fs.readFileSync(envPath)
+        );
         if (
-            typeof env.GOOGLE_API_KEY !== "undefined" &&
-            env.GOOGLE_API_KEY.trim() !== ""
-        ) {
+            env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "") {
             return true;
         }
     }
-
     return false;
 }
 
-ipcMain.handle("has-api-key", () => {
-    return hasAPIKey();
-});
+ipcMain.handle(
+    "has-api-key",
+    () => {
+        return hasAPIKey();
+    }
+);
+
+
+
+// ----------------------------------------------------
+// SEND COMMAND TO PYTHON BACKEND
+// ----------------------------------------------------
+
+ipcMain.handle(
+    "execute-command",
+    async (event, request) => {
+
+
+        if (!pythonProcess) {
+
+            return {
+                success:false,
+                error:"Python backend is not running"
+            };
+
+        }
+
+
+        const payload =
+            JSON.stringify({
+
+                type:"command",
+
+                command:
+                    request.command,
+
+                args:
+                    request.args || {}
+
+            });
+
+
+
+        pythonProcess.stdin.write(
+            payload + "\n"
+        );
+
+
+        return {
+            success:true
+        };
+
+    }
+);
+
+// ----------------------------------------------------
+// SEND PREVIEW COMMANDS
+// ----------------------------------------------------
+
+ipcMain.handle(
+    "preview-command",
+    async (event, request) => {
+
+
+        if (!pythonProcess) {
+
+            return {
+                success:false,
+                error:"Python backend is not running"
+            };
+
+        }
+
+
+        const payload = JSON.stringify({
+
+            type:"preview",
+
+            action:
+                request.action,
+
+            args:
+                request.args || {}
+
+        });
+
+
+        pythonProcess.stdin.write(
+            payload + "\n"
+        );
+
+
+        return {
+            success:true
+        };
+
+    }
+);
+
+
+
+// ----------------------------------------------------
+// CREATE WINDOW
+// ----------------------------------------------------
 
 function createWindow() {
 
-    const win = new BrowserWindow({
-        width: 1200,
-        height: 800,
+
+    mainWindow = new BrowserWindow({
+
+        width:1200,
+
+        height:800,
+
+
         webPreferences: {
-            preload: path.join(__dirname, "preload.js"), //added for the preload.js file to work
-            nodeIntegration: false, 
-            contextIsolation: true
+
+            preload:
+                path.join(
+                    __dirname,
+                    "preload.js"
+                ),
+
+            nodeIntegration:false,
+
+            contextIsolation:true
+
         }
+
     });
 
-    
 
-    win.loadFile('index.html');
 
-    
+    mainWindow.loadFile(
+        "index.html"
+    );
 
-   /* const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
+
+
+    startPythonBackend();
+
+}
+
+
+
+// ----------------------------------------------------
+// START PYTHON BACKEND
+// ----------------------------------------------------
+
+function startPythonBackend() {
+
+
+    const isWindows =
+        process.platform === "win32";
+
+
+    const isMac =
+        process.platform === "darwin";
+
+
+
+    const pythonPath =
+        isWindows
+
+            ? path.join(
+                __dirname,
+                ".venv",
+                "Scripts",
+                "python.exe"
+            )
+
+            : "python3";
+
+
 
     pythonProcess = spawn(
-        "python3",
-        ["main.py"],
-        {
-            cwd: __dirname,
-            env: {
-                ...process.env,
-                PYTHONUNBUFFERED: '1'
-            }
-        }
-    );*/
 
-    const isWindows = process.platform === 'win32';
-    const isMac = process.platform === 'darwin';
-
-    const pythonPath = isWindows
-        ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
-        : isMac
-            ? 'python3'
-            : 'python3';
-
-    pythonProcess = spawn(
         pythonPath,
-        [path.join(__dirname, 'main.py')],
+
+        [
+            path.join(
+                __dirname,
+                "main.py"
+            )
+        ],
+
         {
-            cwd: __dirname,
-            env: {
+
+            cwd:__dirname,
+
+            env:{
                 ...process.env,
-                PYTHONUNBUFFERED: '1'
+                PYTHONUNBUFFERED:"1"
             }
+
+        }
+
+    );
+
+
+
+    pythonProcess.stdout.on(
+        "data",
+        (data)=>{
+
+
+            const lines =
+                data
+                .toString()
+                .split("\n");
+
+
+
+            for (const line of lines) {
+
+
+                if (!line.trim())
+                    continue;
+
+
+
+                try {
+
+
+                    const response =
+                        JSON.parse(line);
+
+
+
+                    mainWindow.webContents.send(
+                        "backend-response",
+                        response
+                    );
+
+
+                }
+
+                catch(error) {
+
+
+                    console.log(
+                        "Python:",
+                        line
+                    );
+
+
+                }
+
+            }
+
         }
     );
 
-    // Debug logging
-    pythonProcess.stdout.on("data", (data) => {
-        console.log("STDOUT:");
-        console.log(data.toString());
-    });
-
-    pythonProcess.stderr.on("data", (data) => {
-        console.error("STDERR:");
-        console.error(data.toString());
-    });
-
-    pythonProcess.on("error", (err) => {
-        console.error("Failed to start Python:");
-        console.error(err);
-    });
-
-    pythonProcess.on("close", (code) => {
-        console.log("Python exited with code:", code);
-    });
 
 
-    //this code below is used to point to main.js
-    /*const os = require("os");
+    pythonProcess.stderr.on(
+    "data",
+    (data)=>{
 
-    const pythonPath =
-        os.platform() === "win32"
-            ? path.join(__dirname, ".venv", "Scripts", "python.exe")
-            : path.join(__dirname, ".venv", "bin", "python");
-
-    const scriptPath = path.join(__dirname, "main.py");
-
-    pythonProcess = spawn(
-        pythonPath,
-        [scriptPath],
-        {
-            cwd: __dirname,
-            env: {
-                ...process.env,
-                PYTHONUNBUFFERED: "1"
-            }
-        }
-    );*/
-
-   
-
-
-    pythonProcess.stdout.on('data', (data) => {
-
-        let output = data.toString();
-
-        output = output.replace(
-            /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g,
-            ''
+        console.log(
+            "Python Log:",
+            data.toString()
         );
-        output = output.replace(/\x00|\u0000/g, '');
+    
 
-        // Error page
-        if (
-            output.includes("--- ERROR LOG ---") ||
-            output.includes("[ERROR")
-        ) {
-            console.log("Sending error-output:");
-            console.log(output);
+        if(mainWindow){
 
-            win.webContents.send("error-output", output);
-            return;
+            mainWindow.webContents.send(
+                "backend-response",
+                {
+                    success:false,
+                    error:error
+                }
+            );
         }
+    }
+);
 
-        if (output.includes('PREVIEWING:')) {
-            inPreview = true;
+
+
+    pythonProcess.on(
+        "close",
+        (code)=>{
+
+            console.log(
+                "Python exited:",
+                code
+            );
+
+            pythonProcess=null;
+
         }
+    );
 
-        if (inPreview) {
-            const channel = activeCollectionMode === 'source'
-                ? 'source-selection-output'
-                : 'summary-selection-output';
-
-            win.webContents.send(channel, output);
-
-            if (
-                output.includes('Press Enter') ||
-                output.includes('Select an option') ||
-                output.includes('Select a number to preview')
-            ) {
-                inPreview = false;
-                activeCollectionMode = null;
-            }
-
-            return;
-        }
-
-        if (collectionOutputActive) {
-            collectionBuffer += output;
-
-            const hasListItems = /^\s*\d+\.\s+/m.test(collectionBuffer);
-            const hasSelectionPrompt = /Select a number to preview|Select an option|Press Enter/i.test(collectionBuffer);
-
-            if (hasListItems || hasSelectionPrompt) {
-                const channel = activeCollectionMode === 'source'
-                    ? 'source-output'
-                    : 'summary-output';
-
-                win.webContents.send(channel, collectionBuffer);
-                collectionBuffer = '';
-                collectionOutputActive = false;
-            }
-
-            return;
-        }
-
-        if (output.includes('Available Summary Collections')) {
-            activeCollectionMode = 'summary';
-            collectionOutputActive = true;
-            collectionBuffer = output;
-            return;
-        }
-
-        if (output.includes('Available Code Collections')) {
-            activeCollectionMode = 'source';
-            collectionOutputActive = true;
-            collectionBuffer = output;
-            return;
-        }
-
-        if (
-            output.includes('CODEBASE ANALYSIS SYSTEM') ||
-            output.includes('Run Analysis Tools') ||
-            output.includes('View Summary Collections') ||
-            output.includes('View Source Code Collections') ||
-            output.includes('View Errors') ||
-            output.includes('Select an option')
-        ) {
-            return;
-        }
-
-        win.webContents.send('python-output', output);
-    });
 }
 
-app.whenReady().then(createWindow);
 
-app.on('window-all-closed', () => {
 
-    if (pythonProcess) {
-        pythonProcess.kill();
+// ----------------------------------------------------
+// APP EVENTS
+// ----------------------------------------------------
+
+app.whenReady()
+.then(
+    createWindow
+);
+
+
+
+app.on(
+    "window-all-closed",
+    ()=>{
+
+
+        if(pythonProcess){
+
+            pythonProcess.kill();
+
+        }
+
+
+        if(process.platform !== "darwin"){
+
+            app.quit();
+
+        }
+
     }
+);
 
-    if (process.platform !== 'darwin') {
-        app.quit();
+app.on(
+    "before-quit",
+    ()=>{
+
+        if(pythonProcess){
+
+            pythonProcess.kill();
+
+        }
+
     }
-});
+);

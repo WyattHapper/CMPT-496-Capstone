@@ -4,7 +4,8 @@
 @details Implements a retriever-generator-writer workflow that takes validated business rules from BR_agent output,
 generates unit tests and writes the results to JSON.
 """
-
+import logging
+logger = logging.getLogger(__name__)
 from agent.states.UT_agent_state import UTGraphState
 from agent.structured_output.UT_output import (
     ValidatedRule, UnitTest
@@ -264,7 +265,7 @@ class UTAgent:
         unit_tests = []
         for rule, output, err in results:
             if err is not None:
-                print(f"Unit test generation error for rule {rule.id}: {err}")
+                logger.error(f"Unit test generation error for rule {rule.id}: {err}")
                 continue
             unit_tests.append(UnitTest(unit_test=output.unit_test, id=rule.id, rule=rule.rule))
 
@@ -295,7 +296,7 @@ class UTAgent:
             with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
                 for test in unit_tests:
                     file.write(test.unit_test + "\n\n")
-            print(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
+            logger.info(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
         return {}
 
     # Helper methods
@@ -443,7 +444,7 @@ if __name__ == "__main__":
     @details Loads business rules from a JSON file and runs the validation pipeline.
     """
     if len(sys.argv) != 3:
-        print("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
+        logger.info("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
         sys.exit(1)
 
     codebase = sys.argv[1]
@@ -458,4 +459,4 @@ if __name__ == "__main__":
 
     agent = UTAgent()
     agent.run(input_rules, codebase_name, codebase)
-    print("UTAgent has completed its task!")
+    logger.info("UTAgent has completed its task!")

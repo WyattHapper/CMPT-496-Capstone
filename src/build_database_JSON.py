@@ -6,7 +6,8 @@ LLM-generated summaries. It reads JSON files from a specified directory, flatten
 hierarchical data (files, types, methods, properties, and relationships), and upserts
 them as searchable embeddings into a persistent ChromaDB collection.
 """
-
+import logging
+logger = logging.getLogger(__name__)
 import json
 import sys
 from pathlib import Path
@@ -61,14 +62,14 @@ def build_database(codebase_name: str) -> None:
     db_dir = (base_dir / "vectorStores").resolve()
 
     if not json_dir.exists() or not json_dir.is_dir():
-        print(f"Error: The provided JSON directory '{json_dir}' does not exist or is not a directory.")
+        logger.error(f"Error: The provided JSON directory '{json_dir}' does not exist or is not a directory.")
         sys.exit(1)
 
     client = chromadb.PersistentClient(path=str(db_dir))
     embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
 
     collection_name = f"{codebase_name}_summary_db"
-    print(f"\n--- Building Collection: {collection_name} ---")
+    logger.info(f"\n--- Building Collection: {collection_name} ---")
     collection = client.get_or_create_collection(
         name=collection_name,
         embedding_function=embedding_fn
@@ -274,9 +275,9 @@ def build_database(codebase_name: str) -> None:
 
     if ids:
         collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-        print(f"Finished indexing {len(ids)} unique items for {codebase_name}")
+        logger.info(f"Finished indexing {len(ids)} unique items for {codebase_name}")
     else:
-        print(f"No JSON summaries found to index for {codebase_name}.")
+        logger.info(f"No JSON summaries found to index for {codebase_name}.")
 
 
 if __name__ == "__main__":
@@ -285,7 +286,7 @@ if __name__ == "__main__":
     @details Validates command line arguments and initiates the indexing process.
     """
     if len(sys.argv) != 2:
-        print("Usage: python build_database_JSON.py <codebase_name>")
+        logger.info("Usage: python build_database_JSON.py <codebase_name>")
         sys.exit(1)
 
     build_database(sys.argv[1])

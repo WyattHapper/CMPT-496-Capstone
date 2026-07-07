@@ -7,18 +7,35 @@ Each public method represents a command that can be dispatched from
 dispatcher.py and called by the frontend.
 """
 
-
+import logging
 import sys
-sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
-
+sys.stdout.reconfigure(
+    encoding='utf-8',
+    line_buffering=True
+)
 import os
 import subprocess
 from xml.parsers.expat import errors
 import chromadb
 import json
-import sys
 import time
 from pathlib import Path
+
+# ---------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
+)
+
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------
+# IMPORTS FROM AGENT
+# ---------------------------------------------------------
 
 from agent.BR_agent import BRAgent
 from agent.UT_agent import UTAgent
@@ -89,6 +106,21 @@ class Commands:
                 "elapsed": round(elapsed, 2),
                 "error": str(exc),
             }
+        
+    def _require_success(self, result):
+        """
+        Stops pipeline execution if a command fails.
+        """
+
+        if not result["success"]:
+            raise RuntimeError(
+                result.get(
+                    "error",
+                    "Unknown command failure"
+                )
+            )
+
+        return result
 
     # -----------------------------------------------------
     # Database Commands
@@ -100,7 +132,7 @@ class Commands:
         """
 
         def task():
-            build_database(codebase)
+            return build_database(codebase)
 
         return self._run_command(
             "build_database",
@@ -115,7 +147,7 @@ class Commands:
         codebase_name = Path(codebase).name
 
         def task():
-            build_summary_database(codebase_name)
+            return build_summary_database(codebase_name)
 
         return self._run_command(
             "build_summary_database",
@@ -128,7 +160,7 @@ class Commands:
         """
 
         def task():
-            FileSummaryAgent().run(codebase)
+            return FileSummaryAgent().run(codebase)
 
         return self._run_command(
             "generate_file_summaries",
@@ -148,7 +180,7 @@ class Commands:
         """
 
         def task():
-            DirectoryAgent().run(codebase)
+            return DirectoryAgent().run(codebase)
 
         return self._run_command(
             "generate_directory_summaries",
@@ -410,7 +442,7 @@ class Commands:
             ) as env:
 
                 env.write(
-                    f"GOOGLE_API_KEY={api_key}"
+                    f"GOOGLE_API_KEY={api_key}\n"
                 )
 
 
@@ -486,56 +518,13 @@ class Commands:
 
             steps = []
 
-
-            steps.append(
-                self.build_database(
-                    str(codebase_path)
-                )
-            )
-
-
-            steps.append(
-                self.generate_file_summaries(
-                    str(codebase_path)
-                )
-            )
-
-
-            steps.append(
-                self.build_summary_database(
-                    str(codebase_path)
-                )
-            )
-
-
-            steps.append(
-                self.generate_directory_summaries(
-                    str(codebase_path)
-                )
-            )
-
-
-            steps.append(
-                self.validate_business_rules(
-                    str(codebase_path),
-                    str(rules_path)
-                )
-            )
-
-
-            steps.append(
-                self.generate_unit_tests(
-                    str(codebase_path),
-                    str(validated_rules_path)
-                )
-            )
-
-
-            steps.append(
-                self.generate_all_uml(
-                    str(summary_directory)
-                )
-            )
+            steps.append( self._require_success(self.build_database(str(codebase_path))))
+            steps.append( self._require_success(self.generate_file_summaries(str(codebase_path))))
+            steps.append( self._require_success(self.build_summary_database(str(codebase_path))))
+            steps.append( self._require_success(self.generate_directory_summaries(str(codebase_path))))
+            steps.append( self._require_success(self.validate_business_rules(str(codebase_path))))
+            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path))))
+            steps.append( self._require_success(self.generate_all_uml(str(summary_directory))))
 
 
             failed = [

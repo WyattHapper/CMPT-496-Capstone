@@ -1,3 +1,5 @@
+import logging
+logger = logging.getLogger(__name__)
 from agent.states.directory_agent_state import DirectoryGraphState
 from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput, BusinessRulesOutput
 from langgraph.graph import StateGraph, START, END
@@ -493,13 +495,13 @@ class DirectoryAgent:
             # Generate summary using LLM
             output = structured_llm.invoke(messages)
 
-            print(f"Generated summary for directory {state['current_directory']}")
+            logger.info(f"Generated summary for directory {state['current_directory']}")
 
             return {
                 "directory_summary": output
             }
         except Exception as e:
-            print(f"Error during summarization: {e}")
+            logger.error(f"Error during summarization: {e}")
             return {
                 "directory_summary": DirectoryOutput(
                     directory_name = Path(state["current_directory"]).name,
@@ -575,7 +577,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             # Generate summary using LLM
             output = structured_llm.invoke(messages)
 
-            print(f"Generated root summary for directory {state['current_directory']}")
+            logger.info(f"Generated root summary for directory {state['current_directory']}")
 
             return {
                 "directory_summary": output
@@ -583,7 +585,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             
         
         except Exception as e:
-            print(f"Error during summarization: {e}")
+            logger.error(f"Error during summarization: {e}")
             return {
                 "directory_summary": DirectoryOutput(
                     directory_name = Path(state["current_directory"]).name,
@@ -652,7 +654,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                     matched_file_paths.add(Path(summary_path).name)
 
             if not directory_file_summaries:
-                print(f"No file summaries found for {current_dir}, skipping business rules extraction.")
+                logger.info(f"No file summaries found for {current_dir}, skipping business rules extraction.")
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -665,7 +667,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                 }
 
             if len(matched_file_paths) < 2:
-                print(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.")
+                logger.info(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.")
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -734,13 +736,13 @@ Show how the parts connect and the overall shape of the system, not just what ea
             output.directory_name = Path(current_dir).name
             output.directory_path = rel_dir
 
-            print(f"Extracted business rules for directory {current_dir}")
+            logger.info(f"Extracted business rules for directory {current_dir}")
             return {
                 "accumulated_business_rules": {current_dir: output}
             }
 
         except Exception as e:
-            print(f"Error during business rules extraction for {state['current_directory']}: {e}")
+            logger.error(f"Error during business rules extraction for {state['current_directory']}: {e}")
             return {
                 "accumulated_business_rules": {
                     state["current_directory"]: BusinessRulesOutput(
@@ -825,7 +827,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @return Updated state with a refined directory summary that addresses the feedback provided by the judgement node.
         """
         current_attempts = state.get("refinement_attempts", 0) + 1
-        print(f"Attempting refinement for directory {state['current_directory']}")
+        logger.info(f"Attempting refinement for directory {state['current_directory']}")
         try:
             current_directory = state.get("current_directory")
             if not current_directory:
@@ -889,7 +891,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                 "refinement_attempts": current_attempts
             }
         except Exception as e:
-            print(f"Error during summary refinement: {e}")
+            logger.error(f"Error during summary refinement: {e}")
             return {
                 "directory_summary": state.get("directory_summary"), # If refinement fails, keep the original summary
                 "refinement_attempts": current_attempts
@@ -986,7 +988,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(serialized, f, indent=2)
 
-        print(f"Business rules written to {output_path}")
+        logger.info(f"Business rules written to {output_path}")
         return {}
 
     # Helper methods
@@ -1175,12 +1177,12 @@ if __name__ == "__main__":
     PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
     if len(sys.argv) != 2:
-        print("Usage: python file_summary_agent.py <codebase_name>")
+        logger.info("Usage: python file_summary_agent.py <codebase_name>")
         sys.exit(1)
     codebase = sys.argv[1]
     directory_path = os.path.abspath(codebase)
 
     agent = DirectoryAgent()
     agent.run(directory_path)
-    print("DirectoryAgent has completed it's task!")
+    logger.info("DirectoryAgent has completed its task!")
     

@@ -3,6 +3,8 @@
 @brief Defines the FileSummaryAgent, a LangGraph-based agent for generating structured summaries of source code files.
 @details Implements a crawler-summarizer-writer workflow that traverses a directory, uses an LLM to produce structured file summaries, and saves the results as JSON outputs.
 """
+import logging
+logger = logging.getLogger(__name__)
 
 from agent.states.file_summary_agent_state import FileGraphState
 from langgraph.graph import StateGraph, START, END
@@ -392,7 +394,7 @@ Code:
     except Exception as e:
         return file_path, None, e
     finally:
-        print(f"✔ finished: {file_path}")
+        logger.info(f"✔ finished: {file_path}")
 
 if __name__ == "__main__":
     """
@@ -409,12 +411,12 @@ if __name__ == "__main__":
     PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
     if len(sys.argv) != 2:
-        print("Usage: python file_summary_agent.py <codebase_name>")
+        logger.info("Usage: python file_summary_agent.py <codebase_name>")
         sys.exit(1)
     codebase = sys.argv[1]
     directory_path = os.path.abspath(codebase)
 
     agent = FileSummaryAgent()
     agent.run(directory_path)
-    print("FileSummaryAgent has completed it's task!")
+    logger.info("FileSummaryAgent has completed its task!")
     

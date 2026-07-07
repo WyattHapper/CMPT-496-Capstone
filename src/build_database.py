@@ -2,7 +2,8 @@
 @file build_database.py
 @brief Core script for indexing a codebase into a ChromaDB vector store.
 """
-
+import logging
+logger = logging.getLogger(__name__)
 import chromadb
 import sys
 from pathlib import Path
@@ -42,7 +43,7 @@ def build_database(source_path: str) -> None:
 
     # Initialize ChromaDB client
     client = chromadb.PersistentClient(path=str(db_dir))
-    print(f"\n--- Building Collection: {db_name} ---")
+    logger.info(f"\n--- Building Collection: {db_name} ---")
 
     # Create or get the collection
     collection = client.get_or_create_collection(name=db_name, embedding_function = embedding)
@@ -84,11 +85,11 @@ def build_database(source_path: str) -> None:
 
     # Verification before upsert
     if not (len(ids) == len(embeddings) == len(metadatas)):
-        print(f"CRITICAL ERROR: Data mismatch! IDs: {len(ids)}, Docs: {len(embeddings)}, Meta: {len(metadatas)}")
+        logger.critical(f"CRITICAL ERROR: Data mismatch! IDs: {len(ids)}, Docs: {len(embeddings)}, Meta: {len(metadatas)}")
         sys.exit(1)
 
     if not ids:
-        print("No valid chunks were generated. Aborting upsert.")
+        logger.info("No valid chunks were generated. Aborting upsert.")
         sys.exit(1)
 
     # batch upsert chunks
@@ -99,7 +100,7 @@ def build_database(source_path: str) -> None:
                             documents=embeddings[i:end_index], 
                             metadatas=metadatas[i:end_index])
     
-    print(f"Finished indexing {len(ids)} unique items for {db_name}")
+    logger.info(f"Finished indexing {len(ids)} unique items for {db_name}")
 
 
 if __name__ == "__main__":
@@ -108,13 +109,13 @@ if __name__ == "__main__":
     Validates command-line arguments and ensures the target source directory exists.
     """
     if len(sys.argv) != 2:
-        print("Usage: python -m src.build_database <source_directory>\nNote: Please execute from CMPT-496-Capstone directory.")
+        logger.info("Usage: python -m src.build_database <source_directory>\nNote: Please execute from CMPT-496-Capstone directory.")
         sys.exit(1)
     source_path = sys.argv[1]
 
     # check if source path exists and is a directory
     if not Path(source_path).exists() or not Path(source_path).is_dir():
-        print(f"Error: {source_path} does not exist or is not a directory.")
+        logger.error(f"Error: {source_path} does not exist or is not a directory.")
         sys.exit(1)
 
     build_database(source_path)
