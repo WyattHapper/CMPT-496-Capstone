@@ -251,27 +251,18 @@ function startPythonBackend() {
                 if (!line.trim())
                     continue;
 
-
-
                 try {
 
 
                     const response =
                         JSON.parse(line);
 
-
-
                     mainWindow.webContents.send(
                         "backend-response",
                         response
                     );
-
-
                 }
-
                 catch(error) {
-
-
                     console.log(
                         "Python:",
                         line
@@ -285,31 +276,29 @@ function startPythonBackend() {
         }
     );
 
-
-
     pythonProcess.stderr.on(
-    "data",
-    (data)=>{
+        "data",
+        (data) => {
 
-        console.log(
-            "Python Log:",
-            data.toString()
-        );
-    
+            const error = data.toString();
 
-        if(mainWindow){
-
-            mainWindow.webContents.send(
-                "backend-response",
-                {
-                    success:false,
-                    error:error
-                }
+            console.log(
+                "Python Log:",
+                error
             );
-        }
-    }
-);
 
+            if (mainWindow) {
+
+                mainWindow.webContents.send(
+                    "backend-response",
+                    {
+                        success: false,
+                        error: error
+                    }
+                );
+            }
+        }
+    );
 
 
     pythonProcess.on(

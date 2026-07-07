@@ -3,6 +3,9 @@
 // Backend State
 // ============================================
 
+
+let pathSubmitted = false;
+
 let ranFullPipeline = false;
 
 let summariesMade = false;
@@ -34,63 +37,36 @@ let hasAPI = false; // Flag to track if the API key has been set
 
 //start of the code to check if the API key has been set and determineif the API button should be active or not
 //activates the API button if the API key has not been set, otherwise it will be disabled -- also changes attributes within that page and enables the anaylsis button
+
 window.electronAPI.hasAPIKey()
     .then((apiKeyExists) => {
         hasAPI = apiKeyExists;
 
         if (hasAPI) {
 
-            const apiBtnEl =
-                document.getElementById("apiBtn");
+            const apiBtnEl = document.getElementById("apiBtn");
+            if (apiBtnEl) apiBtnEl.classList.add("unusable-btn");
 
-            if (apiBtnEl)
-                apiBtnEl.classList.add("unusable-btn");
+            const analysisBtnEl = document.getElementById("analysisBtn");
+            if (analysisBtnEl) analysisBtnEl.classList.remove("unusable-btn");
 
+            const apiKeyMsgEl = document.getElementById("apiKeyMsg");
+            if (apiKeyMsgEl) apiKeyMsgEl.classList.remove("hidden");
 
-            const analysisBtnEl =
-                document.getElementById("analysisBtn");
+            const replaceApiKeyBtnEl = document.getElementById("replaceApiKeyBtn");
+            if (replaceApiKeyBtnEl) replaceApiKeyBtnEl.classList.remove("hidden");
 
-            if (analysisBtnEl)
-                analysisBtnEl.classList.remove("unusable-btn");
+            const keepApiKeyBtnEl = document.getElementById("keepApiKeyBtn");
+            if (keepApiKeyBtnEl) keepApiKeyBtnEl.classList.remove("hidden");
 
+            const submitApiKeyBtnEl = document.getElementById("submitApiKeyBtn");
+            if (submitApiKeyBtnEl) submitApiKeyBtnEl.classList.add("hidden");
 
-            const apiKeyMsgEl =
-                document.getElementById("apiKeyMsg");
+            const apiKeyInputEl = document.getElementById("apiKeyInput");
+            if (apiKeyInputEl) apiKeyInputEl.classList.add("hidden");
 
-            if (apiKeyMsgEl)
-                apiKeyMsgEl.classList.remove("hidden");
-
-
-            const replaceApiKeyBtnEl =
-                document.getElementById("replaceApiKeyBtn");
-
-            if (replaceApiKeyBtnEl)
-                replaceApiKeyBtnEl.classList.remove("hidden");
-
-
-            const keepApiKeyBtnEl =
-                document.getElementById("keepApiKeyBtn");
-
-            if (keepApiKeyBtnEl)
-                keepApiKeyBtnEl.classList.remove("hidden");
-
-            const submitApiKeyBtnEl =
-                document.getElementById("submitApiKeyBtn");
-
-            if (submitApiKeyBtnEl)
-                submitApiKeyBtnEl.classList.add("hidden");
-
-            const apiKeyInputEl =
-                document.getElementById("apiKeyInput");
-
-            if (apiKeyInputEl)
-                apiKeyInputEl.classList.add("hidden");
-
-            const apiBackBtnEl =
-                document.getElementById("apiBackBtn");
-
-            if (apiBackBtnEl)
-                apiBackBtnEl.classList.add("hidden");
+            const apiBackBtnEl = document.getElementById("apiBackBtn");
+            if (apiBackBtnEl) apiBackBtnEl.classList.add("hidden");
         }
 
     });
@@ -99,6 +75,40 @@ window.electronAPI.hasAPIKey()
 // Backend Communication Helpers
 // ============================================
 
+function showLoading(title, message) {
+
+    const overlay =
+        document.getElementById("loadingOverlay");
+
+    if (!overlay) return;
+
+    overlay.classList.remove("hidden");
+
+    document.getElementById("loadingTitle").textContent = title;
+    document.getElementById("loadingMessage").textContent = message;
+}
+
+
+function updateLoading(message) {
+
+    const messageElement =
+        document.getElementById("loadingMessage");
+
+    if (!messageElement) return;
+
+    messageElement.textContent = message;
+}
+
+
+function hideLoading() {
+
+    const overlay =
+        document.getElementById("loadingOverlay");
+
+    if (!overlay) return;
+
+    overlay.classList.add("hidden");
+}
 
 async function runBackendCommand(
     command,
@@ -118,7 +128,6 @@ async function runBackendCommand(
     );
 
 }
-
 
 
 async function runPreviewCommand(
@@ -217,8 +226,12 @@ document.getElementById('analysisBtn')
 
         clearOutput();
 
-        showPage('analysisPage');
 
+        if (!pathSubmitted) {
+            showPage('codebasePipelinePage');
+        } else {
+            showPage('analysisPage');
+        }
 
     
     });
@@ -335,13 +348,24 @@ document.getElementById('exitBtn').addEventListener('click', () => {
 //======================================================
 document.getElementById('codebaseAnalysisPipelineBtn')
     .addEventListener('click', () => {
+        showLoading(
+            "Running Full Pipeline",
+            "Preparing..."
+        );
 
-        runBackendCommand(
-        "full_pipeline",
-        {
-            codebase:selectedCodebasePath
-        });
-    });
+
+        setTimeout(() => {
+
+            runBackendCommand(
+                "full_pipeline",
+                {
+                    codebase:selectedCodebasePath
+                }
+            );
+
+        }, 100);
+
+});
 
 document.getElementById('createCodeDatabaseOnlyBtn')
     .addEventListener('click', () => {
@@ -543,7 +567,7 @@ document.getElementById('submitPathBtn')
     clearOutput();
 
 
-    showPage('outputPage');
+    showPage('analysisPage');
 
 
     selectedCodebasePath =
@@ -614,9 +638,18 @@ window.electronAPI.onBackendResponse(
         if(!response){
             return;
         }
+
+        if(response.type === "progress"){
+
+            updateLoading(response.stage);
+
+            return;
+        }
     
         // ERROR HANDLING
         if(!response.success){
+
+            hideLoading();
             errorsMade = true;
 
             const errorBox =
@@ -646,6 +679,8 @@ window.electronAPI.onBackendResponse(
                 outputBox.textContent +=
                     response.message + "\n";
             }
+
+            hideLoading();
         }
 
         // COLLECTION LIST RESPONSE
