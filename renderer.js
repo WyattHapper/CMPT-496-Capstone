@@ -33,6 +33,11 @@ let backendOutputBuffer = "";
 //loadingscreen 
 let activeCommand = null;
 
+//output
+let pendingLine = '';
+let lastLine = '';
+let summaryPendingLine = '';
+
 // Checks if the API key has been set
 const envPath = ".env";
 
@@ -160,12 +165,6 @@ function showPage(pageId) {
 // clears oput anything from the screen that does not need to be there
 function clearOutput() {
 
-    const outputBox =
-        document.getElementById('analysisOutputBox');
-
-    if (outputBox) {
-        outputBox.textContent = '';
-    }
 
     const errorOutput =
         document.getElementById('errorOutput');
@@ -253,6 +252,22 @@ document.getElementById('apiBtn')
 
     
     });
+
+document.getElementById('mainViewBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+        showPage('mainViewPage');
+
+    });
+
+document.getElementById('mainViewBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('homePage');
+    }); 
 
 document.getElementById('summaryBtn')
     .addEventListener('click', () => {
@@ -584,13 +599,10 @@ document.getElementById('codebaseBackBtn')
         showPage('analysisPage');
     });
 
-document.getElementById('outputBackBtn')
-    .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('analysisPage');
-    });
+//======================================================
+// Analysis Page Buttons
+//======================================================
 
 document.getElementById('submitPathBtn')
 .addEventListener('click', () => {
@@ -648,10 +660,7 @@ document.getElementById('backToFullPipelineBtn')
 
 
 
-//output
-let pendingLine = '';
-let lastLine = '';
-let summaryPendingLine = '';
+
 
 // ============================================
 // Backend Response Handler

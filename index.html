@@ -14,13 +14,23 @@
         <h1>TBD2</h1>
         <h2>Codebase Analysis System</h2>
 
-        <button class="btn-primary unusable-btn" id="analysisBtn">Run Analysis</button>
+        <button class="btn-primary unusable-btn" id="analysisBtn">Run Operations</button>
+        <button class="btn-primary" id="mainViewBtn">View Insights</button>
         <button class="btn-primary" id="apiBtn">Upload API Key</button>
+        <button class="btn-primary back-btn" id="exitBtn">Exit</button>
+
+    </div>
+
+    <!-- MAIN VIEW PAGE -->
+    <div id="mainViewPage" class="page hidden">
+        <h1>View</h1>
+        <p>Choose whether to view individual files, summaries, sources, or errors:</p>
+
         <button class="btn-primary" id="summaryBtn">View Summaries</button>
         <button class="btn-primary" id="sourceBtn">View Sources</button>
         <button class="btn-primary" id="errorBtn">View Errors</button>
-        <button class="btn-primary back-btn" id="exitBtn">Exit</button>
 
+        <button class="btn-primary back-btn" id="mainViewBackBtn">Back</button>
     </div>
 
     <!-- API PAGE -->
@@ -88,17 +98,9 @@
 
     </div>
 
-    <!--Output page-->
-    <div id="outputPage" class="page hidden">
-        <h1>Output</h1>
-
-        <div id="analysisOutput" class="hidden">
-            <div class="loader"></div>
-            <pre id="analysisOutputBox"></pre>
-        </div>
-
-        <button class="btn-primary back-btn" id="outputBackBtn">Back</button>
-    </div>
+    <!--  -->
+    <!--VIEW PAGES -->
+    <!--  -->
 
     <!-- SUMMARY PAGE -->
     <div id="summaryPage" class="page hidden">
@@ -147,6 +149,9 @@
 
 
     </div>
+
+
+    <!-- LOADING OVERLAY -->
 
     <div id="loadingOverlay" class="hidden">
         <div class="loading-box">
