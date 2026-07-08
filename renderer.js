@@ -30,6 +30,9 @@ let sourcePreviewText = "";
 // Backend response buffer
 let backendOutputBuffer = "";
 
+//loadingscreen 
+let activeCommand = null;
+
 // Checks if the API key has been set
 const envPath = ".env";
 
@@ -110,16 +113,10 @@ function hideLoading() {
     overlay.classList.add("hidden");
 }
 
-async function runBackendCommand(
-    command,
-    args = {}
-){
+async function runBackendCommand(command,args={}){
 
-    console.log(
-        "Command:",
-        command,
-        args
-    );
+
+    activeCommand = command;
 
 
     return await window.electronAPI.executeCommand(
@@ -668,7 +665,6 @@ window.electronAPI.onBackendResponse(
         // NORMAL OUTPUT
         if(response.message){
 
-
             const outputBox =
                 document.getElementById(
                     "analysisOutputBox"
@@ -680,7 +676,13 @@ window.electronAPI.onBackendResponse(
                     response.message + "\n";
             }
 
-            hideLoading();
+
+            // Only hide when backend says the command is finished
+            if(response.message.includes("completed")){
+
+                hideLoading();
+
+            }
         }
 
         // COLLECTION LIST RESPONSE
