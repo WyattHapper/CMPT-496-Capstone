@@ -276,44 +276,38 @@ function startPythonBackend() {
         }
     );
 
-    pythonProcess.stderr.on(
-        "data",
-        (data) => {
+    pythonProcess.stderr.on("data", (data) => {
 
-            const error = data.toString();
+        console.error(
+            "Python stderr:",
+            data.toString()
+        );
 
-            console.log(
-                "Python Log:",
-                error
+    });
+
+
+    pythonProcess.on("close", (code) => {
+
+        console.log(
+            "Python exited:",
+            code
+        );
+
+        if (code !== 0 && mainWindow) {
+
+            mainWindow.webContents.send(
+                "backend-response",
+                {
+                    success: false,
+                    error: `Python backend exited unexpectedly (code ${code}).`
+                }
             );
 
-            if (mainWindow) {
-
-                mainWindow.webContents.send(
-                    "backend-response",
-                    {
-                        success: false,
-                        error: error
-                    }
-                );
-            }
         }
-    );
 
+        pythonProcess = null;
 
-    pythonProcess.on(
-        "close",
-        (code)=>{
-
-            console.log(
-                "Python exited:",
-                code
-            );
-
-            pythonProcess=null;
-
-        }
-    );
+    });
 
 }
 

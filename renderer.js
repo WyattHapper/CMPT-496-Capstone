@@ -623,90 +623,95 @@ let summaryPendingLine = '';
 // ============================================
 
 
-window.electronAPI.onBackendResponse(
-    (response)=>{
+window.electronAPI.onBackendResponse((response) => {
+
+    console.log("ACTIVE:", activeCommand);
+    console.log("RESPONSE:", response);
 
 
-        console.log(
-            "Backend response:",
-            response
-        );
+    if (!response) {
+        return;
+    }
 
-        if(!response){
-            return;
+    // ----------------------------------------
+    // Progress updates
+    // ----------------------------------------
+    if (response.type === "progress") {
+
+        updateLoading(response.stage);
+        return;
+    }
+
+    // ----------------------------------------
+    // Error handling
+    // ----------------------------------------
+    if (!response.success) {
+
+        errorsMade = true;
+
+        const errorBox =
+            document.getElementById("errorOutput");
+
+        if (errorBox && response.error) {
+            errorBox.textContent += response.error + "\n";
         }
 
-        if(response.type === "progress"){
-
-            updateLoading(response.stage);
-
-            return;
-        }
-    
-        // ERROR HANDLING
-        if(!response.success){
-
+        if (activeCommand) {
             hideLoading();
-            errorsMade = true;
-
-            const errorBox =
-                document.getElementById(
-                    "errorOutput"
-                );
-
-            if(errorBox){
-
-                errorBox.textContent +=
-                    response.error + "\n";
-
-            }
-            return;
-        }
-        // NORMAL OUTPUT
-        if(response.message){
-
-            const outputBox =
-                document.getElementById(
-                    "analysisOutputBox"
-                );
-
-            if(outputBox){
-
-                outputBox.textContent +=
-                    response.message + "\n";
-            }
-
-
-            // Only hide when backend says the command is finished
-            if(response.message.includes("completed")){
-
-                hideLoading();
-
-            }
+            activeCommand = null;
         }
 
-        // COLLECTION LIST RESPONSE
-        if(response.collections){
+        return;
+    }
 
+    // ----------------------------------------
+    // Analysis output
+    // ----------------------------------------
+    if (response.message) {
 
-            renderCollections(
-                response.collections,
-                response.db_type
-            );
-        }
+        const outputBox =
+            document.getElementById("analysisOutputBox");
 
-        // COLLECTION PREVIEW RESPONSE
-        if(response.preview){
-
-            renderCollectionPreview(
-                response.preview,
-                response.db_type
-            );
-
+        if (outputBox) {
+            outputBox.textContent += response.message + "\n";
         }
     }
-);
 
+    // ----------------------------------------
+    // Collection list
+    // ----------------------------------------
+    if (response.collections) {
+
+        renderCollections(
+            response.collections,
+            response.db_type
+        );
+    }
+
+    // ----------------------------------------
+    // Collection preview
+    // ----------------------------------------
+    if (response.preview) {
+
+        renderCollectionPreview(
+            response.preview,
+            response.db_type
+        );
+    }
+
+    // ----------------------------------------
+    // Finished command
+    // ----------------------------------------
+    if (
+        activeCommand &&
+        response.command === activeCommand
+    ) {
+
+        hideLoading();
+        activeCommand = null;
+    }
+
+});
 // ============================================
 // Collection List Rendering
 // ============================================

@@ -22,30 +22,16 @@ import time
 from pathlib import Path
 
 # ---------------------------------------------------------
-# Logging Configuration & info text helper function
+# Logging Configuration 
 # ---------------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
+    stream=sys.stderr,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 )
 
 logger = logging.getLogger(__name__)
-
-def send_progress(message: str):
-        """
-        Send a progress update to the Electron frontend.
-        """
-
-        print(
-            json.dumps(
-                {
-                    "type": "progress",
-                    "message": message,
-                }
-            ),
-            flush=True,
-        )
 
 
 # ---------------------------------------------------------
@@ -87,6 +73,21 @@ class Commands:
     # -----------------------------------------------------
     # Internal helper
     # -----------------------------------------------------
+
+    def send_progress(self, message: str):
+        """
+        Send a progress update to the Electron frontend.
+        """
+
+        print(
+            json.dumps(
+                {
+                    "type": "progress",
+                    "stage": message,
+                }
+            ),
+            flush=True,
+        )
 
     
     def _run_command(self, command_name: str, func, *args, **kwargs):
@@ -148,7 +149,7 @@ class Commands:
         """
 
         def task():
-            send_progress("Building source code database...")
+            self.send_progress("Building source code database...")
             return build_database(codebase)
 
         return self._run_command(
@@ -164,7 +165,7 @@ class Commands:
         codebase_name = Path(codebase).name
 
         def task():
-            send_progress("Building summary database...")
+            self.send_progress("Building summary database...")
             return build_summary_database(codebase_name)
 
         return self._run_command(
@@ -178,7 +179,7 @@ class Commands:
         """
 
         def task():
-            send_progress("Generating file summaries...")
+            self.send_progress("Generating file summaries...")
             return FileSummaryAgent().run(codebase)
 
         return self._run_command(
@@ -199,7 +200,7 @@ class Commands:
         """
 
         def task():
-            send_progress("Generating directory summaries...")
+            self.send_progress("Generating directory summaries...")
             return DirectoryAgent().run(codebase)
 
         return self._run_command(
@@ -237,7 +238,7 @@ class Commands:
 
         def task():
 
-            send_progress("Validating business rules...")
+            self.send_progress("Validating business rules...")
 
             if not rules_path.exists():
                 raise FileNotFoundError(
@@ -305,7 +306,7 @@ class Commands:
 
         def task():
 
-            send_progress("Generating unit tests...")
+            self.send_progress("Generating unit tests...")
 
             if not validated_rules_path.exists():
                 raise FileNotFoundError(
@@ -357,7 +358,7 @@ class Commands:
 
         def task():
 
-            send_progress("Generating UML diagrams...")
+            self.send_progress("Generating UML diagrams...")
 
             old_argv = sys.argv
 
@@ -408,7 +409,7 @@ class Commands:
 
         def task():
 
-            send_progress("Generating UML diagrams...")
+            self.send_progress("Generating UML diagrams...")
 
             if not summary_dir.exists():
                 raise FileNotFoundError(
@@ -461,7 +462,7 @@ class Commands:
 
         def task():
 
-            send_progress("Saving API key...")
+            self.send_progress("Saving API key...")
 
             env_path = self.app_dir / ".env"
 
@@ -553,25 +554,25 @@ class Commands:
 
             steps = []
 
-            send_progress("Building source code database...")
+            
             steps.append( self._require_success(self.build_database(str(codebase_path))))
 
-            send_progress("Generating file summaries...")
+            
             steps.append( self._require_success(self.generate_file_summaries(str(codebase_path))))
 
-            send_progress("Building summary database...")
+            
             steps.append( self._require_success(self.build_summary_database(str(codebase_path))))
 
-            send_progress("Generating directory summaries...")
+            
             steps.append( self._require_success(self.generate_directory_summaries(str(codebase_path))))
             
-            send_progress("Validating business rules...")
+            
             steps.append( self._require_success(self.validate_business_rules(str(codebase_path))))
 
-            send_progress("Generating unit tests...")
+            
             steps.append( self._require_success(self.generate_unit_tests(str(codebase_path))))
 
-            send_progress("Generating UML diagrams...")
+            
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory))))
 
 
