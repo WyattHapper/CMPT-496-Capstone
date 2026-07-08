@@ -367,6 +367,11 @@ document.getElementById('codebaseAnalysisPipelineBtn')
 document.getElementById('createCodeDatabaseOnlyBtn')
     .addEventListener('click', () => {
 
+        showLoading(
+            "Source Code Database Creation",
+            "Preparing..."
+        );
+
         runBackendCommand(
             "build_database",
         {
@@ -376,6 +381,11 @@ document.getElementById('createCodeDatabaseOnlyBtn')
 
 document.getElementById('createJSONSummariesOnlyBtn')
     .addEventListener('click', () => {
+
+        showLoading(
+            "Summary Database Creation",
+            "Preparing..."
+        );
 
         runBackendCommand(
             "file_summary",
@@ -387,6 +397,11 @@ document.getElementById('createJSONSummariesOnlyBtn')
 document.getElementById('createSummaryDatabasefromJSONOnlyBtn')
     .addEventListener('click', () => {
 
+        showLoading(
+            "Summary Database Creation from JSON Only",
+            "Preparing..."
+        );
+
         runBackendCommand(
         "build_summary_database",
         {
@@ -396,6 +411,11 @@ document.getElementById('createSummaryDatabasefromJSONOnlyBtn')
 
 document.getElementById('createDirectorySummariesOnlyBtn')
     .addEventListener('click', () => {
+
+        showLoading(
+            "Directory Summaries Creation",
+            "Preparing..."
+        );
 
         runBackendCommand(
             "directory_summary",
@@ -408,6 +428,11 @@ document.getElementById('createDirectorySummariesOnlyBtn')
 document.getElementById('runBusinessRuleValidationOnlyBtn')
     .addEventListener('click', () => {
 
+        showLoading(
+            "Business Rule Validation",
+            "Preparing..."
+        );
+
         runBackendCommand(
             "validate_business_rules",
             {
@@ -419,6 +444,11 @@ document.getElementById('runBusinessRuleValidationOnlyBtn')
 document.getElementById('runUnitTestGenerationOnlyBtn')
     .addEventListener('click', () => {
 
+        showLoading(
+            "Unit Test Generation",
+            "Preparing..."
+        );
+
        runBackendCommand(
             "generate_unit_tests",
             {
@@ -429,6 +459,11 @@ document.getElementById('runUnitTestGenerationOnlyBtn')
 
 document.getElementById('runUMLGenerationOnly')
     .addEventListener('click', () => {
+
+        showLoading(
+            "UML Generation",
+            "Preparing..."
+        );
 
         runBackendCommand(
             "generate_uml",
