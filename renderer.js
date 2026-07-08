@@ -442,7 +442,17 @@ document.getElementById('createDirectorySummariesOnlyBtn')
 
 document.getElementById('runBusinessRuleValidationOnlyBtn')
     .addEventListener('click', () => {
+        
+        clearOutput();
 
+        showPage('businessRulePage');
+
+    });
+
+
+document.getElementById('allBusinessRuleBtn')
+    .addEventListener('click', () => {
+        
         showLoading(
             "Business Rule Validation",
             "Preparing..."
@@ -456,9 +466,37 @@ document.getElementById('runBusinessRuleValidationOnlyBtn')
         );
     });
 
-document.getElementById('runUnitTestGenerationOnlyBtn')
+
+
+document.getElementById('individualBusinessRuleBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        showPage('chooseBusinessRulePage');
+    });
+
+document.getElementById('businessRuleBackBtn')
     .addEventListener('click', () => {
 
+        clearOutput();
+
+        showPage('analysisPage');
+
+    });
+
+document.getElementById('chooseBusinessRuleBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('businessRulePage');
+
+    });
+
+document.getElementById('runUnitTestGenerationOnlyBtn')
+    .addEventListener('click', () => {
+        
         showLoading(
             "Unit Test Generation",
             "Preparing..."
@@ -471,6 +509,60 @@ document.getElementById('runUnitTestGenerationOnlyBtn')
             }
         );
     });
+
+document.getElementById('runUnitTestValidationOnlyBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+        
+        showPage('unitTestPage');
+        
+    });
+
+// FILLER FOR WHEN VALIDATION GETS ADDED ONTO THIS BRANCH, FOR NOW IT WILL NOT DO ANYTHING WHEN CLICKED
+
+// document.getElementById('allUnitTestsBtn')
+//     .addEventListener('click', () => {
+        
+//         showLoading(
+//             "Unit Test Generation",
+//             "Preparing..."
+//         );
+
+//        runBackendCommand(
+//             "generate_unit_tests",
+//             {
+//                 codebase:selectedCodebasePath
+//             }
+//         );
+//     });
+
+document.getElementById('individualUnitTestsBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        showPage('chooseUnitTestPage');
+    });
+
+document.getElementById('unitTestBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('analysisPage');
+
+    });
+
+document.getElementById('chooseUnitTestBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('unitTestPage');
+
+    });
+
 
 document.getElementById('runUMLGenerationOnly')
     .addEventListener('click', () => {

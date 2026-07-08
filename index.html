@@ -53,36 +53,27 @@
     <!-- ANALYSIS PAGE -->
     <div id="analysisPage" class="page hidden">
 
-        <h1>Analysis</h1>
+        <h1>Operations</h1>
 
         <div id="analysisOptions">
 
             <div id="pipelineOptions">
                
-             <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
-             <button class="btn-primary" id="individualStepsBtn">Choose Individual Step(s)</button>
-            </div>
-
-
-            <div id="individualStepsContainer" class="hidden">
-
-                <h2>Run Individual Steps</h2>
-
+                <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
                 <button class="btn-primary" id="createCodeDatabaseOnlyBtn">Create Code Database</button>
                 <button class="btn-primary" id="createJSONSummariesOnlyBtn">Create JSON Summaries</button>
                 <button class="btn-primary" id="createSummaryDatabasefromJSONOnlyBtn">Create Summary Database from JSON</button>
-                <button class="btn-primary" id="createDirectorySummariesOnlyBtn">Create Directory Summaries</button>
+                <button class="btn-primary" id="createDirectorySummariesOnlyBtn">Create Directory Summaries & Business Rules</button>
                 <button class="btn-primary" id="runBusinessRuleValidationOnlyBtn">Business Rule Validation</button>
-                <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Unit Test Generation</button>
                 <button class="btn-primary" id="runUMLGenerationOnly">UML Generation</button>
-                <button class="btn-primary back-btn hidden" id="backToFullPipelineBtn">Back</button>
+                <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Unit Test Generation</button>
+                <button class="btn-primary unusable-btn" id="runUnitTestValidationOnlyBtn">Unit Test Validation</button>
+                
             </div>
 
             <button class="btn-primary back-btn" id="analysisBackBtn">Return to Main Menu</button>
+
         </div>
-
-        
-
     </div>
 
     <!--Codebase Analysis Pipeline input and output page-->
@@ -97,6 +88,52 @@
        
 
     </div>
+
+    <!--  -->
+    <!--ANALYSIS SUB PAGES -->
+    <!--  -->
+
+    <!-- BUSINESS RULE PAGE -->
+    <div id="businessRulePage" class="page hidden">
+
+        <h1>Business Rule Validation</h1>
+
+        <button class="btn-primary" id="allBusinessRuleBtn">Run All Business Rules</button>
+        <button class="btn-primary" id="individualBusinessRuleBtn">Select Invidividual Business Rules</button>
+        <button class="btn-primary back-btn" id="businessRuleBackBtn">Back</button>
+        
+    </div>
+
+    <!-- BUSINESS RULE SELECTION PAGE -->
+    <div id="chooseBusinessRulePage" class="page hidden">
+
+        <h1>Business Rule Validation</h1>
+        <h2>Select Business Rules to Validate</h2>
+        <button class="btn-primary back-btn" id="chooseBusinessRuleBackBtn">Back</button>
+
+        
+    </div>
+
+    <!-- UNIT TEST PAGE -->
+    <div id="unitTestPage" class="page hidden">
+
+        <h1>Unit Test Validation</h1>
+
+        <button class="btn-primary" id="allUnitTestsBtn">Run All Unit Tests</button>
+        <button class="btn-primary" id="individualUnitTestsBtn">Select Individual Unit Tests</button>
+        <button class="btn-primary back-btn" id="unitTestBackBtn">Back</button>
+        
+    </div>
+
+    <!-- UNIT TEST SELECTION PAGE -->
+    <div id="chooseUnitTestPage" class="page hidden">
+
+        <h1>Unit Test Validation</h1>
+        <h2>Select Unit Tests to Validate</h2>
+        <button class="btn-primary back-btn" id="chooseUnitTestBackBtn">Back</button>
+        
+    </div>
+
 
     <!--  -->
     <!--VIEW PAGES -->
