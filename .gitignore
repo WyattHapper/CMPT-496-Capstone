@@ -20,3 +20,5 @@ agent/UT_agent_output/*/*.txt
 node_modules/
 .venv/
 .ConsoleTables-main/
+dist/
+releases/main/

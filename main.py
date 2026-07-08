@@ -7,19 +7,30 @@ code and summaries.
 """
 
 import sys
+import os
+
 sys.stdout.reconfigure(encoding='utf-8', line_buffering=True)
 
-import os
-import subprocess
-from xml.parsers.expat import errors
-import chromadb
-import time
 from pathlib import Path
 
 if getattr(sys, 'frozen', False):
     APP_DIR = Path(sys.executable).parent
 else:
     APP_DIR = Path(__file__).parent
+
+"""
+if len(sys.argv) > 1:
+    output_dir = sys.argv[1]
+else:
+"""
+
+output_dir = str(APP_DIR)
+
+import subprocess
+from xml.parsers.expat import errors
+import chromadb
+import time
+from pathlib import Path
 
 def clear_screen():
     """
@@ -30,7 +41,6 @@ def clear_screen():
     os.system("cls" if os.name == "nt" else "clear")
 
 def run_step(step_name: str, module: str, args: list, errors: list):
-    os.chdir(APP_DIR)
     print(f"Running step: {step_name}...")
     start = time.perf_counter()
     try:
@@ -47,11 +57,11 @@ def run_step(step_name: str, module: str, args: list, errors: list):
 
         def run_file_summary(args):
             agent = FileSummaryAgent()
-            agent.run(args[0])
+            agent.run(args[0], output_dir=output_dir)
 
         def run_directory(args):
             agent = DirectoryAgent()
-            agent.run(args[0])
+            agent.run(args[0], output_dir=output_dir)
 
         def run_br(args):
             codebase_name, rules_path = args[0], args[1]
@@ -62,7 +72,7 @@ def run_step(step_name: str, module: str, args: list, errors: list):
                 for path, rules in raw_rules.items()
             }
             agent = BRAgent()
-            agent.run(input_rules, codebase_name)
+            agent.run(input_rules, codebase_name, output_dir=output_dir)
 
         def run_ut(args):
             codebase_path, rules_path = str(args[0]), args[1]
@@ -71,7 +81,7 @@ def run_step(step_name: str, module: str, args: list, errors: list):
                 raw_rules = json.load(f)
             input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]
             agent = UTAgent()
-            agent.run(input_rules, codebase_name, codebase_path)
+            agent.run(input_rules, codebase_name, codebase_path, output_dir=output_dir)
         
         def run_uml(args):
             old_argv = sys.argv
@@ -125,7 +135,6 @@ def uml_generation(dir_path: Path, errors: list):
     return True
 
 def get_api():
-    os.chdir(APP_DIR)
     env_path = APP_DIR / ".env"
     if env_path.exists():
         while True:
@@ -187,11 +196,15 @@ def processing_menu(errors: list):
                 time.sleep(2)
                 continue
 
-            rules_path = str(Path("agent") / "file_summary_agent_output" / codebase_name / "business_rules" / "business_rules.json")
-            validated_rules_path = str(Path("agent") / "BR_agent_output" / codebase_name / "validated_rules.json")
-            dir_path = Path(f"agent/file_summary_agent_output/{codebase_name}")
+            rules_path = str(Path(output_dir) / "agent" / "file_summary_agent_output" / codebase_name / "business_rules" / "business_rules.json")
+            validated_rules_path = str(Path(output_dir) / "agent" / "BR_agent_output" / codebase_name / "validated_rules.json")
+            dir_path = Path(output_dir) / "agent" / "file_summary_agent_output" / codebase_name
 
             if choice == '1':
+                print(f"[DEBUG] sys.argv: {sys.argv}", flush=True)
+                print(f"[DEBUG] os.getcwd(): {os.getcwd()}", flush=True)
+                print(f"[DEBUG] APP_DIR: {APP_DIR}", flush=True)
+                print(f"[DEBUG] output_dir: {output_dir}", flush=True)
                 if run_step("Code Vectorization", "src.build_database", [str(codebase)], errors):
                     if run_step("File Summary Generation", "agent.file_summary_agent", [str(codebase)], errors):
                         if run_step("Summary Vectorization", "src.build_database_JSON", [codebase_name], errors):
@@ -254,9 +267,8 @@ def view_collections(db_type: str):
     @param db_type The type of database to view; expected values are 'summary' or 'source'.
     @return None
     """
-    os.chdir(APP_DIR)
     clear_screen()
-    db_dir = Path("vectorStores").resolve()
+    db_dir = Path(output_dir) / "vectorStores"
     if not db_dir.exists():
         print("No vector stores found. Please generate summaries first.")
         input("Press enter to return to main menu...")

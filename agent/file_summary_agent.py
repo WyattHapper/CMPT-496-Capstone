@@ -99,7 +99,7 @@ class FileSummaryAgent:
         
         return builder.compile()
     
-    def run(self, directory_path):
+    def run(self, directory_path, output_dir=None):
         """
         @brief Executes the FileSummaryAgent workflow on a given directory.
 
@@ -119,7 +119,8 @@ class FileSummaryAgent:
             "filename_counters": {},
             "file_summaries": [],
             "current_files": [],
-            "business_rules_by_file": {}
+            "business_rules_by_file": {},
+            "output_directory": os.path.join(output_dir or ".", "agent", "file_summary_agent_output")
         }
 
         self._loop = asyncio.new_event_loop()
@@ -208,7 +209,7 @@ class FileSummaryAgent:
 
         
     def write_file_summary_node(self, state: FileGraphState):
-        base_output_dir = "./agent/file_summary_agent_output"
+        base_output_dir = state.get("output_directory", "./agent/file_summary_agent_output")
         codebase_subdir = os.path.join(base_output_dir, f'{state["codebase_name"]}')
         os.makedirs(codebase_subdir, exist_ok=True)
 
@@ -242,7 +243,7 @@ class FileSummaryAgent:
         @param state FileGraphState: Current graph state.
         @return dict: Unchanged state.
         """
-        base_output_dir = "./agent/file_summary_agent_output"
+        base_output_dir = state.get("output_directory", "./agent/file_summary_agent_output")
         br_dir = os.path.join(base_output_dir, state["codebase_name"], "business_rules")
         os.makedirs(br_dir, exist_ok=True)
 

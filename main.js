@@ -109,15 +109,37 @@ function createWindow() {
 
     
 
-    const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
+    const backendDir = app.isPackaged
+        ? path.join(process.resourcesPath, "backend")
+        : path.join(__dirname, "releases", "main");
 
-    pythonProcess = spawn(
-        exePath,
-        [],
-        {
-            cwd: path.join(__dirname, 'releases', 'main')
-        }
-    );
+    const executableName =
+        process.platform === "win32" ? "main.exe" : "main";
+
+    const exePath = path.join(backendDir, executableName);
+
+    const outputDir = app.isPackaged
+        ? app.getPath("userData")
+        : backendDir;
+
+    console.log("Backend directory:", backendDir);
+    console.log("Output directory:", outputDir);
+
+    pythonProcess = spawn(exePath, [outputDir], {
+        cwd: backendDir
+    });
+
+    pythonProcess.on("error", (err) => {
+        console.error("Failed to start backend:", err);
+    });
+
+    pythonProcess.on("close", (code) => {
+        console.log("Backend exited with code:", code);
+    });
+
+    pythonProcess.stderr.on("data", (data) => {
+        console.error(data.toString());
+    });
 
     //add code for outputs to be shown
 

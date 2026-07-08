@@ -5,7 +5,8 @@
   "main": "main.js",
   "type": "commonjs",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder build --win"
   },
   "repository": {
     "type": "git",
@@ -14,9 +15,22 @@
   "license": "ISC",
   "devDependencies": {
     "electron": "^42.4.0",
+    "electron-builder": "^26.15.3",
     "electron-reloader": "^1.2.3"
   },
   "dependencies": {
     "dotenv": "^17.4.2"
+  },
+  "build": {
+    "appId": "com.yourname.capstone",
+    "win": {
+      "target": "nsis"
+    },
+    "extraResources": [
+      {
+        "from": "releases/main",
+        "to": "backend"
+      }
+    ]
   }
 }

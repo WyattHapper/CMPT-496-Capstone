@@ -85,7 +85,7 @@ class UTAgent:
 
         return builder.compile()
 
-    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str, codebase_path: str):
+    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str, codebase_path: str, output_dir=None):
         """
         @brief Executes the UTAgent workflow.
         @param input_rules Dictionary of validated business rules from BR_agent output. Keys are file or directory paths,
@@ -123,7 +123,7 @@ class UTAgent:
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
             "codebase_path": codebase_path,
-            "output_directory": "./agent/UT_agent_output",
+            "output_directory": os.path.join(output_dir or ".", "agent", "UT_agent_output")
         }
 
         self._loop = asyncio.new_event_loop()
