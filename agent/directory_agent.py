@@ -74,7 +74,7 @@ class DirectoryAgent:
 
         return builder.compile()
     
-    def run(self, directory_path: str):
+    def run(self, directory_path: str, output_dir=None):
         """
         @brief Executes the DirectoryAgent workflow starting from the provided initial state.
         @param directory_path The path to the directory to be analyzed.
@@ -119,7 +119,8 @@ class DirectoryAgent:
             "summary_acceptable": False,
             "summary_feedback": "",
             "refinement_attempts": 0,
-            "accumulated_business_rules": {}
+            "accumulated_business_rules": {},
+            "output_directory": os.path.join(output_dir or ".", "agent", "directory_agent_output")
         }
 
         return self.graph.invoke(initial_state)

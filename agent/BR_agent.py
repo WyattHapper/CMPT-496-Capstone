@@ -95,7 +95,7 @@ class BRAgent:
 
         return builder.compile()
 
-    def run(self, input_rules: dict[str, list[BusinessRule]], codebase_name: str):
+    def run(self, input_rules: dict[str, list[BusinessRule]], codebase_name: str, output_dir=None):
         """
         @brief Executes the BRAgent workflow.
         @param input_rules Dictionary of business rules from G1/G2. Keys are file or directory paths,
@@ -134,7 +134,7 @@ class BRAgent:
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
-            "output_directory": "./agent/BR_agent_output",
+            "output_directory": os.path.join(output_dir or ".", "agent", "BR_agent_output")
         }
 
         self._loop = asyncio.new_event_loop()

@@ -22,3 +22,5 @@ agent/UT_agent_validator_output/*
 node_modules/
 .venv/
 .ConsoleTables-main/
+dist/
+releases/main/

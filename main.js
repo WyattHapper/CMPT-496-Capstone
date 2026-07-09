@@ -118,40 +118,58 @@ function createWindow() {
 
     
 
-   /* const exePath = path.join(__dirname, 'releases', 'main', 'main.exe');
+    const backendDir = app.isPackaged
+        ? path.join(process.resourcesPath, "backend")
+        : path.join(__dirname, "releases", "main");
 
-    pythonProcess = spawn(
-        "python3",
-        ["main.py"],
-        {
-            cwd: __dirname,
-            env: {
-                ...process.env,
-                PYTHONUNBUFFERED: '1'
+    const isWindows = process.platform === "win32";
+    const executableName = isWindows ? "main.exe" : "main";
+    const exePath = path.join(backendDir, executableName);
+
+    const outputDir = app.isPackaged
+        ? app.getPath("userData")
+        : backendDir;
+
+    console.log("Backend directory:", backendDir);
+    console.log("Output directory:", outputDir);
+
+    const exeExists = fs.existsSync(exePath);
+
+    if (exeExists) {
+        console.log("Launching packaged executable:", exePath);
+
+        pythonProcess = spawn(exePath, [outputDir], {
+            cwd: backendDir
+        });
+    } else {
+        console.log("Executable not found, falling back to Python script");
+
+        const pythonPath = isWindows
+            ? path.join(__dirname, ".venv", "Scripts", "python.exe")
+            : "python3";
+
+        const scriptPath = path.join(__dirname, "main.py");
+
+        pythonProcess = spawn(
+            pythonPath,
+            ["-u", scriptPath, outputDir],
+            {
+                cwd: __dirname,
+                env: {
+                    ...process.env,
+                    PYTHONUNBUFFERED: "1"
+                }
             }
-        }
-    );*/
+        );
+    }
 
-    const isWindows = process.platform === 'win32';
-    const isMac = process.platform === 'darwin';
+    pythonProcess.on("error", (err) => {
+        console.error("Failed to start backend:", err);
+    });
 
-    const pythonPath = isWindows
-        ? path.join(__dirname, '.venv', 'Scripts', 'python.exe')
-        : isMac
-            ? 'python3'
-            : 'python3';
-
-    pythonProcess = spawn(
-        pythonPath,
-        [path.join(__dirname, 'main.py')],
-        {
-            cwd: __dirname,
-            env: {
-                ...process.env,
-                PYTHONUNBUFFERED: '1'
-            }
-        }
-    );
+    pythonProcess.on("close", (code) => {
+        console.log("Backend exited with code:", code);
+    });
 
     // Debug logging
     pythonProcess.stdout.on("data", (data) => {
