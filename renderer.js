@@ -231,6 +231,20 @@ function renderViewSummaryButtons(collections) {
 
 }
 
+function renderViewOutput(entries) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.textContent = "";
+
+    entries.forEach(entry => {
+
+        output.textContent +=
+            JSON.stringify(entry, null, 2) + "\n\n";
+    });
+}
+
 function showPage(pageId) {
 
     document.querySelectorAll('.page').forEach(page => {
@@ -358,6 +372,8 @@ document.getElementById('mainViewBtn')
 document.getElementById("viewDisplaySourcesBtn")
     .addEventListener("click", () => {
 
+        showButtons("viewSourcesBtns");
+        
         runPreviewCommand(
             "list",
             {
@@ -369,6 +385,8 @@ document.getElementById("viewDisplaySourcesBtn")
 
 document.getElementById("viewDisplaySummariesBtn")
     .addEventListener("click", () => {
+
+        showButtons("viewSummariesBtns");
 
         runPreviewCommand(
             "list",
@@ -934,13 +952,13 @@ window.electronAPI.onBackendResponse((response) => {
     // ----------------------------------------
     // Collection preview
     // ----------------------------------------
-    if (response.preview) {
+    if (response.entries) {
 
-        renderCollectionPreview(
-            response.preview,
-            response.db_type
-        );
+        renderViewOutput(response.entries);
+
+        return;
     }
+
 
     // ----------------------------------------
     // Finished command
