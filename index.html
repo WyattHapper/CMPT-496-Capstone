@@ -21,17 +21,6 @@
 
     </div>
 
-    <!-- MAIN VIEW PAGE -->
-    <div id="mainViewPage" class="page hidden">
-        <h1>View</h1>
-        <p>Choose whether to view individual files, summaries, sources, or errors:</p>
-
-        <button class="btn-primary" id="summaryBtn">View Summaries</button>
-        <button class="btn-primary" id="sourceBtn">View Sources</button>
-        <button class="btn-primary" id="errorBtn">View Errors</button>
-
-        <button class="btn-primary back-btn" id="mainViewBackBtn">Back</button>
-    </div>
 
     <!-- API PAGE -->
     <div id="apiPage" class="page hidden">
@@ -139,6 +128,54 @@
     <!--VIEW PAGES -->
     <!--  -->
 
+    <!-- View Display? -->
+
+    <div id="mainViewPage" class="page hidden">
+
+        
+        <div id="viewDisplayBtnSideBar">
+
+            <div id="sideBarContent">
+                <h1 id="viewPageHeader">View Insights</h1>
+                <h3 id="viewPageSubHeader">Choose what you would like to view</h3>
+
+                <div id="mainViewBtns" class="viewBtnContainer"> 
+                    <button class="btn-primary" id="viewDisplaySummariesBtn">Summaries</button>
+                    <button class="btn-primary" id="viewDisplaySourcesBtn">Sources</button>
+                    <button class="btn-primary" id="viewDisplayErrorsBtn">Errors</button>
+                    <button class="btn-primary" id="viewUMLBtn">UML</button>
+                    <button class="btn-primary" id="viewBusinessRulesBtn">Business Rules</button>
+                    <button class="btn-primary" id="viewUnitTestsBtn">Unit Tests</button>
+
+                    <button class="btn-primary" id="viewDisplayFilesBtn">Files</button>
+                </div>
+
+                <!-- These Divs will be used for button placement -->
+                <!-- We will have to interpret that data into buttons for each file choice -->
+                <div id="viewSummariesBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewSourcesBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewErrorsBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewFilesBtns" class="viewBtnContainer hidden"> </div>
+            </div>
+            
+            
+
+            <button class="btn-primary back-btn" id="mainViewBackBtn">Main Menu</button>
+        </div>
+
+        <!-- This box will be for the outputs -->
+        <div id="viewDisplayOutput">
+            <pre id="viewDisplayOutputBox"></pre>
+        </div>
+        
+        
+
+    </div>
+
+    <!-- Not sure if these pages will be necessary if we just show everything out of one output window-->
     <!-- SUMMARY PAGE -->
     <div id="summaryPage" class="page hidden">
 

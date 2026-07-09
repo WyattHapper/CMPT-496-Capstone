@@ -39,6 +39,21 @@ ipcMain.handle(
     }
 );
 
+ipcMain.handle(
+    "exit-app",
+    () => {
+        if (pythonProcess) {
+            pythonProcess.kill();
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.close();
+        }
+
+        app.quit();
+        return true;
+    }
+);
 
 
 // ----------------------------------------------------
@@ -295,13 +310,15 @@ function startPythonBackend() {
 
         if (code !== 0 && mainWindow) {
 
-            mainWindow.webContents.send(
-                "backend-response",
-                {
-                    success: false,
-                    error: `Python backend exited unexpectedly (code ${code}).`
-                }
-            );
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send(
+                    "backend-response",
+                    {
+                        success: false,
+                        error: `Python backend exited unexpectedly (code ${code}).`
+                    }
+                );
+            }
 
         }
 
@@ -329,10 +346,12 @@ app.on(
     ()=>{
 
 
-        if(pythonProcess){
-
-            pythonProcess.kill();
-
+        if(pythonProcess && !pythonProcess.killed && !pythonProcess.exitCode && !pythonProcess.signalCode){
+            try {
+                pythonProcess.kill();
+            } catch (error) {
+                console.warn("Failed to stop Python process:", error);
+            }
         }
 
 
@@ -349,10 +368,12 @@ app.on(
     "before-quit",
     ()=>{
 
-        if(pythonProcess){
-
-            pythonProcess.kill();
-
+        if(pythonProcess && !pythonProcess.killed && !pythonProcess.exitCode && !pythonProcess.signalCode){
+            try {
+                pythonProcess.kill();
+            } catch (error) {
+                console.warn("Failed to stop Python process:", error);
+            }
         }
 
     }
