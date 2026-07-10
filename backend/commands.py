@@ -278,7 +278,8 @@ class Commands:
     def generate_unit_tests(
         self,
         codebase: str,
-        validated_rules_path: str = None
+        selected_rules: list,
+        validated_rules_path: str = None,
     ):
         """
         Generate unit tests from validated rules.
@@ -322,13 +323,19 @@ class Commands:
 
                 raw_rules = json.load(file)
 
+            if selected_rules == []:
+                input_rules = [
+                    ValidatedRule.model_validate(rule)
+                    for rule in raw_rules
+                ]
 
-            input_rules = [
-                ValidatedRule.model_validate(rule)
-                for rule in raw_rules
-            ]
+            else:
+                input_rules = []
+                for rule in raw_rules:
+                    if rule["id"] in selected_rules:
+                        input_rules.append(ValidatedRule.model_validate(rule))
 
-
+            print(input_rules)
             UTAgent().run(
                 input_rules,
                 codebase_name,

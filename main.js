@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require("fs");
@@ -111,14 +111,140 @@ ipcMain.handle(
     "preview-command",
     async (event, request) => {
 
+        const action = request?.action;
+        const args = request?.args || {};
+
+        if (action === "files") {
+            const rawPath = args.path || "agent";
+            const targetPath = path.isAbsolute(rawPath)
+                ? rawPath
+                : path.join(__dirname, rawPath);
+
+            if (!fs.existsSync(targetPath)) {
+                return {
+                    success: false,
+                    error: `Path not found: ${targetPath}`
+                };
+            }
+
+            const stats = fs.statSync(targetPath);
+            if (!stats.isDirectory()) {
+                return {
+                    success: false,
+                    error: `Path is not a directory: ${targetPath}`
+                };
+            }
+
+            const dirents = fs.readdirSync(targetPath, {
+                withFileTypes: true
+            });
+
+            const entries = dirents
+                .map((dirent) => ({
+                    name: dirent.name,
+                    path: path.join(targetPath, dirent.name),
+                    isDirectory: dirent.isDirectory()
+                }))
+                .sort((a, b) => {
+                    if (a.isDirectory !== b.isDirectory) {
+                        return a.isDirectory ? -1 : 1;
+                    }
+                    return a.name.localeCompare(b.name, undefined, {
+                        sensitivity: 'base'
+                    });
+                });
+
+            const result = {
+                success: true,
+                type: "files",
+                path: targetPath,
+                files: entries
+            };
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("backend-response", result);
+            }
+
+            return result;
+        }
+
+        if (action === "open_file") {
+            const rawPath = args.path;
+            if (!rawPath) {
+                const result = {
+                    success: false,
+                    error: "No file path provided"
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const targetPath = path.isAbsolute(rawPath)
+                ? rawPath
+                : path.join(__dirname, rawPath);
+
+            if (!fs.existsSync(targetPath)) {
+                const result = {
+                    success: false,
+                    error: `File not found: ${targetPath}`
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const stats = fs.statSync(targetPath);
+            if (!stats.isFile()) {
+                const result = {
+                    success: false,
+                    error: `Path is not a file: ${targetPath}`
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const openResult = await shell.openPath(targetPath);
+            if (openResult) {
+                const result = {
+                    success: false,
+                    error: `Unable to open file: ${openResult}`
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const result = {
+                success: true,
+                message: `Opened file: ${targetPath}`
+            };
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("backend-response", result);
+            }
+
+            return result;
+        }
 
         if (!pythonProcess) {
-
             return {
                 success:false,
                 error:"Python backend is not running"
             };
-
         }
 
 
@@ -147,7 +273,79 @@ ipcMain.handle(
     }
 );
 
+ipcMain.handle(
+    "get-validated-rules",
+    async (event, request) => {
 
+        try {
+            const codebasePath = request?.codebasePath;
+
+            if (!codebasePath) {
+                return {
+                    success:false,
+                    error:"No codebase path provided"
+                };
+            }
+
+            const codebaseName = path.basename(codebasePath);
+            const rulesPath = path.join(__dirname, "agent", "BR_agent_output", codebaseName, "validated_rules.json");
+
+            let rulesFile = null;
+            if (fs.existsSync(rulesPath)) {
+                rulesFile = rulesPath;
+            }
+
+            if (!rulesFile) {
+                return {
+                    success:false,
+                    error:"No validated business rules file found for this codebase"
+                };
+            }
+
+            const rawContent = fs.readFileSync(rulesFile, "utf8");
+            const rawData = JSON.parse(rawContent);
+            const rules = [];
+
+            if (Array.isArray(rawData)) {
+                rawData.forEach((rule, index) => {
+                    const text = rule?.rule || "";
+                    if (text) {
+                        rules.push({
+                            id: String(rule?.id),
+                            text,
+                            source: rule?.source_directory || "Generated rule"
+                        });
+                    }
+                });
+            } else if (rawData && typeof rawData === "object") {
+                Object.entries(rawData).forEach(([sourcePath, entries]) => {
+                    if (!Array.isArray(entries)) return;
+                    entries.forEach((rule, index) => {
+                        const text = rule?.rule || "";
+                        if (text) {
+                            rules.push({
+                                id: String(rule?.id),
+                                text,
+                                source: sourcePath
+                            });
+                        }
+                    });
+                });
+            }
+
+            return {
+                success:true,
+                rules
+            };
+
+        } catch (error) {
+            return {
+                success:false,
+                error:error.message
+            };
+        }
+    }
+);
 
 // ----------------------------------------------------
 // CREATE WINDOW
