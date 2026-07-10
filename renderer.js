@@ -146,12 +146,29 @@ async function runPreviewCommand(
         args
     );
 
-
-    return await window.electronAPI.previewCommand(
+    const response = await window.electronAPI.previewCommand(
         action,
         args
     );
 
+    console.log("Preview response:", response);
+
+    if (!response) {
+        console.error("No preview response returned");
+        return response;
+    }
+
+    if (!response.success) {
+        console.error("Preview command failed:", response.error);
+        return response;
+    }
+
+    if (response.files) {
+        console.log("Rendering file buttons", response.files);
+        renderViewFileButtons(response.files);
+    }
+
+    return response;
 }
 
 // --------------------------------------------
@@ -225,6 +242,56 @@ function renderViewSummaryButtons(collections) {
                     collection
                 }
             );
+
+        });
+
+        container.appendChild(button);
+
+    });
+
+}
+
+//this function will display the buttons when the files btn is clicked
+function renderViewFileButtons(files)
+{
+    const container =
+        document.getElementById("viewFilesBtns");
+
+    container.innerHTML = "";
+
+    container.classList.remove("hidden");
+
+    files.forEach(file => {
+
+        const button =
+            document.createElement("button");
+
+        button.className = "btn-secondary";
+
+        button.textContent = file.name;
+
+        button.addEventListener("click", () => {
+
+            if(file.isDirectory){
+
+                runPreviewCommand(
+                    "files",
+                    {
+                        path:file.path
+                    }
+                );
+
+            }
+            else{
+
+                runPreviewCommand(
+                    "open_file",
+                    {
+                        path:file.path
+                    }
+                );
+
+            }
 
         });
 
@@ -472,6 +539,19 @@ document.getElementById("viewDisplaySummariesBtn")
         );
 
     });
+
+document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
+
+    showButtons("viewFilesBtns");
+
+    runPreviewCommand(
+        "files",
+        {
+            path: "agent"
+        }
+    );
+
+});
 
 document.getElementById('mainViewBackBtn')
     .addEventListener('click', () => {
@@ -1044,6 +1124,14 @@ window.electronAPI.onBackendResponse((response) => {
 
         if (response.type === "source") {
             renderViewSourceButtons(response.collections);
+        }
+
+        if(response.files){
+
+            renderViewFileButtons(response.files);
+
+            return;
+
         }
 
         else if (response.type === "summary") {
