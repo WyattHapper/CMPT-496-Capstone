@@ -157,7 +157,7 @@ if __name__ == "__main__":
 
                 result = format_response(
                     preview_command(
-                        request["command"],
+                        request["action"],
                         **request.get("args", {})
                     )
                 )

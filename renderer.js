@@ -154,6 +154,100 @@ async function runPreviewCommand(
 
 }
 
+// --------------------------------------------
+// Display Functions
+// --------------------------------------------
+
+function renderViewSourceButtons(collections) {
+
+    const container =
+        document.getElementById("viewSourcesBtns");
+
+    container.innerHTML = "";
+
+    container.classList.remove("hidden");
+
+    collections.forEach(collection => {
+
+        const button =
+            document.createElement("button");
+
+        button.className =
+            "btn-secondary";
+
+        button.textContent =
+            collection;
+
+        button.addEventListener("click", () => {
+
+            runPreviewCommand(
+                "preview",
+                {
+                    db_type: "source",
+                    collection
+                }
+            );
+
+        });
+
+        container.appendChild(button);
+
+    });
+
+}
+
+function renderViewSummaryButtons(collections) {
+
+    const container =
+        document.getElementById("viewSummariesBtns");
+
+    container.innerHTML = "";
+
+    container.classList.remove("hidden");
+
+    collections.forEach(collection => {
+
+        const button =
+            document.createElement("button");
+
+        button.className =
+            "btn-secondary";
+
+        button.textContent =
+            collection;
+
+        button.addEventListener("click", () => {
+
+            runPreviewCommand(
+                "preview",
+                {
+                    db_type: "summary",
+                    collection
+                }
+            );
+
+        });
+
+        container.appendChild(button);
+
+    });
+
+}
+
+function renderViewOutput(entries) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.textContent = "";
+
+    entries.forEach(entry => {
+
+        output.textContent +=
+            JSON.stringify(entry, null, 2) + "\n\n";
+    });
+}
+
 function showPage(pageId) {
 
     document.querySelectorAll('.page').forEach(page => {
@@ -162,6 +256,20 @@ function showPage(pageId) {
 
     document.getElementById(pageId).classList.remove('hidden');
 }
+
+function showButtons(buttonId) {
+
+    document.querySelectorAll('.viewBtnContainer').forEach(buttonContainer => {
+        if (buttonContainer.id !== "mainViewBtns") {
+
+            buttonContainer.classList.add('hidden');
+        }
+    });
+
+    document.getElementById(buttonId).classList.remove('hidden');
+}
+
+
 
 function escapeHtml(value) {
     return String(value)
@@ -337,6 +445,34 @@ document.getElementById('mainViewBtn')
 
     });
 
+document.getElementById("viewDisplaySourcesBtn")
+    .addEventListener("click", () => {
+
+        showButtons("viewSourcesBtns");
+        
+        runPreviewCommand(
+            "list",
+            {
+                db_type: "source"
+            }
+        );
+
+    });
+
+document.getElementById("viewDisplaySummariesBtn")
+    .addEventListener("click", () => {
+
+        showButtons("viewSummariesBtns");
+
+        runPreviewCommand(
+            "list",
+            {
+                db_type: "summary"
+            }
+        );
+
+    });
+
 document.getElementById('mainViewBackBtn')
     .addEventListener('click', () => {
 
@@ -345,82 +481,87 @@ document.getElementById('mainViewBackBtn')
         showPage('homePage');
     }); 
 
-document.getElementById('summaryBtn')
-    .addEventListener('click', () => {
-
-        clearOutput();
-
-        showPage('summaryPage');
-
-        // Reset the page
-        const summaryOutputEl =
-            document.getElementById('summaryOutput');
-
-        const noVecSumEl =
-            document.getElementById('noVectorStoresMsgSum');
-
-        const summariesSubheaderEl =
-            document.getElementById('summariesSubheader');
 
 
-        if (summaryOutputEl)
-            summaryOutputEl.classList.remove('hidden');
-
-        if (noVecSumEl)
-            noVecSumEl.classList.add('hidden');
-
-        if (summariesSubheaderEl)
-            summariesSubheaderEl.classList.remove('hidden');
+// NOT SURE IF THESE ARE NEEDED NOW
 
 
-        runPreviewCommand(
-        "list",
-        {
-         db_type:"summary"
-        });
-    });
+// document.getElementById('summaryBtn')
+//     .addEventListener('click', () => {
 
-document.getElementById('sourceBtn')
-    .addEventListener('click', () => {
+//         clearOutput();
 
-        clearOutput();
+//         showPage('summaryPage');
 
-        showPage('sourcePage');
+//         // Reset the page
+//         const summaryOutputEl =
+//             document.getElementById('summaryOutput');
 
-        const sourceOutputEl = document.getElementById('sourceOutput');
-        if (sourceOutputEl) sourceOutputEl.classList.remove('hidden');
+//         const noVecSumEl =
+//             document.getElementById('noVectorStoresMsgSum');
 
-        const sourceCollectionSubheaderEl = document.getElementById('sourceCollectionSubheader');
-        if (sourceCollectionSubheaderEl) sourceCollectionSubheaderEl.classList.remove('hidden');
+//         const summariesSubheaderEl =
+//             document.getElementById('summariesSubheader');
 
-        const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
-        if (noVecSrcEl) noVecSrcEl.classList.add('hidden');
+
+//         if (summaryOutputEl)
+//             summaryOutputEl.classList.remove('hidden');
+
+//         if (noVecSumEl)
+//             noVecSumEl.classList.add('hidden');
+
+//         if (summariesSubheaderEl)
+//             summariesSubheaderEl.classList.remove('hidden');
+
+
+//         runPreviewCommand(
+//         "list",
+//         {
+//          db_type:"summary"
+//         });
+//     });
+
+// document.getElementById('sourceBtn')
+//     .addEventListener('click', () => {
+
+//         clearOutput();
+
+//         showPage('sourcePage');
+
+//         const sourceOutputEl = document.getElementById('sourceOutput');
+//         if (sourceOutputEl) sourceOutputEl.classList.remove('hidden');
+
+//         const sourceCollectionSubheaderEl = document.getElementById('sourceCollectionSubheader');
+//         if (sourceCollectionSubheaderEl) sourceCollectionSubheaderEl.classList.remove('hidden');
+
+//         const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
+//         if (noVecSrcEl) noVecSrcEl.classList.add('hidden');
        
-        runPreviewCommand(
-        "list",
-        {
-         db_type:"source"
-        });
-    });
+//         runPreviewCommand(
+//         "list",
+//         {
+//          db_type:"source"
+//         });
+//     });
 
-document.getElementById('errorBtn')
-    .addEventListener('click', () => {
+// document.getElementById('errorBtn')
+//     .addEventListener('click', () => {
 
-        clearOutput();
+//         clearOutput();
 
-        showPage('errorPage');
-        if (!errorsMade) { 
-            const noErrorsMsgEl = document.getElementById('noErrorsMsg');
-            if (noErrorsMsgEl) noErrorsMsgEl.classList.remove('hidden');
+//         showPage('errorPage');
+//         if (!errorsMade) { 
+//             const noErrorsMsgEl = document.getElementById('noErrorsMsg');
+//             if (noErrorsMsgEl) noErrorsMsgEl.classList.remove('hidden');
 
-            //const errorOutputEl = document.getElementById('errorOutput');
-            //if (errorOutputEl) errorOutputEl.classList.add('hidden');
+//             //const errorOutputEl = document.getElementById('errorOutput');
+//             //if (errorOutputEl) errorOutputEl.classList.add('hidden');
 
-            const errorSubheaderEl = document.getElementById('errorSubheader');
-            if (errorSubheaderEl) errorSubheaderEl.classList.add('hidden');
-        }
+//             const errorSubheaderEl = document.getElementById('errorSubheader');
+//             if (errorSubheaderEl) errorSubheaderEl.classList.add('hidden');
+//         }
 
-    });
+//     });
 
 document.getElementById('exitBtn').addEventListener('click', () => {
 
@@ -832,27 +973,6 @@ document.getElementById('submitPathBtn')
 
 });
 
-document.getElementById('individualStepsBtn')
-    .addEventListener('click', () => {
-        
-        clearOutput();
-
-        document.getElementById('individualStepsContainer').classList.toggle('hidden');
-        document.getElementById('pipelineOptions').classList.toggle('hidden');
-        document.getElementById('backToFullPipelineBtn').classList.toggle('hidden');
-        document.getElementById('analysisBackBtn').classList.toggle('hidden');
-    });
-
-document.getElementById('backToFullPipelineBtn')
-    .addEventListener('click', () => {
-        
-        clearOutput();
-
-        document.getElementById('individualStepsContainer').classList.toggle('hidden');
-        document.getElementById('pipelineOptions').classList.toggle('hidden');
-        document.getElementById('backToFullPipelineBtn').classList.toggle('hidden');
-        document.getElementById('analysisBackBtn').classList.toggle('hidden');
-    });
 
 
 
@@ -922,22 +1042,27 @@ window.electronAPI.onBackendResponse((response) => {
     // ----------------------------------------
     if (response.collections) {
 
-        renderCollections(
-            response.collections,
-            response.db_type
-        );
+        if (response.type === "source") {
+            renderViewSourceButtons(response.collections);
+        }
+
+        else if (response.type === "summary") {
+            renderViewSummaryButtons(response.collections);
+        }
+
+        return;
     }
 
     // ----------------------------------------
     // Collection preview
     // ----------------------------------------
-    if (response.preview) {
+    if (response.entries) {
 
-        renderCollectionPreview(
-            response.preview,
-            response.db_type
-        );
+        renderViewOutput(response.entries);
+
+        return;
     }
+
 
     // ----------------------------------------
     // Finished command
@@ -1080,6 +1205,11 @@ function renderCollectionPreview(
 
 
 }
+
+
+// ===========================================
+// Display Functions
+// ==========================================
 
 
 function toggleTheme() {

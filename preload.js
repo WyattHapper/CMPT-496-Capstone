@@ -89,6 +89,9 @@ contextBridge.exposeInMainWorld(
 
         },
 
+        exitApp: () => {
+            return ipcRenderer.invoke("exit-app");
+        },
 
 
         // ==================================
