@@ -146,7 +146,79 @@ ipcMain.handle(
     }
 );
 
+ipcMain.handle(
+    "get-validated-rules",
+    async (event, request) => {
 
+        try {
+            const codebasePath = request?.codebasePath;
+
+            if (!codebasePath) {
+                return {
+                    success:false,
+                    error:"No codebase path provided"
+                };
+            }
+
+            const codebaseName = path.basename(codebasePath);
+            const rulesPath = path.join(__dirname, "agent", "BR_agent_output", codebaseName, "validated_rules.json");
+
+            let rulesFile = null;
+            if (fs.existsSync(rulesPath)) {
+                rulesFile = rulesPath;
+            }
+
+            if (!rulesFile) {
+                return {
+                    success:false,
+                    error:"No validated business rules file found for this codebase"
+                };
+            }
+
+            const rawContent = fs.readFileSync(rulesFile, "utf8");
+            const rawData = JSON.parse(rawContent);
+            const rules = [];
+
+            if (Array.isArray(rawData)) {
+                rawData.forEach((rule, index) => {
+                    const text = rule?.rule || "";
+                    if (text) {
+                        rules.push({
+                            id: String(rule?.id),
+                            text,
+                            source: rule?.source_directory || "Generated rule"
+                        });
+                    }
+                });
+            } else if (rawData && typeof rawData === "object") {
+                Object.entries(rawData).forEach(([sourcePath, entries]) => {
+                    if (!Array.isArray(entries)) return;
+                    entries.forEach((rule, index) => {
+                        const text = rule?.rule || "";
+                        if (text) {
+                            rules.push({
+                                id: String(rule?.id),
+                                text,
+                                source: sourcePath
+                            });
+                        }
+                    });
+                });
+            }
+
+            return {
+                success:true,
+                rules
+            };
+
+        } catch (error) {
+            return {
+                success:false,
+                error:error.message
+            };
+        }
+    }
+);
 
 // ----------------------------------------------------
 // CREATE WINDOW

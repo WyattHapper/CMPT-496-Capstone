@@ -60,6 +60,16 @@ contextBridge.exposeInMainWorld(
 
         },
 
+        getValidatedRules: (
+            codebasePath
+        ) => {
+            return ipcRenderer.invoke(
+                "get-validated-rules",
+                {
+                    codebasePath
+                }
+            );
+        },
 
         setAPIKey: (
             key
