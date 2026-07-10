@@ -20,3 +20,7 @@ agent/UT_agent_output/*/*.txt
 node_modules/
 .venv/
 .ConsoleTables-main/
+# ignore everything in the packaged backend
+releases/main/
+# ignore anything related to electron packaging
+dist/

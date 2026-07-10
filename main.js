@@ -12,24 +12,25 @@ let mainWindow = null;
 // ----------------------------------------------------
 
 function hasAPIKey() {
+    const isWindows = process.platform === "win32";
 
-    const envPaths = [
-        path.join(__dirname, ".env"),
-        path.join(__dirname, "releases", "main", ".env")
-    ];
-    for (const envPath of envPaths) {
+    const backendDir = app.isPackaged
+        ? path.join(process.resourcesPath, "backend")
+        : path.join(__dirname, "releases", "main");
 
-        if (!fs.existsSync(envPath))
-            continue;
-        const env = dotenv.parse(
-            fs.readFileSync(envPath)
-        );
-        if (
-            env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "") {
-            return true;
-        }
-    }
-    return false;
+    const executableName = isWindows ? "main.exe" : "main";
+    const exePath = path.join(backendDir, executableName);
+
+    // If exe exists, .env should be next to it
+    // If not, .env should be next to main.py
+    const envDir = fs.existsSync(exePath) ? backendDir : path.join(__dirname, "releases", "main");
+    const envPath = path.join(envDir, ".env");
+
+    if (!fs.existsSync(envPath))
+        return false;
+
+    const env = dotenv.parse(fs.readFileSync(envPath));
+    return env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "";
 }
 
 ipcMain.handle(
@@ -198,127 +199,119 @@ function createWindow() {
 
 function startPythonBackend() {
 
+    const isWindows = process.platform === "win32";
 
-    const isWindows =
-        process.platform === "win32";
+    const backendDir = app.isPackaged
+        ? path.join(process.resourcesPath, "backend")
+        : path.join(__dirname, "releases", "main");
 
+    const executableName = isWindows ? "main.exe" : "main";
+    const exePath = path.join(backendDir, executableName);
 
-    const isMac =
-        process.platform === "darwin";
+    const outputDir = app.isPackaged
+        ? app.getPath("userData")
+        : backendDir;
 
+    console.log("Backend directory:", backendDir);
+    console.log("Output directory:", outputDir);
 
+    if (fs.existsSync(exePath)) {
 
-    const pythonPath =
-        isWindows
+        console.log("Launching packaged executable:", exePath);
 
-            ? path.join(
-                __dirname,
-                ".venv",
-                "Scripts",
-                "python.exe"
-            )
+        pythonProcess = spawn(
+            exePath,
+            [],
+            {
+                cwd: backendDir
+            }
+        );
 
+    } else {
+
+        console.log("Executable not found, falling back to Python script");
+
+        const pythonPath = isWindows
+            ? path.join(__dirname, ".venv", "Scripts", "python.exe")
             : "python3";
 
+        const scriptPath = path.join(__dirname, "main.py");
 
-
-    pythonProcess = spawn(
-
-        pythonPath,
-
-        [
-            path.join(
-                __dirname,
-                "main.py"
-            )
-        ],
-
-        {
-
-            cwd:__dirname,
-
-            env:{
-                ...process.env,
-                PYTHONUNBUFFERED:"1"
+        pythonProcess = spawn(
+            pythonPath,
+            [
+                "-u",
+                scriptPath,
+                outputDir
+            ],
+            {
+                cwd: __dirname,
+                env: {
+                    ...process.env,
+                    PYTHONUNBUFFERED: "1"
+                }
             }
+        );
 
-        }
+    }
 
-    );
+    pythonProcess.stdout.on("data", (data) => {
 
+        const lines = data.toString().split("\n");
 
+        for (const line of lines) {
 
-    pythonProcess.stdout.on(
-        "data",
-        (data)=>{
+            if (!line.trim())
+                continue;
 
+            try {
 
-            const lines =
-                data
-                .toString()
-                .split("\n");
+                const response = JSON.parse(line);
 
-
-
-            for (const line of lines) {
-
-
-                if (!line.trim())
-                    continue;
-
-                try {
-
-
-                    const response =
-                        JSON.parse(line);
-
+                if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send(
                         "backend-response",
                         response
                     );
                 }
-                catch(error) {
-                    console.log(
-                        "Python:",
-                        line
-                    );
 
+            } catch {
 
-                }
+                console.log("Backend:", line);
 
             }
 
         }
-    );
-
-    pythonProcess.stderr.on("data", (data) => {
-
-        console.error(
-            "Python stderr:",
-            data.toString()
-        );
 
     });
 
+    pythonProcess.stderr.on("data", (data) => {
+
+        console.error("Backend stderr:");
+        console.error(data.toString());
+
+    });
+
+    pythonProcess.on("error", (err) => {
+
+        console.error("Failed to start backend:");
+        console.error(err);
+
+    });
 
     pythonProcess.on("close", (code) => {
 
-        console.log(
-            "Python exited:",
-            code
-        );
+        console.log("Backend exited:", code);
 
-        if (code !== 0 && mainWindow) {
+        if (code !== 0 && mainWindow && !mainWindow.isDestroyed()) {
 
-            if (mainWindow && !mainWindow.isDestroyed()) {
-                mainWindow.webContents.send(
-                    "backend-response",
-                    {
-                        success: false,
-                        error: `Python backend exited unexpectedly (code ${code}).`
-                    }
-                );
-            }
+            mainWindow.webContents.send(
+                "backend-response",
+                {
+                    success: false,
+                    error: `Backend exited unexpectedly (code ${code}).`
+                }
+            );
 
         }
 
