@@ -26,12 +26,15 @@ let viewingSourcePreview = false;
 let summaryPreviewText = "";
 let sourcePreviewText = "";
 
+// Selections
+let selectedRules = [];
 
 // Backend response buffer
 let backendOutputBuffer = "";
 
 //loadingscreen 
 let activeCommand = null;
+let selectedValidatedRule = null;
 
 //output
 let pendingLine = '';
@@ -160,6 +163,79 @@ function showPage(pageId) {
     document.getElementById(pageId).classList.remove('hidden');
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+async function loadValidatedRulesSelection() {
+    const statusEl = document.getElementById('validatedRuleSelectionStatus');
+    const listEl = document.getElementById('validatedRuleList');
+    const detailsEl = document.getElementById('selectedValidatedRuleDetails');
+
+    if (!statusEl || !listEl || !detailsEl) return;
+
+    statusEl.textContent = 'Loading validated rules...';
+    listEl.innerHTML = '';
+    detailsEl.classList.add('hidden');
+    detailsEl.innerHTML = '';
+
+    if (!selectedCodebasePath) {
+        statusEl.textContent = 'Select a codebase from the pipeline page first.';
+        return;
+    }
+
+    try {
+        const response = await window.electronAPI.getValidatedRules(selectedCodebasePath);
+
+        if (!response?.success) {
+            statusEl.textContent = response?.error || 'No validated rules were found.';
+            return;
+        }
+
+        const rules = response.rules || [];
+
+        if (!rules.length) {
+            statusEl.textContent = 'No validated rules were found for this codebase.';
+            return;
+        }
+
+        statusEl.textContent = `Showing ${rules.length} validated rule${rules.length === 1 ? '' : 's'}.`;
+
+        const fragment = document.createDocumentFragment();
+
+        rules.forEach((rule, index) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'selection-item-btn';
+            button.innerHTML = `
+                <span class="selection-item-title">${escapeHtml(index + 1)}: ${escapeHtml(rule.text)}</span>
+            `;
+        
+            button.addEventListener('click', () => {
+                if (button.classList.contains('selected')) {
+                    selectedRules = selectedRules.filter(item => item !== parseInt(rule.id));
+                    button.classList.remove('selected');
+                } else {
+                    selectedRules.push(parseInt(rule.id));
+                    button.classList.add('selected');
+                }
+            });
+
+            fragment.appendChild(button);
+        });
+
+        listEl.appendChild(fragment);
+
+    } catch (error) {
+        console.error(error);
+        statusEl.textContent = 'Unable to load validated rules.';
+    }
+}
 
 
 // clears oput anything from the screen that does not need to be there
@@ -474,6 +550,7 @@ document.getElementById('individualBusinessRuleBtn')
         clearOutput();
 
         showPage('chooseBusinessRulePage');
+        loadBusinessRulesSelection();
     });
 
 document.getElementById('businessRuleBackBtn')
@@ -497,17 +574,69 @@ document.getElementById('chooseBusinessRuleBackBtn')
 document.getElementById('runUnitTestGenerationOnlyBtn')
     .addEventListener('click', () => {
         
+        clearOutput();
+
+        showPage('unitTestPage');
+    });
+
+document.getElementById('allValidatedRulesBtn')
+    .addEventListener('click', () => {
+
         showLoading(
             "Unit Test Generation",
             "Preparing..."
         );
 
-       runBackendCommand(
+        runBackendCommand(
             "generate_unit_tests",
             {
-                codebase:selectedCodebasePath
+                codebase:selectedCodebasePath,
+                selected_rules: []
             }
         );
+    })
+
+document.getElementById('individualValidatedRulesBtn')
+    .addEventListener('click', () => {
+        
+        clearOutput();
+
+        showPage('chooseUnitTestPage');
+        loadValidatedRulesSelection();
+    });
+
+document.getElementById('unitTestPageBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('analysisPage');
+
+    });
+
+document.getElementById('chooseUnitTestPageSelectBtn')
+    .addEventListener('click', () => {
+        showLoading(
+            "Unit Test Generation",
+            "Preparing..."
+        );
+
+        runBackendCommand(
+            "generate_unit_tests",
+            {
+                codebase:selectedCodebasePath,
+                selected_rules: selectedRules
+            }
+        );
+    });
+
+document.getElementById('chooseUnitTestPageBackBtn')
+    .addEventListener('click', () => {
+
+        clearOutput();
+
+        showPage('unitTestPage');
+
     });
 
 document.getElementById('runUnitTestValidationOnlyBtn')
@@ -537,31 +666,6 @@ document.getElementById('runUnitTestValidationOnlyBtn')
 //         );
 //     });
 
-document.getElementById('individualUnitTestsBtn')
-    .addEventListener('click', () => {
-        
-        clearOutput();
-
-        showPage('chooseUnitTestPage');
-    });
-
-document.getElementById('unitTestBackBtn')
-    .addEventListener('click', () => {
-
-        clearOutput();
-
-        showPage('analysisPage');
-
-    });
-
-document.getElementById('chooseUnitTestBackBtn')
-    .addEventListener('click', () => {
-
-        clearOutput();
-
-        showPage('unitTestPage');
-
-    });
 
 
 document.getElementById('runUMLGenerationOnly')

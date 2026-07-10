@@ -109,6 +109,9 @@
 
         <h1>Business Rule Validation</h1>
         <h2>Select Business Rules to Validate</h2>
+
+        
+
         <button class="btn-primary back-btn" id="chooseBusinessRuleBackBtn">Back</button>
 
         
@@ -117,20 +120,26 @@
     <!-- UNIT TEST PAGE -->
     <div id="unitTestPage" class="page hidden">
 
-        <h1>Unit Test Validation</h1>
+        <h1>Unit Test Generation</h1>
 
-        <button class="btn-primary" id="allUnitTestsBtn">Run All Unit Tests</button>
-        <button class="btn-primary" id="individualUnitTestsBtn">Select Individual Unit Tests</button>
-        <button class="btn-primary back-btn" id="unitTestBackBtn">Back</button>
+        <button class="btn-primary" id="allValidatedRulesBtn">Run All Validated Business Rules</button>
+        <button class="btn-primary" id="individualValidatedRulesBtn">Select Individual Validated Business Rules</button>
+        <button class="btn-primary back-btn" id="unitTestPageBackBtn">Back</button>
         
     </div>
 
     <!-- UNIT TEST SELECTION PAGE -->
     <div id="chooseUnitTestPage" class="page hidden">
 
-        <h1>Unit Test Validation</h1>
-        <h2>Select Unit Tests to Validate</h2>
-        <button class="btn-primary back-btn" id="chooseUnitTestBackBtn">Back</button>
+        <h1>Unit Test Generation</h1>
+        <h2>Select Validated Rules to Generate Tests For</h2>
+        
+        <div id="validatedRuleSelectionStatus" class="selection-status">Loading validated rules...</div>
+        <div id="validatedRuleList" class="selection-list"></div>
+        <div id="selectedValidatedRuleDetails" class="selection-details hidden"></div>
+
+        <button class="btn-primary" id="chooseUnitTestPageSelectBtn">Enter</button>
+        <button class="btn-primary back-btn" id="chooseUnitTestPageBackBtn">Back</button>
         
     </div>
 
