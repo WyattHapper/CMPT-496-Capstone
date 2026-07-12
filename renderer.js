@@ -317,20 +317,25 @@ async function loadValidatedRulesSelection() {
         const fragment = document.createDocumentFragment();
 
         rules.forEach((rule, index) => {
+            const id = parseInt(rule.id)
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'selection-item-btn';
             button.innerHTML = `
                 <span class="selection-item-title">${escapeHtml(index + 1)}: ${escapeHtml(rule.text)}</span>
             `;
-        
+            if (selectedRules.includes(id)) {
+                button.classList.add('selected')
+            }
             button.addEventListener('click', () => {
                 if (button.classList.contains('selected')) {
-                    selectedRules = selectedRules.filter(item => item !== parseInt(rule.id));
+                    selectedRules = selectedRules.filter(item => item !== id);
                     button.classList.remove('selected');
+                    console.log(selectedRules)
                 } else {
-                    selectedRules.push(parseInt(rule.id));
+                    selectedRules.push(id);
                     button.classList.add('selected');
+                    console.log(selectedRules)
                 }
             });
 

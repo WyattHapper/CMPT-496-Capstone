@@ -335,7 +335,6 @@ class Commands:
                     if rule["id"] in selected_rules:
                         input_rules.append(ValidatedRule.model_validate(rule))
 
-            print(input_rules)
             UTAgent().run(
                 input_rules,
                 codebase_name,
