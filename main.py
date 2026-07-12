@@ -128,7 +128,6 @@ if __name__ == "__main__":
 
     import json
 
-
     while True:
 
         line = sys.stdin.readline()
