@@ -810,3 +810,125 @@ h2{
 #mainViewBtns {
     margin-bottom: 1rem;
 }
+
+
+/* ============================================
+   Summary Preview Styling
+============================================ */
+
+.summary-card {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    /* gap: 1rem; */
+
+    padding: 1.5rem;
+
+    background: var(--card-bg);
+    backdrop-filter: blur(12px);
+
+    border-radius: 16px;
+
+    border: 1px solid var(--border-color);
+
+    box-shadow: var(--shadow);
+
+}
+
+
+/* Main file title */
+.summary-card > .summary-section-body:first-child {
+
+    font-size: 1rem;
+
+}
+
+
+/* Section headers */
+.summary-card h3 {
+
+    margin-top: 2rem;
+    margin-bottom: 0.1rem;
+
+    font-size: 1.25rem;
+
+    font-weight: 700;
+
+    color: var(--accent-color);
+
+    text-align: left;
+
+    border-bottom: 1px solid var(--border-color);
+
+    padding-bottom: 0.2rem;
+
+}
+
+
+/* First file heading */
+.summary-card h3:first-child {
+
+    margin-top: 0;
+
+}
+
+
+/* Text inside sections */
+.summary-section-body {
+
+    white-space: pre-wrap;
+
+    font-family: "Inter", sans-serif;
+
+    font-size: 0.95rem;
+
+    line-height: 1.7;
+
+    text-align: left;
+
+    color: var(--text-color);
+
+    margin: 0;
+
+    padding: 0.25rem 1rem;
+
+
+    background: rgba(255,255,255,0.04);
+
+    border-radius: 10px;
+
+
+    overflow-wrap: break-word;
+
+}
+
+
+/* Bullet lists */
+.summary-section-body::first-line {
+
+    font-weight: 500;
+
+}
+
+
+/* File information */
+.summary-card .summary-section-body:first-of-type {
+
+    background: transparent;
+
+    padding-left: 0;
+
+}
+
+
+
+/* Scroll behavior for large summaries */
+#viewDisplayOutputBox {
+
+    width: 100%;
+
+    overflow-y: auto;
+
+}
+
+

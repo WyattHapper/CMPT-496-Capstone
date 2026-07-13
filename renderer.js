@@ -235,11 +235,21 @@ function renderViewSummaryButtons(collections) {
 
         button.addEventListener("click", () => {
 
+            const codebaseName = selectedCodebasePath
+                .split(/[\\/]/)
+                .pop();
+
+            const summaryPath = [
+                "agent",
+                "file_summary_agent_output",
+                codebaseName,
+                `${collection}.json`
+            ].join("/");
+
             runPreviewCommand(
-                "preview",
+                "open_file",
                 {
-                    db_type: "summary",
-                    collection
+                    path: summaryPath
                 }
             );
 
@@ -313,6 +323,111 @@ function renderViewOutput(entries) {
         output.textContent +=
             JSON.stringify(entry, null, 2) + "\n\n";
     });
+}
+
+function renderSummaryPreview(text) {
+
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "summary-card";
+
+
+    const sections = text.split("===");
+
+
+    sections.forEach(section => {
+
+        section = section.trim();
+
+        if (!section)
+            return;
+
+
+        const lines = section.split("\n");
+
+
+        const title = lines[0].trim();
+
+
+        // These are your real headers
+        const headers = [
+            "Summary",
+            "Dependencies",
+            "Functions",
+            "Classes",
+            "Business Rules"
+        ];
+
+
+        if (headers.includes(title)) {
+
+            const header = document.createElement("h2");
+            header.textContent = title;
+            header.className = "summary-header";
+            const specificClassName = title.toLowerCase().replace("business ", "")
+            header.classList.add(`${specificClassName}-header`);
+
+
+
+            const body = document.createElement("pre");
+            body.className = "summary-section-body";
+            body.textContent = lines.slice(1).join("\n").trim();
+
+
+            card.appendChild(header);
+            card.appendChild(body);
+
+        }
+
+        else {
+
+            // File name + path section
+            const body = document.createElement("pre");
+            body.className = "summary-section-body";
+            body.textContent = section;
+
+
+            card.appendChild(body);
+
+        }
+
+    });
+
+
+    output.appendChild(card);
+
+}
+
+function renderSourcePreview(text){
+    
+}
+
+function renderErrorPreview(text){
+    
+}
+
+function renderTextPreview(text) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    if (!output) {
+        console.error("viewDisplayOutputBox not found");
+        return;
+    }
+
+    output.innerHTML = "";
+
+    const pre = document.createElement("pre");
+
+    pre.className = "file-preview-text";
+
+    pre.textContent = text;
+
+    output.appendChild(pre);
 }
 
 function showPage(pageId) {
@@ -536,12 +651,11 @@ document.getElementById("viewDisplaySummariesBtn")
 
         showButtons("viewSummariesBtns");
 
-        runPreviewCommand(
-            "list",
-            {
-                db_type: "summary"
-            }
-        );
+        const codebaseName = selectedCodebasePath.split("/").pop();
+
+        runPreviewCommand("files", {
+            path: `agent/file_summary_agent_output/${codebaseName}`
+        });
 
     });
 
@@ -568,85 +682,6 @@ document.getElementById('mainViewBackBtn')
 
 
 
-// NOT SURE IF THESE ARE NEEDED NOW
-
-
-// document.getElementById('summaryBtn')
-//     .addEventListener('click', () => {
-
-//         clearOutput();
-
-//         showPage('summaryPage');
-
-//         // Reset the page
-//         const summaryOutputEl =
-//             document.getElementById('summaryOutput');
-
-//         const noVecSumEl =
-//             document.getElementById('noVectorStoresMsgSum');
-
-//         const summariesSubheaderEl =
-//             document.getElementById('summariesSubheader');
-
-
-//         if (summaryOutputEl)
-//             summaryOutputEl.classList.remove('hidden');
-
-//         if (noVecSumEl)
-//             noVecSumEl.classList.add('hidden');
-
-//         if (summariesSubheaderEl)
-//             summariesSubheaderEl.classList.remove('hidden');
-
-
-//         runPreviewCommand(
-//         "list",
-//         {
-//          db_type:"summary"
-//         });
-//     });
-
-// document.getElementById('sourceBtn')
-//     .addEventListener('click', () => {
-
-//         clearOutput();
-
-//         showPage('sourcePage');
-
-//         const sourceOutputEl = document.getElementById('sourceOutput');
-//         if (sourceOutputEl) sourceOutputEl.classList.remove('hidden');
-
-//         const sourceCollectionSubheaderEl = document.getElementById('sourceCollectionSubheader');
-//         if (sourceCollectionSubheaderEl) sourceCollectionSubheaderEl.classList.remove('hidden');
-
-//         const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
-//         if (noVecSrcEl) noVecSrcEl.classList.add('hidden');
-       
-//         runPreviewCommand(
-//         "list",
-//         {
-//          db_type:"source"
-//         });
-//     });
-
-// document.getElementById('errorBtn')
-//     .addEventListener('click', () => {
-
-//         clearOutput();
-
-//         showPage('errorPage');
-//         if (!errorsMade) { 
-//             const noErrorsMsgEl = document.getElementById('noErrorsMsg');
-//             if (noErrorsMsgEl) noErrorsMsgEl.classList.remove('hidden');
-
-//             //const errorOutputEl = document.getElementById('errorOutput');
-//             //if (errorOutputEl) errorOutputEl.classList.add('hidden');
-
-//             const errorSubheaderEl = document.getElementById('errorSubheader');
-//             if (errorSubheaderEl) errorSubheaderEl.classList.add('hidden');
-//         }
-
-//     });
 
 document.getElementById('exitBtn').addEventListener('click', () => {
 
@@ -1075,6 +1110,26 @@ window.electronAPI.onBackendResponse((response) => {
 
 
     if (!response) {
+        return;
+    }
+
+    // ----------------------------------------
+    // File previewing -- Summaries sources errors etc
+    // ----------------------------------------
+    if (response.type === "file-preview") {
+
+        if (response.preview.type === "summary") {
+                renderSummaryPreview(response.preview.content);
+            }
+
+            else if(response.preview.type === "source") {
+                renderSourcePreview(response.preview.content);
+            }
+
+            else {
+                renderTextPreview(response.preview.content);
+            }
+
         return;
     }
 

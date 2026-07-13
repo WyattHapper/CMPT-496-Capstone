@@ -33,6 +33,162 @@ function hasAPIKey() {
     return env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "";
 }
 
+
+
+
+function detectFileType(json) {
+
+    // Summary files have these fields
+    if (
+        json.summary ||
+        json.functions ||
+        json.dependencies ||
+        json.types
+    ) {
+        return "summary";
+    }
+
+
+    // Source collection example
+    if (
+        json.id ||
+        json.imports
+
+    ) {
+        return "source";
+    }
+
+
+    return "unknown";
+}
+// ----------------------------------------------------
+// SUMMARY FORMATTING
+// ----------------------------------------------------
+
+function formatSummary(json) {
+
+    const lines = [];
+
+    // File
+    lines.push(`# ${path.basename(json.path)}`);
+    lines.push("");
+    lines.push(`File: ${json.path}`);
+    lines.push("");
+
+    // Summary
+    if (json.summary) {
+        lines.push("=== Summary ===");
+        lines.push(json.summary);
+        lines.push("");
+    }
+
+    // Dependencies
+    if (json.dependencies?.length) {
+        lines.push("=== Dependencies ===");
+
+        json.dependencies.forEach(dep => {
+            lines.push(`• ${dep}`);
+        });
+
+        lines.push("");
+    }
+
+    // Standalone functions
+    if (json.functions?.length) {
+        lines.push("=== Functions ===");
+
+        json.functions.forEach(func => {
+
+            lines.push(`${func.name}()`);
+
+            if (func.description)
+                lines.push(`   ${func.description}`);
+
+            if (func.return_type)
+                lines.push(`   Returns: ${func.return_type}`);
+
+            lines.push("");
+
+        });
+    }
+
+    // Classes / Types
+    if (json.types?.length) {
+
+        lines.push("=== Classes ===");
+
+        json.types.forEach(type => {
+
+            lines.push("");
+            lines.push(`${type.kind.toUpperCase()}: ${type.name}`);
+
+            if (type.description)
+                lines.push(type.description);
+
+            // Properties
+            if (type.properties?.length) {
+
+                lines.push("");
+                lines.push("Properties:");
+
+                type.properties.forEach(prop => {
+
+                    lines.push(
+                        `  • ${prop.name} : ${prop.type}`
+                    );
+
+                });
+            }
+
+            // Methods
+            if (type.methods?.length) {
+
+                lines.push("");
+                lines.push("Methods:");
+
+                type.methods.forEach(method => {
+
+                    lines.push(
+                        `  • ${method.name}()`
+                    );
+
+                    if (method.description)
+                        lines.push(
+                            `      ${method.description}`
+                        );
+
+                });
+            }
+
+            lines.push("");
+
+        });
+    }
+
+    // Business Rules
+    if (json.business_rules?.length) {
+
+        lines.push("=== Business Rules ===");
+
+        json.business_rules.forEach((rule, i) => {
+
+            lines.push(`${i + 1}. ${rule.rule}`);
+
+        });
+
+        lines.push("");
+
+    }
+
+    return lines.join("\n");
+
+}
+
+
+// ----------------------------------------------------
+// ICP HANDLERS
+// ----------------------------------------------------
+
 ipcMain.handle(
     "has-api-key",
     () => {
@@ -168,6 +324,27 @@ ipcMain.handle(
             return result;
         }
 
+        if (action === "summary_json") {
+
+            const targetPath = args.path;
+
+            const summary = JSON.parse(
+                fs.readFileSync(targetPath, "utf8")
+            );
+
+            const result = {
+                success: true,
+                preview: formatSummary(summary)
+            };
+
+            mainWindow.webContents.send(
+                "backend-response",
+                result
+            );
+
+            return result;
+        }
+
         if (action === "open_file") {
             const rawPath = args.path;
             if (!rawPath) {
@@ -214,23 +391,55 @@ ipcMain.handle(
                 return result;
             }
 
-            const openResult = await shell.openPath(targetPath);
-            if (openResult) {
-                const result = {
-                    success: false,
-                    error: `Unable to open file: ${openResult}`
-                };
+            const content = fs.readFileSync(targetPath, "utf8");
 
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send("backend-response", result);
+            let preview;
+
+            try {
+
+                const json = JSON.parse(content);
+                const type = detectFileType(json);
+
+                if (type === "summary") {
+
+                    preview = {
+                        type: "summary",
+                        content: formatSummary(json)
+                    };
+
+                } 
+                else if (type === "source") {
+
+                    preview = {
+                        type: "source",
+                        content: json
+                    };
+
+                }
+                else {
+
+                    preview = {
+                        type: "unknown",
+                        content: content
+                    };
+
                 }
 
-                return result;
+            } catch {
+
+                preview = {
+                    type: "text",
+                    content
+                };
+
             }
 
+
             const result = {
-                success: true,
-                message: `Opened file: ${targetPath}`
+                success:true,
+                type:"file-preview",
+                path:targetPath,
+                preview
             };
 
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -464,14 +673,20 @@ function startPythonBackend() {
 
             try {
 
-                const response = JSON.parse(line);
+                // Parse the JSON
+                const parsed = JSON.parse(line);
 
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send(
-                        "backend-response",
-                        response
-                    );
+                // Format it
+                if (parsed.summary) {
+
+                    parsed.preview = formatSummary(parsed);
+
                 }
+
+                mainWindow.webContents.send(
+                    "backend-response",
+                    parsed
+                );
 
             } catch {
 
