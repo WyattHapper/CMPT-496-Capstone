@@ -51,8 +51,11 @@ function detectFileType(json) {
 
     // Source collection example
     if (
-        json.id ||
-        json.imports
+        json.directory_name ||
+        json.directory_path ||
+        json.purpose ||
+        json.responsibilities
+        
 
     ) {
         return "source";
@@ -184,6 +187,58 @@ function formatSummary(json) {
 
 }
 
+function formatSource(json) {
+
+    const lines = [];
+
+
+    lines.push(`# ${json.directory_name || "Unknown Directory"}`);
+    lines.push("");
+
+
+    if (json.directory_name) {
+
+        lines.push("=== Directory Name ===");
+        lines.push(json.directory_name);
+        lines.push("");
+
+    }
+
+
+    if (json.directory_path) {
+
+        lines.push("=== Directory Path ===");
+        lines.push(json.directory_path);
+        lines.push("");
+
+    }
+
+
+    if (json.purpose) {
+
+        lines.push("=== Purpose ===");
+        lines.push(json.purpose);
+        lines.push("");
+
+    }
+
+
+    if (json.responsibilities?.length) {
+
+        lines.push("=== Responsibilities ===");
+
+        json.responsibilities.forEach(item => {
+            lines.push(`• ${item}`);
+        });
+
+        lines.push("");
+
+    }
+
+
+    return lines.join("\n");
+
+}
 
 // ----------------------------------------------------
 // ICP HANDLERS
@@ -324,26 +379,6 @@ ipcMain.handle(
             return result;
         }
 
-        if (action === "summary_json") {
-
-            const targetPath = args.path;
-
-            const summary = JSON.parse(
-                fs.readFileSync(targetPath, "utf8")
-            );
-
-            const result = {
-                success: true,
-                preview: formatSummary(summary)
-            };
-
-            mainWindow.webContents.send(
-                "backend-response",
-                result
-            );
-
-            return result;
-        }
 
         if (action === "open_file") {
             const rawPath = args.path;
@@ -407,16 +442,14 @@ ipcMain.handle(
                         content: formatSummary(json)
                     };
 
-                } 
-                else if (type === "source") {
+                } else if (type === "source") {
 
                     preview = {
                         type: "source",
-                        content: json
+                        content: formatSource(json)
                     };
 
-                }
-                else {
+                } else {
 
                     preview = {
                         type: "unknown",
@@ -455,24 +488,6 @@ ipcMain.handle(
                 error:"Python backend is not running"
             };
         }
-
-
-        const payload = JSON.stringify({
-
-            type:"preview",
-
-            action:
-                request.action,
-
-            args:
-                request.args || {}
-
-        });
-
-
-        pythonProcess.stdin.write(
-            payload + "\n"
-        );
 
 
         return {
@@ -662,35 +677,43 @@ function startPythonBackend() {
 
     }
 
+    let pythonBuffer = "";
+
     pythonProcess.stdout.on("data", (data) => {
 
-        const lines = data.toString().split("\n");
+        pythonBuffer += data.toString();
+
+
+        let lines = pythonBuffer.split("\n");
+
+        pythonBuffer = lines.pop();
+
 
         for (const line of lines) {
 
             if (!line.trim())
                 continue;
 
+
             try {
 
-                // Parse the JSON
                 const parsed = JSON.parse(line);
-
-                // Format it
-                if (parsed.summary) {
-
-                    parsed.preview = formatSummary(parsed);
-
-                }
 
                 mainWindow.webContents.send(
                     "backend-response",
                     parsed
                 );
 
-            } catch {
 
-                console.log("Backend:", line);
+            }
+            catch(error) {
+
+                console.log(
+                    "Backend parse error:",
+                    error.message
+                );
+
+                console.log(line);
 
             }
 
