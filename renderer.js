@@ -162,49 +162,6 @@ async function runPreviewCommand(
     return response;
 }
 
-// --------------------------------------------
-// Display Functions
-// --------------------------------------------
-
-// function renderViewSourceButtons(collections) {
-
-//     const container =
-//         document.getElementById("viewSourcesBtns");
-
-//     container.innerHTML = "";
-
-//     container.classList.remove("hidden");
-
-//     collections.forEach(collection => {
-
-//         const button =
-//             document.createElement("button");
-
-//         button.className =
-//             "btn-secondary";
-
-//         button.textContent =
-//             collection;
-
-//         button.addEventListener("click", () => {
-
-//             runPreviewCommand(
-//                 "preview",
-//                 {
-//                     db_type: "source",
-//                     collection
-//                 }
-//             );
-
-//         });
-
-//         container.appendChild(button);
-
-//     });
-
-// }
-
-// ^^To be removed
 
 function renderViewSummaryButtons(collections) {
 
@@ -471,6 +428,77 @@ function renderSourcePreview(text){
 
 }
 
+function renderBusinessRulesPreview(text) {
+
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "business-rule-card";
+
+
+    const sections = text.split("===");
+
+
+    sections.forEach(section => {
+
+        section = section.trim();
+
+        if (!section)
+            return;
+
+
+        const lines = section.split("\n");
+
+        const title = lines[0].trim();
+
+
+        // Rule headers
+        if (title.startsWith("Business Rule")) {
+
+            const header = document.createElement("h2");
+            header.textContent = title;
+            header.className = "business-rule-header";
+
+
+            const body = document.createElement("pre");
+            body.className = "business-rule-section-body";
+
+            body.textContent =
+                lines.slice(1)
+                .join("\n")
+                .trim();
+
+
+            card.appendChild(header);
+            card.appendChild(body);
+
+        }
+
+        else {
+
+            // Main "# Business Rules" title
+            const body = document.createElement("pre");
+
+            body.className =
+                "business-rule-section-body business-rule-title";
+
+            body.textContent =
+                section;
+
+
+            card.appendChild(body);
+
+        }
+
+    });
+
+
+    output.appendChild(card);
+
+}
+
 function renderErrorPreview(text){
     
 }
@@ -638,6 +666,10 @@ document.getElementById('apiBtn')
     
     });
 
+
+// ---------------------------------------------
+// ViewPageButtons
+// ---------------------------------------------
 document.getElementById('mainViewBtn')
     .addEventListener('click', () => {
 
@@ -683,6 +715,40 @@ document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
         "files",
         {
             path: "agent"
+        }
+    );
+
+});
+
+document.getElementById("viewDisplayBusinessRulesBtn").addEventListener("click", () => {
+
+    showButtons("viewBusinessRulesBtns");
+
+
+    
+
+});
+
+//Hardcoded to see if outputs work
+document.getElementById("validatedBusinessRulesBtn").addEventListener("click", () => {
+
+    runPreviewCommand(
+        "open_file",
+        {
+            path: `agent/BR_agent_output/ConsoleTables-main/validated_rules.json`
+        }
+    );
+
+
+});
+
+//hoardcoded to see if outputs work
+document.getElementById("discardedBusinessRulesBtn").addEventListener("click", () => {
+
+    runPreviewCommand(
+        "open_file",
+        {
+            path: `agent/BR_agent_output/ConsoleTables-main/discarded_rules.json`
         }
     );
 
@@ -1021,45 +1087,7 @@ document.getElementById('keepApiKeyBtn')
 
     });
 
-        
-
-//======================================================
-//summary page buttons
-//======================================================
-document.getElementById('summaryBackBtn')
-.addEventListener('click', () => {
-
     
-
-    showPage('homePage');
-
-    viewingSummaryPreview = false;
-
-});
-
-//======================================================
-//Source code collections buttons
-//======================================================
-document.getElementById('sourceBackBtn')
-.addEventListener('click', () => {
-
-    
-
-    showPage('homePage');
-
-    viewingSourcePreview = false;
-
-});
-//======================================================
-//view errors buttons
-//======================================================
-document.getElementById('errorBackBtn')
-    .addEventListener('click', () => {
-
-        
-
-        showPage('homePage');
-    });
 
 //======================================================
 //back buttons
@@ -1142,19 +1170,19 @@ window.electronAPI.onBackendResponse((response) => {
                 response.preview.content
             );
 
-        }
-
-
-        else if (response.preview.type === "source") {
+        } else if (response.preview.type === "source") {
 
             renderSourcePreview(
                 response.preview.content
             );
 
-        }
+        } else if (response.preview.type === "business_rules") {
 
+            renderBusinessRulesPreview(
+                response.preview.content
+            );
 
-        else {
+        } else {
 
             renderTextPreview(
                 response.preview.content

@@ -38,7 +38,21 @@ function hasAPIKey() {
 
 function detectFileType(json) {
 
-    // Summary files have these fields
+    // Business rules are an array of rule objects
+    if (
+        Array.isArray(json) &&
+        (
+            json.length === 0 || // Empty [] is still a business rules file
+            json[0].rule ||
+            json[0].source_directory ||
+            json[0].source_file_paths ||
+            json[0].explanation
+        )
+    ) {
+        return "business_rules";
+    }
+
+    // Summary files
     if (
         json.summary ||
         json.functions ||
@@ -48,19 +62,15 @@ function detectFileType(json) {
         return "summary";
     }
 
-
-    // Source collection example
+    // Source files
     if (
         json.directory_name ||
         json.directory_path ||
         json.purpose ||
         json.responsibilities
-        
-
     ) {
         return "source";
     }
-
 
     return "unknown";
 }
@@ -235,6 +245,66 @@ function formatSource(json) {
 
     }
 
+
+    return lines.join("\n");
+
+}
+
+function formatBusinessRules(json) {
+
+    // Handle empty JSON or []
+    if (!Array.isArray(json) || json.length === 0) {
+        return "No business rules were found.";
+    }
+
+    const lines = [];
+
+    json.forEach((ruleObj, index) => {
+
+        lines.push(`=== Business Rule ${index + 1} ===`);
+        lines.push(ruleObj.rule || "No rule provided.");
+        lines.push("");
+
+        if (ruleObj.source_directory) {
+            lines.push("Source Directory:");
+            lines.push(ruleObj.source_directory);
+            lines.push("");
+        }
+
+        if (ruleObj.source_file_paths?.length) {
+            lines.push("Source File(s):");
+
+            ruleObj.source_file_paths.forEach(file => {
+                lines.push(`• ${file}`);
+            });
+
+            lines.push("");
+        }
+
+        if (ruleObj.explanation?.reasoning) {
+            lines.push("Reasoning:");
+            lines.push(ruleObj.explanation.reasoning);
+            lines.push("");
+        }
+
+        if (ruleObj.explanation?.evidence) {
+
+            lines.push("Evidence:");
+
+            Object.entries(ruleObj.explanation.evidence).forEach(([file, snippets]) => {
+
+                lines.push(`• ${file}`);
+
+                snippets.forEach(snippet => {
+                    lines.push(`    - ${snippet}`);
+                });
+
+                lines.push("");
+            });
+        }
+
+        lines.push("");
+    });
 
     return lines.join("\n");
 
@@ -449,7 +519,14 @@ ipcMain.handle(
                         content: formatSource(json)
                     };
 
-                } else {
+                } else if (type === "business_rules") {
+
+                    preview = {
+                        type: "business_rules",
+                        content: formatBusinessRules(json)
+                    };
+
+                }else {
 
                     preview = {
                         type: "unknown",

@@ -803,7 +803,8 @@ h2{
 #viewSummariesBtns,
 #viewSourcesBtns,
 #viewErrorsBtns,
-#viewFilesBtns {
+#viewFilesBtns,
+#viewBusinessRulesBtns {
 
     display: flex;
 
@@ -825,7 +826,8 @@ h2{
 #viewSummariesBtns button,
 #viewSourcesBtns button,
 #viewErrorsBtns button,
-#viewFilesBtns button {
+#viewFilesBtns button,
+#viewBusinessRulesBtns button {
 
     flex-shrink: 0;
 
@@ -1085,5 +1087,172 @@ h2{
 .directory-section-body {
 
     max-height: none;
+
+}
+
+/* ============================================
+   Business Rules Preview Styling
+============================================ */
+
+.business-rule-card {
+
+    width: 100%;
+
+    display: flex;
+    flex-direction: column;
+
+    padding: 1.5rem;
+
+    background: var(--glass-bg);
+
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+
+    border-radius: 16px;
+
+    border: 1px solid var(--glass-border);
+
+    box-shadow: var(--shadow);
+
+}
+
+
+/* Business rule section titles */
+
+.business-rule-header {
+
+    margin-top: 2rem;
+
+    margin-bottom: 0.5rem;
+
+    font-size: 1.25rem;
+
+    font-weight: 700;
+
+    color: var(--accent);
+
+    text-align: left;
+
+    border-bottom:
+        1px solid var(--glass-border);
+
+    padding-bottom: 0.3rem;
+
+}
+
+
+/* First rule title */
+
+.business-rule-title {
+
+    margin-bottom: 1rem;
+
+    font-size: 1.1rem;
+
+    font-weight: 600;
+
+    color: var(--text-primary);
+
+}
+
+
+/* Business rule content */
+
+.business-rule-section-body {
+
+    white-space: pre-wrap;
+
+    font-family: "Inter", sans-serif;
+
+    font-size: 0.95rem;
+
+    line-height: 1.7;
+
+    text-align: left;
+
+    color: var(--text-primary);
+
+    margin: 0;
+
+    padding: 0.75rem 1rem;
+
+
+    background:
+        rgba(255,255,255,0.04);
+
+    border-radius: 10px;
+
+    overflow-wrap: break-word;
+
+}
+
+
+/* Sidebar/business rule file buttons */
+
+#viewBusinessRulesBtns {
+
+    display: flex;
+
+    flex-direction: column;
+
+    gap: 0.75rem;
+
+    overflow-y: auto;
+
+    min-height: 0;
+
+    flex: 0 1 auto;
+
+}
+
+
+#viewBusinessRulesBtns button {
+
+    flex-shrink: 0;
+
+    width: 100%;
+
+    min-height: 42px;
+
+    text-align: left;
+
+    padding: 0.75rem 1rem;
+
+    border-radius: 12px;
+
+}
+
+
+/* Business rule preview window */
+
+.business-rule-preview-text {
+
+    display: block;
+
+    width: 100%;
+
+    max-width: 720px;
+
+    height: 60vh;
+
+    overflow-y: scroll;
+
+    overflow-x: hidden;
+
+    padding: 1rem;
+
+    border-radius: 14px;
+
+    background:
+        rgba(255,255,255,0.18);
+
+    border:
+        1px solid rgba(255,255,255,0.2);
+
+    white-space: pre-wrap;
+
+    word-break: break-word;
+
+    text-align: left;
 
 }

@@ -153,7 +153,7 @@
                     <button class="btn-primary" id="viewDisplaySourcesBtn">Sources</button>
                     <button class="btn-primary" id="viewDisplayErrorsBtn">Errors</button>
                     <button class="btn-primary" id="viewUMLBtn">UML</button>
-                    <button class="btn-primary" id="viewBusinessRulesBtn">Business Rules</button>
+                    <button class="btn-primary" id="viewDisplayBusinessRulesBtn">Business Rules</button>
                     <button class="btn-primary" id="viewUnitTestsBtn">Unit Tests</button>
 
                     <button class="btn-primary" id="viewDisplayFilesBtn">Files</button>
@@ -168,6 +168,12 @@
                 <div id="viewErrorsBtns" class="viewBtnContainer hidden"> </div>
 
                 <div id="viewFilesBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewBusinessRulesBtns" class="viewBtnContainer hidden"> 
+                    <button id="validatedBusinessRulesBtn" class="output-file-btn btn-secondary">Validated Business Rules</button>
+                    <button id="discardedBusinessRulesBtn" class="output-file-btn btn-secondary">Discarded Business Rules</button>
+
+                </div>
             </div>
             
             
@@ -184,54 +190,7 @@
 
     </div>
 
-    <!-- Not sure if these pages will be necessary if we just show everything out of one output window-->
-    <!-- SUMMARY PAGE -->
-    <div id="summaryPage" class="page hidden">
-
-        <h1>Summaries</h1>
-
-        <h3 id="summariesSubheader">Collection Preview</h3>
-        <h3 class="hidden" id="noVectorStoresMsgSum">No vector stores found. Please generate summaries first.</h3>
-
-        <div id="summaryOutput">
-            <pre id="summaryOutputBox"></pre>
-        </div>
-        <button class="btn-primary back-btn" id="summaryBackBtn">Back</button>
-
-    </div>
-
-    <!-- SOURCE PAGE -->
-    <div id="sourcePage" class="page hidden">
-
-        <h1>Source Collections</h1>
-
-        <!-- I don't think this is needed -->
-        <!-- <div id="collectionsContainer"></div> -->
-
-
-        <h3 class="hidden" id="noVectorStoresMsgSrc">No vector stores found. Please generate summaries first.</h3>
-        <h3 id="sourceCollectionSubheader">Collection Preview</h3>
-        <div id="sourceOutput">
-            <pre id="sourceOutputBox"></pre>
-        </div>
-        <button class="btn-primary back-btn" id="sourceBackBtn">Back</button>
-
-    </div>
-
-    <!-- ERROR PAGE -->
-    <div id="errorPage" class="page hidden">
-
-        <h1>Errors</h1>
-        <!--<h3 class="hidden" id="noErrorsMsg">No vector stores found. Please generate summaries first.</h3>-->
-        <h3 id="errorSubheader">Error Log</h3>
-        <!--<div id="errorOutput"></div>-->
-        <pre id="errorOutput"></pre>
-
-        <button class="btn-primary back-btn" id="errorBackBtn">Back</button>
-
-
-
-    </div>
+    
 
 
     <!-- LOADING OVERLAY -->
