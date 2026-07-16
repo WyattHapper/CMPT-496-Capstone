@@ -33,6 +33,287 @@ function hasAPIKey() {
     return env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "";
 }
 
+
+
+
+function detectFileType(json) {
+
+    // Business rules are an array of rule objects
+    if (
+        Array.isArray(json) &&
+        (
+            json.length === 0 || // Empty [] is still a business rules file
+            json[0].rule ||
+            json[0].source_directory ||
+            json[0].source_file_paths ||
+            json[0].explanation
+        )
+    ) {
+        return "business_rules";
+    }
+
+    // Summary files
+    if (
+        json.summary ||
+        json.functions ||
+        json.dependencies ||
+        json.types
+    ) {
+        return "summary";
+    }
+
+    // Source files
+    if (
+        json.directory_name ||
+        json.directory_path ||
+        json.purpose ||
+        json.responsibilities
+    ) {
+        return "source";
+    }
+
+    return "unknown";
+}
+// ----------------------------------------------------
+// SUMMARY FORMATTING
+// ----------------------------------------------------
+
+function formatSummary(json) {
+
+    const lines = [];
+
+    // File
+    lines.push(`# ${path.basename(json.path)}`);
+    lines.push("");
+    lines.push(`File: ${json.path}`);
+    lines.push("");
+
+    // Summary
+    if (json.summary) {
+        lines.push("=== Summary ===");
+        lines.push(json.summary);
+        lines.push("");
+    }
+
+    // Dependencies
+    if (json.dependencies?.length) {
+        lines.push("=== Dependencies ===");
+
+        json.dependencies.forEach(dep => {
+            lines.push(`• ${dep}`);
+        });
+
+        lines.push("");
+    }
+
+    // Standalone functions
+    if (json.functions?.length) {
+        lines.push("=== Functions ===");
+
+        json.functions.forEach(func => {
+
+            lines.push(`${func.name}()`);
+
+            if (func.description)
+                lines.push(`   ${func.description}`);
+
+            if (func.return_type)
+                lines.push(`   Returns: ${func.return_type}`);
+
+            lines.push("");
+
+        });
+    }
+
+    // Classes / Types
+    if (json.types?.length) {
+
+        lines.push("=== Classes ===");
+
+        json.types.forEach(type => {
+
+            lines.push("");
+            lines.push(`${type.kind.toUpperCase()}: ${type.name}`);
+
+            if (type.description)
+                lines.push(type.description);
+
+            // Properties
+            if (type.properties?.length) {
+
+                lines.push("");
+                lines.push("Properties:");
+
+                type.properties.forEach(prop => {
+
+                    lines.push(
+                        `  • ${prop.name} : ${prop.type}`
+                    );
+
+                });
+            }
+
+            // Methods
+            if (type.methods?.length) {
+
+                lines.push("");
+                lines.push("Methods:");
+
+                type.methods.forEach(method => {
+
+                    lines.push(
+                        `  • ${method.name}()`
+                    );
+
+                    if (method.description)
+                        lines.push(
+                            `      ${method.description}`
+                        );
+
+                });
+            }
+
+            lines.push("");
+
+        });
+    }
+
+    // Business Rules
+    if (json.business_rules?.length) {
+
+        lines.push("=== Business Rules ===");
+
+        json.business_rules.forEach((rule, i) => {
+
+            lines.push(`${i + 1}. ${rule.rule}`);
+
+        });
+
+        lines.push("");
+
+    }
+
+    return lines.join("\n");
+
+}
+
+function formatSource(json) {
+
+    const lines = [];
+
+
+    lines.push(`# ${json.directory_name || "Unknown Directory"}`);
+    lines.push("");
+
+
+    if (json.directory_name) {
+
+        lines.push("=== Directory Name ===");
+        lines.push(json.directory_name);
+        lines.push("");
+
+    }
+
+
+    if (json.directory_path) {
+
+        lines.push("=== Directory Path ===");
+        lines.push(json.directory_path);
+        lines.push("");
+
+    }
+
+
+    if (json.purpose) {
+
+        lines.push("=== Purpose ===");
+        lines.push(json.purpose);
+        lines.push("");
+
+    }
+
+
+    if (json.responsibilities?.length) {
+
+        lines.push("=== Responsibilities ===");
+
+        json.responsibilities.forEach(item => {
+            lines.push(`• ${item}`);
+        });
+
+        lines.push("");
+
+    }
+
+
+    return lines.join("\n");
+
+}
+
+function formatBusinessRules(json) {
+
+    // Handle empty JSON or []
+    if (!Array.isArray(json) || json.length === 0) {
+        return "No business rules were found.";
+    }
+
+    const lines = [];
+
+    json.forEach((ruleObj, index) => {
+
+        lines.push(`=== Business Rule ${index + 1} ===`);
+        lines.push(ruleObj.rule || "No rule provided.");
+        lines.push("");
+
+        if (ruleObj.source_directory) {
+            lines.push("Source Directory:");
+            lines.push(ruleObj.source_directory);
+            lines.push("");
+        }
+
+        if (ruleObj.source_file_paths?.length) {
+            lines.push("Source File(s):");
+
+            ruleObj.source_file_paths.forEach(file => {
+                lines.push(`• ${file}`);
+            });
+
+            lines.push("");
+        }
+
+        if (ruleObj.explanation?.reasoning) {
+            lines.push("Reasoning:");
+            lines.push(ruleObj.explanation.reasoning);
+            lines.push("");
+        }
+
+        if (ruleObj.explanation?.evidence) {
+
+            lines.push("Evidence:");
+
+            Object.entries(ruleObj.explanation.evidence).forEach(([file, snippets]) => {
+
+                lines.push(`• ${file}`);
+
+                snippets.forEach(snippet => {
+                    lines.push(`    - ${snippet}`);
+                });
+
+                lines.push("");
+            });
+        }
+
+        lines.push("");
+    });
+
+    return lines.join("\n");
+
+}
+
+// ----------------------------------------------------
+// ICP HANDLERS
+// ----------------------------------------------------
+
 ipcMain.handle(
     "has-api-key",
     () => {
@@ -168,6 +449,7 @@ ipcMain.handle(
             return result;
         }
 
+
         if (action === "open_file") {
             const rawPath = args.path;
             if (!rawPath) {
@@ -214,23 +496,60 @@ ipcMain.handle(
                 return result;
             }
 
-            const openResult = await shell.openPath(targetPath);
-            if (openResult) {
-                const result = {
-                    success: false,
-                    error: `Unable to open file: ${openResult}`
-                };
+            const content = fs.readFileSync(targetPath, "utf8");
 
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send("backend-response", result);
+            let preview;
+
+            try {
+
+                const json = JSON.parse(content);
+                const type = detectFileType(json);
+
+                if (type === "summary") {
+
+                    preview = {
+                        type: "summary",
+                        content: formatSummary(json)
+                    };
+
+                } else if (type === "source") {
+
+                    preview = {
+                        type: "source",
+                        content: formatSource(json)
+                    };
+
+                } else if (type === "business_rules") {
+
+                    preview = {
+                        type: "business_rules",
+                        content: formatBusinessRules(json)
+                    };
+
+                }else {
+
+                    preview = {
+                        type: "unknown",
+                        content: content
+                    };
+
                 }
 
-                return result;
+            } catch {
+
+                preview = {
+                    type: "text",
+                    content
+                };
+
             }
 
+
             const result = {
-                success: true,
-                message: `Opened file: ${targetPath}`
+                success:true,
+                type:"file-preview",
+                path:targetPath,
+                preview
             };
 
             if (mainWindow && !mainWindow.isDestroyed()) {
@@ -246,24 +565,6 @@ ipcMain.handle(
                 error:"Python backend is not running"
             };
         }
-
-
-        const payload = JSON.stringify({
-
-            type:"preview",
-
-            action:
-                request.action,
-
-            args:
-                request.args || {}
-
-        });
-
-
-        pythonProcess.stdin.write(
-            payload + "\n"
-        );
 
 
         return {
@@ -453,29 +754,43 @@ function startPythonBackend() {
 
     }
 
+    let pythonBuffer = "";
+
     pythonProcess.stdout.on("data", (data) => {
 
-        const lines = data.toString().split("\n");
+        pythonBuffer += data.toString();
+
+
+        let lines = pythonBuffer.split("\n");
+
+        pythonBuffer = lines.pop();
+
 
         for (const line of lines) {
 
             if (!line.trim())
                 continue;
 
+
             try {
 
-                const response = JSON.parse(line);
+                const parsed = JSON.parse(line);
 
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.webContents.send(
-                        "backend-response",
-                        response
-                    );
-                }
+                mainWindow.webContents.send(
+                    "backend-response",
+                    parsed
+                );
 
-            } catch {
 
-                console.log("Backend:", line);
+            }
+            catch(error) {
+
+                console.log(
+                    "Backend parse error:",
+                    error.message
+                );
+
+                console.log(line);
 
             }
 

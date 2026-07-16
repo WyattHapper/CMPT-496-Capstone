@@ -17,15 +17,6 @@ let errorsMade = false;
 let selectedCodebasePath = "";
 
 
-// Collection preview state
-let viewingSummaryPreview = false;
-let viewingSourcePreview = false;
-
-
-// Preview text buffers
-let summaryPreviewText = "";
-let sourcePreviewText = "";
-
 // Selections
 let selectedRules = [];
 
@@ -171,47 +162,6 @@ async function runPreviewCommand(
     return response;
 }
 
-// --------------------------------------------
-// Display Functions
-// --------------------------------------------
-
-function renderViewSourceButtons(collections) {
-
-    const container =
-        document.getElementById("viewSourcesBtns");
-
-    container.innerHTML = "";
-
-    container.classList.remove("hidden");
-
-    collections.forEach(collection => {
-
-        const button =
-            document.createElement("button");
-
-        button.className =
-            "btn-secondary";
-
-        button.textContent =
-            collection;
-
-        button.addEventListener("click", () => {
-
-            runPreviewCommand(
-                "preview",
-                {
-                    db_type: "source",
-                    collection
-                }
-            );
-
-        });
-
-        container.appendChild(button);
-
-    });
-
-}
 
 function renderViewSummaryButtons(collections) {
 
@@ -235,11 +185,21 @@ function renderViewSummaryButtons(collections) {
 
         button.addEventListener("click", () => {
 
+            const codebaseName = selectedCodebasePath
+                .split(/[\\/]/)
+                .pop();
+
+            const summaryPath = [
+                "agent",
+                "file_summary_agent_output",
+                codebaseName,
+                `${collection}.json`
+            ].join("/");
+
             runPreviewCommand(
-                "preview",
+                "open_file",
                 {
-                    db_type: "summary",
-                    collection
+                    path: summaryPath
                 }
             );
 
@@ -313,6 +273,255 @@ function renderViewOutput(entries) {
         output.textContent +=
             JSON.stringify(entry, null, 2) + "\n\n";
     });
+}
+
+function renderSummaryPreview(text) {
+
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "summary-card";
+
+
+    const sections = text.split("===");
+
+
+    sections.forEach(section => {
+
+        section = section.trim();
+
+        if (!section)
+            return;
+
+
+        const lines = section.split("\n");
+
+
+        const title = lines[0].trim();
+
+
+        // These are your real headers
+        const headers = [
+            "Summary",
+            "Dependencies",
+            "Functions",
+            "Classes",
+            "Business Rules"
+        ];
+
+
+        if (headers.includes(title)) {
+
+            const header = document.createElement("h2");
+            header.textContent = title;
+            header.className = "summary-header";
+            const specificClassName = title.toLowerCase().replace("business ", "")
+            header.classList.add(`${specificClassName}-header`);
+
+
+
+            const body = document.createElement("pre");
+            body.className = "summary-section-body";
+            body.textContent = lines.slice(1).join("\n").trim();
+
+
+            card.appendChild(header);
+            card.appendChild(body);
+
+        }
+
+        else {
+
+            // File name + path section
+            const body = document.createElement("pre");
+            body.className = "summary-section-body";
+            body.textContent = section;
+
+
+            card.appendChild(body);
+
+        }
+
+    });
+
+
+    output.appendChild(card);
+
+}
+
+function renderSourcePreview(text){
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "directory-card";
+
+
+    const sections = text.split("===");
+
+
+    sections.forEach(section => {
+
+        section = section.trim();
+
+        if (!section)
+            return;
+
+
+        const lines = section.split("\n");
+
+        const title = lines[0].trim();
+
+
+        const headers = [
+            "Directory Name",
+            "Directory Path",
+            "Purpose",
+            "Responsibilities"
+        ];
+
+
+        if (headers.includes(title)) {
+
+            const header = document.createElement("h3");
+            header.textContent = title;
+            header.className = "directory-header";
+
+
+            const body = document.createElement("pre");
+            body.className = "directory-section-body";
+
+            body.textContent =
+                lines.slice(1)
+                .join("\n")
+                .trim();
+
+
+            card.appendChild(header);
+            card.appendChild(body);
+
+        }
+        else {
+
+            const body = document.createElement("pre");
+
+            body.className =
+                "directory-section-body directory-title";
+
+            body.textContent =
+                section;
+
+
+            card.appendChild(body);
+
+        }
+
+    });
+
+
+    output.appendChild(card);
+
+}
+
+function renderBusinessRulesPreview(text) {
+
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "business-rule-card";
+
+
+    const sections = text.split("===");
+
+
+    sections.forEach(section => {
+
+        section = section.trim();
+
+        if (!section)
+            return;
+
+
+        const lines = section.split("\n");
+
+        const title = lines[0].trim();
+
+
+        // Rule headers
+        if (title.startsWith("Business Rule")) {
+
+            const header = document.createElement("h2");
+            header.textContent = title;
+            header.className = "business-rule-header";
+
+
+            const body = document.createElement("pre");
+            body.className = "business-rule-section-body";
+
+            body.textContent =
+                lines.slice(1)
+                .join("\n")
+                .trim();
+
+
+            card.appendChild(header);
+            card.appendChild(body);
+
+        }
+
+        else {
+
+            // Main "# Business Rules" title
+            const body = document.createElement("pre");
+
+            body.className =
+                "business-rule-section-body business-rule-title";
+
+            body.textContent =
+                section;
+
+
+            card.appendChild(body);
+
+        }
+
+    });
+
+
+    output.appendChild(card);
+
+}
+
+function renderErrorPreview(text){
+    
+}
+
+function renderTextPreview(text) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    if (!output) {
+        console.error("viewDisplayOutputBox not found");
+        return;
+    }
+
+    output.innerHTML = "";
+
+    const pre = document.createElement("pre");
+
+    pre.className = "file-preview-text";
+
+    pre.textContent = text;
+
+    output.appendChild(pre);
 }
 
 function showPage(pageId) {
@@ -416,65 +625,13 @@ async function loadValidatedRulesSelection() {
 }
 
 
-// clears oput anything from the screen that does not need to be there
-function clearOutput() {
 
-
-    const errorOutput =
-        document.getElementById('errorOutput');
-
-    if (errorOutput) {
-        errorOutput.textContent = '';
-    }
-
-    const sourceOutput =
-        document.getElementById('sourceOutput');
-
-    if (sourceOutput) {
-        sourceOutput.querySelectorAll('.source-file-btn, .source-preview-text')
-            .forEach((element) => {
-                element.remove();
-            });
-    }
-
-    const sourceOutputBox =
-        document.getElementById('sourceOutputBox');
-
-    if (sourceOutputBox) {
-        sourceOutputBox.textContent = '';
-    }
-
-    const summaryOutputBox =
-        document.getElementById('summaryOutputBox');
-
-    if (summaryOutputBox) {
-        summaryOutputBox.textContent = '';
-    }
-
-    const summaryOutputContainer =
-        document.getElementById('summaryOutput');
-
-    if (summaryOutputContainer) {
-        summaryOutputContainer.querySelectorAll('.summary-file-btn, .summary-preview-text')
-        .forEach((element) => {
-    
-            element.remove();
-        });
-
-        summaryPreviewText = "";
-        viewingSummaryPreview = false;
-        sourcePreviewText = "";
-        viewingSourcePreview = false;
-    }
-
-    summaryPendingLine = '';
-}
 
 // MENU BUTTONS
 document.getElementById('analysisBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
 
         if (!pathSubmitted) {
@@ -489,7 +646,7 @@ document.getElementById('analysisBtn')
 document.getElementById('apiBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('apiPage');
 
@@ -507,39 +664,44 @@ document.getElementById('apiBtn')
     
     });
 
+
+// ---------------------------------------------
+// ViewPageButtons
+// ---------------------------------------------
 document.getElementById('mainViewBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
         showPage('mainViewPage');
 
     });
 
 document.getElementById("viewDisplaySourcesBtn")
-    .addEventListener("click", () => {
+.addEventListener("click", () => {
 
-        showButtons("viewSourcesBtns");
-        
-        runPreviewCommand(
-            "list",
-            {
-                db_type: "source"
-            }
-        );
+    showButtons("viewSourcesBtns");
 
-    });
+    const codebaseName = selectedCodebasePath.split("/").pop();
+
+    runPreviewCommand(
+        "files",
+        {
+            path:`agent/directory_agent_output/${codebaseName}`
+        }
+    );
+
+});
 
 document.getElementById("viewDisplaySummariesBtn")
     .addEventListener("click", () => {
 
         showButtons("viewSummariesBtns");
 
-        runPreviewCommand(
-            "list",
-            {
-                db_type: "summary"
-            }
-        );
+        const codebaseName = selectedCodebasePath.split("/").pop();
+
+        runPreviewCommand("files", {
+            path: `agent/file_summary_agent_output/${codebaseName}`
+        });
 
     });
 
@@ -556,95 +718,50 @@ document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
 
 });
 
+document.getElementById("viewDisplayBusinessRulesBtn").addEventListener("click", () => {
+
+    showButtons("viewBusinessRulesBtns");
+
+
+    
+
+});
+
+//Hardcoded to see if outputs work
+document.getElementById("validatedBusinessRulesBtn").addEventListener("click", () => {
+
+    runPreviewCommand(
+        "open_file",
+        {
+            path: `agent/BR_agent_output/ConsoleTables-main/validated_rules.json`
+        }
+    );
+
+
+});
+
+//hoardcoded to see if outputs work
+document.getElementById("discardedBusinessRulesBtn").addEventListener("click", () => {
+
+    runPreviewCommand(
+        "open_file",
+        {
+            path: `agent/BR_agent_output/ConsoleTables-main/discarded_rules.json`
+        }
+    );
+
+});
+
 document.getElementById('mainViewBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('homePage');
     }); 
 
 
 
-// NOT SURE IF THESE ARE NEEDED NOW
-
-
-// document.getElementById('summaryBtn')
-//     .addEventListener('click', () => {
-
-//         clearOutput();
-
-//         showPage('summaryPage');
-
-//         // Reset the page
-//         const summaryOutputEl =
-//             document.getElementById('summaryOutput');
-
-//         const noVecSumEl =
-//             document.getElementById('noVectorStoresMsgSum');
-
-//         const summariesSubheaderEl =
-//             document.getElementById('summariesSubheader');
-
-
-//         if (summaryOutputEl)
-//             summaryOutputEl.classList.remove('hidden');
-
-//         if (noVecSumEl)
-//             noVecSumEl.classList.add('hidden');
-
-//         if (summariesSubheaderEl)
-//             summariesSubheaderEl.classList.remove('hidden');
-
-
-//         runPreviewCommand(
-//         "list",
-//         {
-//          db_type:"summary"
-//         });
-//     });
-
-// document.getElementById('sourceBtn')
-//     .addEventListener('click', () => {
-
-//         clearOutput();
-
-//         showPage('sourcePage');
-
-//         const sourceOutputEl = document.getElementById('sourceOutput');
-//         if (sourceOutputEl) sourceOutputEl.classList.remove('hidden');
-
-//         const sourceCollectionSubheaderEl = document.getElementById('sourceCollectionSubheader');
-//         if (sourceCollectionSubheaderEl) sourceCollectionSubheaderEl.classList.remove('hidden');
-
-//         const noVecSrcEl = document.getElementById('noVectorStoresMsgSrc');
-//         if (noVecSrcEl) noVecSrcEl.classList.add('hidden');
-       
-//         runPreviewCommand(
-//         "list",
-//         {
-//          db_type:"source"
-//         });
-//     });
-
-// document.getElementById('errorBtn')
-//     .addEventListener('click', () => {
-
-//         clearOutput();
-
-//         showPage('errorPage');
-//         if (!errorsMade) { 
-//             const noErrorsMsgEl = document.getElementById('noErrorsMsg');
-//             if (noErrorsMsgEl) noErrorsMsgEl.classList.remove('hidden');
-
-//             //const errorOutputEl = document.getElementById('errorOutput');
-//             //if (errorOutputEl) errorOutputEl.classList.add('hidden');
-
-//             const errorSubheaderEl = document.getElementById('errorSubheader');
-//             if (errorSubheaderEl) errorSubheaderEl.classList.add('hidden');
-//         }
-
-//     });
 
 document.getElementById('exitBtn').addEventListener('click', () => {
 
@@ -743,7 +860,7 @@ document.getElementById('createDirectorySummariesOnlyBtn')
 document.getElementById('runBusinessRuleValidationOnlyBtn')
     .addEventListener('click', () => {
         
-        clearOutput();
+        
 
         showPage('businessRulePage');
 
@@ -771,7 +888,7 @@ document.getElementById('allBusinessRuleBtn')
 document.getElementById('individualBusinessRuleBtn')
     .addEventListener('click', () => {
         
-        clearOutput();
+        
 
         showPage('chooseBusinessRulePage');
         loadBusinessRulesSelection();
@@ -780,7 +897,7 @@ document.getElementById('individualBusinessRuleBtn')
 document.getElementById('businessRuleBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('analysisPage');
 
@@ -789,7 +906,7 @@ document.getElementById('businessRuleBackBtn')
 document.getElementById('chooseBusinessRuleBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('businessRulePage');
 
@@ -798,7 +915,7 @@ document.getElementById('chooseBusinessRuleBackBtn')
 document.getElementById('runUnitTestGenerationOnlyBtn')
     .addEventListener('click', () => {
         
-        clearOutput();
+        
 
         showPage('unitTestPage');
     });
@@ -824,7 +941,7 @@ document.getElementById('allValidatedRulesBtn')
 document.getElementById('individualValidatedRulesBtn')
     .addEventListener('click', () => {
         
-        clearOutput();
+        
 
         showPage('chooseUnitTestPage');
         loadValidatedRulesSelection();
@@ -833,7 +950,7 @@ document.getElementById('individualValidatedRulesBtn')
 document.getElementById('unitTestPageBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('analysisPage');
 
@@ -860,7 +977,7 @@ document.getElementById('chooseUnitTestPageSelectBtn')
 document.getElementById('chooseUnitTestPageBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('unitTestPage');
 
@@ -869,7 +986,7 @@ document.getElementById('chooseUnitTestPageBackBtn')
 document.getElementById('runUnitTestValidationOnlyBtn')
     .addEventListener('click', () => {
         
-        clearOutput();
+        
         
         showPage('unitTestPage');
         
@@ -914,7 +1031,7 @@ document.getElementById('runUMLGenerationOnly')
 document.getElementById('analysisBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('homePage');
     });
@@ -925,7 +1042,7 @@ document.getElementById('analysisBackBtn')
 document.getElementById('apiBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('homePage');
     });
@@ -933,7 +1050,7 @@ document.getElementById('apiBackBtn')
 document.getElementById('submitApiKeyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('homePage');
 
@@ -955,7 +1072,7 @@ document.getElementById('replaceApiKeyBtn')
     .addEventListener('click', () => {
 
         console.log("Replace API Key button clicked");
-        clearOutput();
+        
 
         newApiUi();
         document.getElementById('apiBackBtn').classList.add('hidden');
@@ -965,51 +1082,13 @@ document.getElementById('replaceApiKeyBtn')
 document.getElementById('keepApiKeyBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
-
-        showPage('homePage');
-
-    });
-
         
 
-//======================================================
-//summary page buttons
-//======================================================
-document.getElementById('summaryBackBtn')
-.addEventListener('click', () => {
-
-    clearOutput();
-
-    showPage('homePage');
-
-    viewingSummaryPreview = false;
-
-});
-
-//======================================================
-//Source code collections buttons
-//======================================================
-document.getElementById('sourceBackBtn')
-.addEventListener('click', () => {
-
-    clearOutput();
-
-    showPage('homePage');
-
-    viewingSourcePreview = false;
-
-});
-//======================================================
-//view errors buttons
-//======================================================
-document.getElementById('errorBackBtn')
-    .addEventListener('click', () => {
-
-        clearOutput();
-
         showPage('homePage');
+
     });
+
+    
 
 //======================================================
 //back buttons
@@ -1017,7 +1096,7 @@ document.getElementById('errorBackBtn')
 document.getElementById('codebaseBackBtn')
     .addEventListener('click', () => {
 
-        clearOutput();
+        
 
         showPage('analysisPage');
     });
@@ -1031,7 +1110,7 @@ document.getElementById('submitPathBtn')
 .addEventListener('click', () => {
 
 
-    clearOutput();
+    
 
 
     showPage('analysisPage');
@@ -1068,7 +1147,6 @@ document.getElementById('submitPathBtn')
 // Backend Response Handler
 // ============================================
 
-
 window.electronAPI.onBackendResponse((response) => {
 
     console.log("ACTIVE:", activeCommand);
@@ -1079,17 +1157,60 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+
+    // ----------------------------------------
+    // Formatted file previews
+    // Summaries, sources, normal text files
+    // ----------------------------------------
+    if (response.type === "file-preview") {
+
+
+        if (response.preview.type === "summary") {
+
+            renderSummaryPreview(
+                response.preview.content
+            );
+
+        } else if (response.preview.type === "source") {
+
+            renderSourcePreview(
+                response.preview.content
+            );
+
+        } else if (response.preview.type === "business_rules") {
+
+            renderBusinessRulesPreview(
+                response.preview.content
+            );
+
+        } else {
+
+            renderTextPreview(
+                response.preview.content
+            );
+
+        }
+
+
+        return;
+    }
+
+
+
     // ----------------------------------------
     // Progress updates
     // ----------------------------------------
     if (response.type === "progress") {
 
         updateLoading(response.stage);
+
         return;
     }
 
+
+
     // ----------------------------------------
-    // Error handling
+    // Errors
     // ----------------------------------------
     if (!response.success) {
 
@@ -1098,68 +1219,51 @@ window.electronAPI.onBackendResponse((response) => {
         const errorBox =
             document.getElementById("errorOutput");
 
+
         if (errorBox && response.error) {
-            errorBox.textContent += response.error + "\n";
+
+            errorBox.textContent +=
+                response.error + "\n";
+
         }
 
+
         if (activeCommand) {
+
             hideLoading();
             activeCommand = null;
+
         }
+
 
         return;
     }
 
+
+
     // ----------------------------------------
-    // Analysis output
+    // Analysis output messages
     // ----------------------------------------
     if (response.message) {
 
         const outputBox =
             document.getElementById("analysisOutputBox");
 
+
         if (outputBox) {
-            outputBox.textContent += response.message + "\n";
-        }
-    }
 
-    // ----------------------------------------
-    // Collection list
-    // ----------------------------------------
-    if (response.collections) {
-
-        if (response.type === "source") {
-            renderViewSourceButtons(response.collections);
-        }
-
-        if(response.files){
-
-            renderViewFileButtons(response.files);
-
-            return;
+            outputBox.textContent +=
+                response.message + "\n";
 
         }
 
-        else if (response.type === "summary") {
-            renderViewSummaryButtons(response.collections);
-        }
-
-        return;
-    }
-
-    // ----------------------------------------
-    // Collection preview
-    // ----------------------------------------
-    if (response.entries) {
-
-        renderViewOutput(response.entries);
-
-        return;
     }
 
 
+
+
     // ----------------------------------------
-    // Finished command
+    // Command completion
     // ----------------------------------------
     if (
         activeCommand &&
@@ -1167,7 +1271,9 @@ window.electronAPI.onBackendResponse((response) => {
     ) {
 
         hideLoading();
+
         activeCommand = null;
+
     }
 
 });

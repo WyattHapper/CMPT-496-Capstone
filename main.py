@@ -39,6 +39,8 @@ def format_response(result):
         "message": str(result)
     }
 
+
+
 # ---------------------------------------------------------
 # Initialize backend services
 # ---------------------------------------------------------
