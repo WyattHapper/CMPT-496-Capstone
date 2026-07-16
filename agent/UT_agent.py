@@ -121,6 +121,7 @@ class UTAgent:
             "validated_rules": validated_rules,
             "unit_tests": [],
             "rule_contexts": {},
+            "test_imports": set(),
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,
@@ -265,14 +266,16 @@ class UTAgent:
 
         results = self._loop.run_until_complete(run_batch())
 
+        test_imports = set()
         unit_tests = []
         for rule, output, err in results:
             if err is not None:
                 logger.error(f"Unit test generation error for rule {rule.id}: {err}")
                 continue
-            unit_tests.append(UnitTest(unit_test=output.unit_test, id=rule.id, rule=rule.rule))
+            test_imports.update(output.imports)
+            unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule))
 
-        return {"unit_tests": unit_tests}
+        return {"unit_tests": unit_tests, "test_imports": test_imports}
 
     def writer_node(self, state: UTGraphState) -> UTGraphState:
         """
@@ -299,6 +302,12 @@ class UTAgent:
                 json.dump([u.model_dump() for u in unit_tests], f, indent=2)
             with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
                 for test in unit_tests:
+                    # Write imports first (if any), then the unit test method
+                    if getattr(test, "imports", None):
+                        try:
+                            file.write("\n".join(test.imports) + "\n\n")
+                        except Exception:
+                            pass
                     file.write(test.unit_test + "\n\n")
             logger.info(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
         return {}
@@ -329,9 +338,12 @@ class UTAgent:
                 logger.error(f"Error: {e}")
 
         # Write generated tests to Xunit .cs file
+        test_imports = state["test_imports"]
+        logger.info(test_imports)
         unit_tests = state["unit_tests"]
         with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
-            file.write("using ConsoleTables;\n")
+            for import_statement in test_imports:
+                file.write(import_statement + "\n")
             file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
             file.write("\npublic class Tests {\n")
             for test in unit_tests:
@@ -468,11 +480,13 @@ async def _generate_single_test(
 ---
 1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
 2. Generate exactly one realistic, structurally sound, executable unit test method.
-3. Match the exact programming language, naming conventions, and testing framework patterns visible in the provided contexts (e.g., xUnit, NUnit, pytest).
+3. Generate the full import code statements required for the unit test method to function. 
+4. Match the exact programming language, naming conventions, and recommended testing framework for that language (example: Xunit for C#).
 
 ### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
 ---
-- **NO IMPORTS:** Do not emit any `import`, `using`, or package references. Output *only* the test method block.
+- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language.
+- **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `unit_test` field; `unit_test` must contain only the method block.
 - **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
 - **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.

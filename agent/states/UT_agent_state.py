@@ -60,6 +60,7 @@ class UTGraphState(TypedDict):
     validated_rules: dict[str, list[ValidatedRule]]
     unit_tests: list[UnitTest]
     rule_contexts: dict[int, dict]
+    test_imports: set
     test_path: str
     codebase_k: int
     file_summary_k: int

@@ -4,7 +4,6 @@
 @details Includes models for condensed validated rules with evidence and unit tests.
 """
 
-from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 class Explanation(BaseModel):
@@ -33,4 +32,5 @@ class UnitTest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     id: int = Field(..., description="Stable unique identifier matching the ValidatedRule ID.")
     rule: str = Field(..., description="The business rule statement that this unit test corresponds to.")
+    imports: list[str] = Field(default_factory=list, description="List of import statements required for the unit test (one per list item), in the correct syntax for the target language.")
     unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")
