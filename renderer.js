@@ -398,11 +398,9 @@ async function loadValidatedRulesSelection() {
                 if (button.classList.contains('selected')) {
                     selectedRules = selectedRules.filter(item => item !== id);
                     button.classList.remove('selected');
-                    console.log(selectedRules)
                 } else {
                     selectedRules.push(id);
-                    button.classList.add('selected');
-                    console.log(selectedRules)
+                    button.classList.add('selected')
                 }
             });
 
@@ -806,8 +804,9 @@ document.getElementById('runUnitTestGenerationOnlyBtn')
     });
 
 document.getElementById('allValidatedRulesBtn')
-    .addEventListener('click', () => {
-
+    .addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         showLoading(
             "Unit Test Generation",
             "Preparing..."
@@ -841,7 +840,9 @@ document.getElementById('unitTestPageBackBtn')
     });
 
 document.getElementById('chooseUnitTestPageSelectBtn')
-    .addEventListener('click', () => {
+    .addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         showLoading(
             "Unit Test Generation",
             "Preparing..."

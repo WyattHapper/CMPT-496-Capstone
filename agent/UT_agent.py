@@ -21,6 +21,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import defaultdict
+import subprocess
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -77,12 +78,14 @@ class UTAgent:
         builder.add_node("retriever", self.retriever_node)
         builder.add_node("test_generator", self.test_generator_node)
         builder.add_node("writer", self.writer_node)
+        builder.add_node("runner", self.runner_node)
 
         # Set edges
         builder.set_entry_point("retriever")
         builder.add_edge("retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", END)
+        builder.add_edge("writer", "runner")
+        builder.add_edge("runner", END)
 
         return builder.compile()
 
@@ -283,10 +286,11 @@ class UTAgent:
         @param state Current workflow state containing validated_rules.
         @return Empty dict (terminal node).
         """
-        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
-        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
-        os.makedirs(codebase_subdir, exist_ok=True)
 
+        codebase_name = state["codebase_name"]
+        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
+        codebase_subdir = os.path.join(base_output_dir, codebase_name)
+        os.makedirs(codebase_subdir, exist_ok=True)
         unit_tests = state.get("unit_tests", [])
         if unit_tests:
             unit_tests_path_json = os.path.join(codebase_subdir, "unit_tests.json")
@@ -299,6 +303,51 @@ class UTAgent:
             logger.info(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
         return {}
 
+    def runner_node(self, state: UTGraphState) -> UTGraphState:
+        """
+        @brief Creates test framework in target codebase and runs it
+
+        @details Takes the generated unit tests and applies them with a testing framework and generates a report based on its results
+
+        @param state Current workflow state contain unit_tests
+        @return Empty dict
+        """
+        codebase_path = state["codebase_path"]
+        codebase_name  = state["codebase_name"]
+        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
+
+        # Generate Xunit framework
+        if not Path(test_subdir).is_dir():
+            try:
+                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
+                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
+                    lines = file.readlines()
+                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
+                    file.seek(0)
+                    file.writelines(lines)
+            except Exception as e:
+                logger.error(f"Error: {e}")
+
+        # Write generated tests to Xunit .cs file
+        unit_tests = state["unit_tests"]
+        with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
+            file.write("using ConsoleTables;\n")
+            file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
+            file.write("\npublic class Tests {\n")
+            for test in unit_tests:
+                file.write(test.unit_test + "\n\n")
+            file.write("}")
+        
+        # Run generated tests and produce report
+        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
+        codebase_dir = os.path.join(base_output_dir, codebase_name)
+        try:
+            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_dir}"])
+            logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
+        except Exception as e:
+            logger.error(e)
+        return {}
+    
     # Helper methods
 
     def _normalize_path(self, path_value: str) -> str:
