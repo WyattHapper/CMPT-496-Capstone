@@ -25,6 +25,8 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from pathlib import Path
 from collections import defaultdict
 
+from backend.progress_logging import progress
+
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
 DEFAULT_FILE_SUMMARY_K = 5
@@ -242,6 +244,7 @@ class BRAgent:
         for dir_name, (returned_dir, condensed_strings, err) in zip(sorted_multi_dirs, results):
             if err is not None:
                 # On error, pass through original rules uncondensed
+                progress((f"Condensation error for {dir_name}: {err}"))
                 logger.error(f"Condensation error for {dir_name}: {err}")
                 condensed_strings = [r.rule for r in multi_rule_groups[dir_name]["rules"]]
             condensed_by_dir[dir_name] = condensed_strings
@@ -275,7 +278,7 @@ class BRAgent:
                     ))
                     rule_id += 1
 
-        logger.info(f"Condensed {sum(len(g['rules']) for g in dir_groups.values())} input rules "
+        progress(f"Condensed {sum(len(g['rules']) for g in dir_groups.values())} input rules "
                     f"into {len(all_condensed)} condensed rules across {len(dir_groups)} directory groups.")
 
         return {
@@ -437,6 +440,7 @@ class BRAgent:
 
         for rule, output, err in results:
             if err is not None:
+                progress(f"Validation error for rule {rule.id}: {err}")
                 logger.error(f"Validation error for rule {rule.id}: {err}")
                 new_discarded.append(DiscardedRule(
                     id=rule.id,
@@ -474,7 +478,7 @@ class BRAgent:
                 else:
                     needs_context.append(rule)
 
-        logger.info(f"Validation pass complete: {len(new_validated)} valid, "
+        progress(f"Validation pass complete: {len(new_validated)} valid, "
                     f"{len(new_discarded)} discarded, {len(needs_context)} need more context.")
 
         update: dict = {
@@ -524,8 +528,7 @@ class BRAgent:
         with open(discarded_path, "w", encoding="utf-8") as f:
             json.dump([r.model_dump() for r in discarded], f, indent=2)
 
-        logger.info(f"Wrote {len(validated)} validated rules to {validated_path}")
-        logger.info(f"Wrote {len(discarded)} discarded rules to {discarded_path}")
+        progress(f"Wrote {len(validated)} validated rules to {validated_path}\nWrote {len(discarded)} discarded rules to {discarded_path}")
 
         return {}
 
@@ -826,7 +829,7 @@ if __name__ == "__main__":
     @details Loads business rules from a JSON file and runs the validation pipeline.
     """
     if len(sys.argv) != 3:
-        logger.info("Usage: python -m agent.BR_agent <codebase_name> <rules_json_path>")
+        progress("Usage: python -m agent.BR_agent <codebase_name> <rules_json_path>")
         sys.exit(1)
 
     codebase_name = sys.argv[1]
@@ -843,4 +846,4 @@ if __name__ == "__main__":
 
     agent = BRAgent()
     agent.run(input_rules, codebase_name)
-    logger.info("BRAgent has completed its task!")
+    progress("BRAgent has completed its task!")

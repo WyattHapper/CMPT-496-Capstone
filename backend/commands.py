@@ -33,6 +33,8 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+from backend.progress_logging import progress
+
 
 # ---------------------------------------------------------
 # IMPORTS FROM AGENT
@@ -90,7 +92,7 @@ class Commands:
         )
 
     
-    def _run_command(self, command_name: str, func, *args, **kwargs):
+    def _run_command(self, command_name: str, func, *args, individualStep = True, **kwargs):
         """
         Executes a command while timing it and returning a
         consistent response object.
@@ -110,6 +112,7 @@ class Commands:
                 "success": True,
                 "command": command_name,
                 "elapsed": round(elapsed, 2),
+                "individualStep": individualStep,
                 "result": result,
             }
 
@@ -121,6 +124,7 @@ class Commands:
                 "success": False,
                 "command": command_name,
                 "elapsed": round(elapsed, 2),
+                "individualStep": individualStep,
                 "error": str(exc),
             }
         
@@ -143,7 +147,7 @@ class Commands:
     # Database Commands
     # -----------------------------------------------------
 
-    def build_database(self, codebase: str):
+    def build_database(self, codebase: str, individualStep = True):
         """
         Build the source code vector database.
         """
@@ -155,9 +159,10 @@ class Commands:
         return self._run_command(
             "build_database",
             task,
+            individualStep=individualStep,
         )
 
-    def build_summary_database(self, codebase: str):
+    def build_summary_database(self, codebase: str, individualStep = True):
         """
         Build the summary vector database.
         """
@@ -171,9 +176,10 @@ class Commands:
         return self._run_command(
             "build_summary_database",
             task,
+            individualStep=individualStep,
         )
 
-    def generate_file_summaries(self, codebase: str):
+    def generate_file_summaries(self, codebase: str, individualStep = True):
         """
         Generate file-level summaries.
         """
@@ -185,13 +191,14 @@ class Commands:
         return self._run_command(
             "generate_file_summaries",
             task,
+            individualStep=individualStep,
         )
     
     # -----------------------------------------------------
     # Summary / Agent Commands
     # -----------------------------------------------------
 
-    def generate_directory_summaries(self, codebase: str):
+    def generate_directory_summaries(self, codebase: str, individualStep = True):
         """
         Generate directory-level summaries.
 
@@ -206,13 +213,15 @@ class Commands:
         return self._run_command(
             "generate_directory_summaries",
             task,
+            individualStep=individualStep,
         )
 
 
     def validate_business_rules(
         self,
         codebase: str,
-        rules_path: str = None
+        rules_path: str = None,
+        individualStep = True
     ):
         """
         Validate generated business rules.
@@ -272,6 +281,7 @@ class Commands:
         return self._run_command(
             "validate_business_rules",
             task,
+            individualStep=individualStep,
         )
 
 
@@ -280,6 +290,7 @@ class Commands:
         codebase: str,
         selected_rules: list,
         validated_rules_path: str = None,
+        individualStep = True
     ):
         """
         Generate unit tests from validated rules.
@@ -345,6 +356,7 @@ class Commands:
         return self._run_command(
             "generate_unit_tests",
             task,
+            individualStep=individualStep,
         )
     
 
@@ -352,7 +364,7 @@ class Commands:
     # UML Commands
     # -----------------------------------------------------
 
-    def generate_uml(self, summary_path: str):
+    def generate_uml(self, summary_path: str, individualStep = True):
         """
         Generate a UML PDF from a single JSON summary file.
 
@@ -398,10 +410,11 @@ class Commands:
         return self._run_command(
             "generate_uml",
             task,
+            individualStep=individualStep,
         )
 
 
-    def generate_all_uml(self, summary_dir: str):
+    def generate_all_uml(self, summary_dir: str, individualStep = True):
         """
         Generate UML PDFs for every JSON summary
         in a directory.
@@ -429,7 +442,8 @@ class Commands:
             for summary_file in summary_dir.glob("*.json"):
 
                 result = self.generate_uml(
-                    str(summary_file)
+                    str(summary_file),
+                    individualStep=False
                 )
 
                 generated.append(result)
@@ -449,6 +463,7 @@ class Commands:
         return self._run_command(
             "generate_all_uml",
             task,
+            individualStep=individualStep,
         )
     
         # -----------------------------------------------------
@@ -514,8 +529,8 @@ class Commands:
 
         codebase_path = Path(codebase)
 
-        logger.info(f"Pipeline codebase: {codebase}")
-        logger.info(f"Resolved path: {codebase_path.resolve()}")
+        progress(f"Pipeline codebase: {codebase}")
+        
 
         if not codebase_path.exists():
             return {
@@ -527,7 +542,7 @@ class Commands:
                 ),
             }
 
-
+        progress(f"Resolved path: {codebase_path.resolve()}")
         codebase_name = codebase_path.name
 
 
@@ -563,25 +578,25 @@ class Commands:
             steps = []
 
             
-            steps.append( self._require_success(self.build_database(str(codebase_path))))
+            steps.append( self._require_success(self.build_database(str(codebase_path), False)))
 
             
-            steps.append( self._require_success(self.generate_file_summaries(str(codebase_path))))
+            steps.append( self._require_success(self.generate_file_summaries(str(codebase_path), False)))
 
             
-            steps.append( self._require_success(self.build_summary_database(str(codebase_path))))
+            steps.append( self._require_success(self.build_summary_database(str(codebase_path), False)))
 
             
-            steps.append( self._require_success(self.generate_directory_summaries(str(codebase_path))))
+            steps.append( self._require_success(self.generate_directory_summaries(str(codebase_path), False)))
             
             
-            steps.append( self._require_success(self.validate_business_rules(str(codebase_path))))
+            steps.append( self._require_success(self.validate_business_rules(str(codebase_path), individualStep=False)))
 
             
-            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path))))
+            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), individualStep=False)))
 
             
-            steps.append( self._require_success(self.generate_all_uml(str(summary_directory))))
+            steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))
 
 
             failed = [
@@ -608,4 +623,5 @@ class Commands:
         return self._run_command(
             "full_pipeline",
             task,
+            individualStep=True,
         )

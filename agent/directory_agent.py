@@ -13,6 +13,7 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from pathlib import Path
 from collections import deque
 import json
+from backend.progress_logging import progress
 
 class DirectoryAgent:
     def __init__(self, model = None):
@@ -20,6 +21,7 @@ class DirectoryAgent:
         @brief Initializes the DirectoryAgent with a specified language model. If no model is provided, it defaults to "gemini-3-flash-preview".
         @param model An optional language model to use for generating summaries
         """
+        progress("Initializing summary agent...")
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -81,6 +83,7 @@ class DirectoryAgent:
         @brief Executes the DirectoryAgent workflow starting from the provided initial state.
         @param directory_path The path to the directory to be analyzed.
         """
+        progress(f'Running directory agent on {directory_path}')
         codebase_name = Path(directory_path).name
 
         if getattr(sys, 'frozen', False):
@@ -443,6 +446,7 @@ class DirectoryAgent:
         @return Updated state with directory summary in the form of a DirectoryOutput object.
         """
         
+        progress("Generating directory summaries...")
         if (isinstance(self.llm, GenericFakeChatModel)):
             output = self.llm.invoke("")
             return {
@@ -495,12 +499,13 @@ class DirectoryAgent:
             # Generate summary using LLM
             output = structured_llm.invoke(messages)
 
-            logger.info(f"Generated summary for directory {state['current_directory']}")
+            progress(f"Generated summary for directory {state['current_directory']}")
 
             return {
                 "directory_summary": output
             }
         except Exception as e:
+            progress(f"Error during summarization: {e}")
             logger.error(f"Error during summarization: {e}")
             return {
                 "directory_summary": DirectoryOutput(
@@ -577,7 +582,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             # Generate summary using LLM
             output = structured_llm.invoke(messages)
 
-            logger.info(f"Generated root summary for directory {state['current_directory']}")
+            progress(f"Generated root summary for directory {state['current_directory']}")
 
             return {
                 "directory_summary": output
@@ -585,6 +590,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             
         
         except Exception as e:
+            progress(f"Error during summarization: {e}")
             logger.error(f"Error during summarization: {e}")
             return {
                 "directory_summary": DirectoryOutput(
@@ -604,6 +610,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @return Updated state with an entry added to accumulated_business_rules for
                 the current directory.
         """
+        progress("Extracting cross-file business rules...")
         current_dir = state["current_directory"]
 
         root_directory = state["directory_path"]
@@ -654,7 +661,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                     matched_file_paths.add(Path(summary_path).name)
 
             if not directory_file_summaries:
-                logger.info(f"No file summaries found for {current_dir}, skipping business rules extraction.")
+                progress(f"No file summaries found for {current_dir}, skipping business rules extraction.")
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -667,7 +674,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                 }
 
             if len(matched_file_paths) < 2:
-                logger.info(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.")
+                progress(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.")
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -736,12 +743,13 @@ Show how the parts connect and the overall shape of the system, not just what ea
             output.directory_name = Path(current_dir).name
             output.directory_path = rel_dir
 
-            logger.info(f"Extracted business rules for directory {current_dir}")
+            progress(f"Extracted business rules for directory {current_dir}")
             return {
                 "accumulated_business_rules": {current_dir: output}
             }
 
         except Exception as e:
+            progress(f"Error during business rules extraction for {state['current_directory']}: {e}")
             logger.error(f"Error during business rules extraction for {state['current_directory']}: {e}")
             return {
                 "accumulated_business_rules": {
@@ -760,6 +768,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @param state Workflow state object containing the generated directory summary.
         @return Updated state with a flag indicating whether the summary is satisfactory or if it needs to be regenerated.
         """
+        progress("Judging generated summary quality...")
         current_directory = state.get("current_directory")
         if not current_directory:
             raise ValueError("No current directory available for summary judgement.")
@@ -827,7 +836,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @return Updated state with a refined directory summary that addresses the feedback provided by the judgement node.
         """
         current_attempts = state.get("refinement_attempts", 0) + 1
-        logger.info(f"Attempting refinement for directory {state['current_directory']}")
+        progress(f"Attempting refinement for directory {state['current_directory']}")
         try:
             current_directory = state.get("current_directory")
             if not current_directory:
@@ -891,6 +900,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                 "refinement_attempts": current_attempts
             }
         except Exception as e:
+            progress(f"Error during summary refinement: {e}")
             logger.error(f"Error during summary refinement: {e}")
             return {
                 "directory_summary": state.get("directory_summary"), # If refinement fails, keep the original summary
@@ -909,6 +919,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                     - Non-root directories: `directory_agent_output/<codebase_name>/`
                     - Root directory: `directory_agent_output/<codebase_name>/root_output/`
         """
+        progress("Writing directory sumarry to JSON output file...")
         # creates directory_agent_output subdir 
         base_output_dir = state.get("output_directory", "./agent/directory_agent_output")
 
@@ -988,7 +999,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(serialized, f, indent=2)
 
-        logger.info(f"Business rules written to {output_path}")
+        progress(f"Business rules written to {output_path}")
         return {}
 
     # Helper methods
@@ -1177,12 +1188,12 @@ if __name__ == "__main__":
     PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
     if len(sys.argv) != 2:
-        logger.info("Usage: python file_summary_agent.py <codebase_name>")
+        progress("Usage: python file_summary_agent.py <codebase_name>")
         sys.exit(1)
     codebase = sys.argv[1]
     directory_path = os.path.abspath(codebase)
 
     agent = DirectoryAgent()
     agent.run(directory_path)
-    logger.info("DirectoryAgent has completed its task!")
+    progress("DirectoryAgent has completed its task!")
     

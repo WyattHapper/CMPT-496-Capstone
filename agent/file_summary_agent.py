@@ -18,6 +18,7 @@ import json
 import asyncio
 from pathlib import Path
 from collections import deque
+from backend.progress_logging import progress
 
 BATCH_SIZE = 10
 MAX_CONCURRENCY = 10
@@ -52,6 +53,7 @@ class FileSummaryAgent:
 
         @return None
         """
+        progress("Initializing file summary agent...")
         if llm is not None:
             self.llm = llm
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
@@ -113,7 +115,7 @@ class FileSummaryAgent:
         @param directory_path str: Absolute path to the codebase to analyze.
         @return dict: Final state of the graph after execution.
         """
-
+        progress("Running file summary agent...")
         # Initialize starting GraphState
         initial_state = {
             "directory_path": directory_path,
@@ -244,6 +246,8 @@ class FileSummaryAgent:
         @param state FileGraphState: Current graph state.
         @return dict: Unchanged state.
         """
+
+        progress("Writing business rules to JSON output file...")
         base_output_dir = "./agent/file_summary_agent_output"
         br_dir = os.path.join(base_output_dir, state["codebase_name"], "business_rules")
         os.makedirs(br_dir, exist_ok=True)
@@ -261,6 +265,7 @@ class FileSummaryAgent:
         return {}
 
 async def _summarize_one(structured_llm, file_path: str):
+    progress(f'Summarizing: {file_path}')
     try:
         contents = Path(file_path).read_text(encoding="utf-8", errors="replace")
         messages = [
@@ -394,7 +399,7 @@ Code:
     except Exception as e:
         return file_path, None, e
     finally:
-        logger.info(f"✔ finished: {file_path}")
+        progress(f"✔ finished: {file_path}")
 
 if __name__ == "__main__":
     """
@@ -411,12 +416,12 @@ if __name__ == "__main__":
     PROJECT_ROOT = os.path.dirname(BASE_DIR)
 
     if len(sys.argv) != 2:
-        logger.info("Usage: python file_summary_agent.py <codebase_name>")
+        progress("Usage: python file_summary_agent.py <codebase_name>")
         sys.exit(1)
     codebase = sys.argv[1]
     directory_path = os.path.abspath(codebase)
 
     agent = FileSummaryAgent()
     agent.run(directory_path)
-    logger.info("FileSummaryAgent has completed its task!")
+    progress("FileSummaryAgent has completed its task!")
     

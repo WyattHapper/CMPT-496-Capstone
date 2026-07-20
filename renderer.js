@@ -98,9 +98,26 @@ function updateLoading(message) {
 
     if (!messageElement) return;
 
+    message = message.replace(
+        /^\s*\[\s*progress\s*\]\s*/i,
+        ""
+    );
+
     messageElement.textContent = message;
 }
 
+function finishLoading(message = "Process completed successfully!") {
+
+    document.getElementById("loadingTitle").textContent = "Complete";
+
+    document.getElementById("loadingMessage").textContent = message;
+
+    // hide spinner
+    document.getElementById("loadingSpinner").classList.add("hidden");
+
+    // show OK button
+    document.getElementById("loadingOkBtn").classList.remove("hidden");
+}
 
 function hideLoading() {
 
@@ -625,7 +642,14 @@ async function loadValidatedRulesSelection() {
 }
 
 
+//loading complete button
+document.getElementById("loadingOkBtn").addEventListener("click", () => {
 
+    hideLoading();
+
+    document.getElementById("loadingOkBtn").classList.add("hidden");
+
+});
 
 // MENU BUTTONS
 document.getElementById('analysisBtn')
@@ -1131,11 +1155,6 @@ document.getElementById('submitPathBtn')
     );
 
 
-    document
-        .getElementById("analysisOutput")
-        .classList
-        .remove("hidden");
-
 });
 
 
@@ -1157,6 +1176,7 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+    
 
     // ----------------------------------------
     // Formatted file previews
@@ -1227,6 +1247,7 @@ window.electronAPI.onBackendResponse((response) => {
 
         }
 
+        console.log("ERROR RESPONSE:", response);
 
         if (activeCommand) {
 
@@ -1266,11 +1287,14 @@ window.electronAPI.onBackendResponse((response) => {
     // Command completion
     // ----------------------------------------
     if (
-        activeCommand &&
-        response.command === activeCommand
+        response.success &&
+        response.individualStep === true
     ) {
 
-        hideLoading();
+        finishLoading(
+            response.result?.message ||
+            `${response.command} completed`
+        );
 
         activeCommand = null;
 

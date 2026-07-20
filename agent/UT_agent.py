@@ -22,6 +22,7 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from pathlib import Path
 from collections import defaultdict
 import subprocess
+from backend.progress_logging import progress
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -158,6 +159,7 @@ class UTAgent:
         @return Updated state with rule_contexts populated/extended.
         @raises ValueError If current_rules is empty.
         """
+        progress("Collecting validated business rules...")
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
             raise ValueError("No validated rules to retrieve context for.")
@@ -249,6 +251,8 @@ class UTAgent:
         for each rule that passed validation. The results are written to `unit_tests`
         in the workflow state for the final writer node.
         """
+
+        progress("Generating unit tests...")
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
             return {"unit_tests": []}
@@ -270,6 +274,7 @@ class UTAgent:
         unit_tests = []
         for rule, output, err in results:
             if err is not None:
+                progress(f"Unit test generation error for rule {rule.id}: {err}")
                 logger.error(f"Unit test generation error for rule {rule.id}: {err}")
                 continue
             test_imports.update(output.imports)
@@ -290,6 +295,8 @@ class UTAgent:
         @return Empty dict (terminal node).
         """
 
+        progress("Writing unit tests to JSON output file...")
+
         codebase_name = state["codebase_name"]
         base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
         codebase_subdir = os.path.join(base_output_dir, codebase_name)
@@ -309,7 +316,7 @@ class UTAgent:
                         except Exception:
                             pass
                     file.write(test.unit_test + "\n\n")
-            logger.info(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
+            progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
         return {}
 
     def runner_node(self, state: UTGraphState) -> UTGraphState:
@@ -464,17 +471,17 @@ async def _generate_single_test(
         )
 
         prompt = f"""
-#### BUSINESS RULE TO TEST:
-- ID: {rule.id}
-- RULE STATEMENT: {rule.rule}
-- TARGET DIRECTORY: {rule.source_directory}
-- EXPLANATION FOR VALIDATION: {rule.explanation}
+            #### BUSINESS RULE TO TEST:
+            - ID: {rule.id}
+            - RULE STATEMENT: {rule.rule}
+            - TARGET DIRECTORY: {rule.source_directory}
+            - EXPLANATION FOR VALIDATION: {rule.explanation}
 
-#### RETRIEVED SOURCE CODE CONTEXT:
-{code_text}
+            #### RETRIEVED SOURCE CODE CONTEXT:
+            {code_text}
 
-#### RETRIEVED FILE SUMMARY CONTEXT:
-{summary_text}
+            #### RETRIEVED FILE SUMMARY CONTEXT:
+            {summary_text}
 
 ### [REQUIRED TASK]
 ---
@@ -492,8 +499,8 @@ async def _generate_single_test(
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
 - **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. 
 
-*Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
-"""
+            *Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
+        """
 
         messages = [("system", system_message), ("user", prompt)]
         output = await structured_llm.ainvoke(messages)
@@ -507,7 +514,7 @@ if __name__ == "__main__":
     @details Loads business rules from a JSON file and runs the validation pipeline.
     """
     if len(sys.argv) != 3:
-        logger.info("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
+        progress("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
         sys.exit(1)
 
     codebase = sys.argv[1]
@@ -522,4 +529,4 @@ if __name__ == "__main__":
 
     agent = UTAgent()
     agent.run(input_rules, codebase_name, codebase)
-    logger.info("UTAgent has completed its task!")
+    progress("UTAgent has completed its task!")
