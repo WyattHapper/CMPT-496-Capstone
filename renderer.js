@@ -605,12 +605,22 @@ function renderBusinessRulesPreview(text) {
 
 function renderErrorPreview(errors) {
 
+
+    console.log("renderErrorPreview called");
+    console.log(errors);
+
+    const errorList = Array.isArray(errors)
+        ? errors
+        : errors
+            ? [errors]
+            : [];
+
     const output =
         document.getElementById("viewDisplayOutputBox");
 
     output.innerHTML = "";
 
-    if (!errors || errors.length === 0) {
+    if (errorList.length === 0) {
 
         output.textContent =
             "No errors have been recorded.";
@@ -622,7 +632,13 @@ function renderErrorPreview(errors) {
 
     pre.className = "file-preview-text";
 
-    pre.textContent = errors.join("\n\n");
+    pre.textContent = errorList
+        .map(error => (
+            typeof error === "string"
+                ? error
+                : JSON.stringify(error, null, 2)
+        ))
+        .join("\n\n");
 
     output.appendChild(pre);
 }
@@ -828,13 +844,7 @@ document.getElementById("viewDisplayErrorsBtn")
 
     showButtons("viewErrorsBtns");
 
-    const response = await runBackendCommand(
-        "get_errors"
-    );
-
-    if (response.success) {
-        renderErrorPreview(response.errors);
-    }
+    await runBackendCommand("get_errors");
 
 });
 
@@ -1295,6 +1305,16 @@ window.electronAPI.onBackendResponse((response) => {
 
 
     if (!response) {
+        return;
+    }
+
+
+    // The command acknowledgement does not contain the error list.
+    if (activeCommand === "get_errors" && response.errors !== undefined) {
+
+        renderErrorPreview(response.errors);
+        activeCommand = null;
+
         return;
     }
 
