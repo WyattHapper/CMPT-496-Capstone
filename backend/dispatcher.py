@@ -85,45 +85,45 @@ class CommandDispatcher:
             )
         """
 
-    if command not in self.routes:
-        error = f"Unknown command: {command}"
-        self.error_log.append(error)
+        if command not in self.routes:
+            error = f"Unknown command: {command}"
+            self.error_log.append(error)
 
-        return {
-            "success": False,
-            "error": error,
-            "command": command
-        }
+            return {
+                "success": False,
+                "error": error,
+                "command": command
+            }
 
-    # Optional: clear old errors when running the full pipeline
-    if command == "full_pipeline":
-        self.clear_errors()
+        # Optional: clear old errors when running the full pipeline
+        if command == "full_pipeline":
+            self.clear_errors()
 
-    handler = self.routes[command]
+        handler = self.routes[command]
 
-    try:
+        try:
 
-        result = handler(**kwargs)
+            result = handler(**kwargs)
 
-        # Some commands return {"success": False}
-        if (
-            isinstance(result, dict)
-            and result.get("success") is False
-        ):
-            self.error_log.append(
-                f"[{command}] {result.get('error', 'Unknown error')}"
-            )
+            # Some commands return {"success": False}
+            if (
+                isinstance(result, dict)
+                and result.get("success") is False
+            ):
+                self.error_log.append(
+                    f"[{command}] {result.get('error', 'Unknown error')}"
+                )
 
-        return result
+            return result
 
-    except Exception as e:
+        except Exception as e:
 
-        error = f"[{command}] {str(e)}"
+            error = f"[{command}] {str(e)}"
 
-        self.error_log.append(error)
+            self.error_log.append(error)
 
-        return {
-            "success": False,
-            "error": error,
-            "command": command
-        }
+            return {
+                "success": False,
+                "error": error,
+                "command": command
+            }
