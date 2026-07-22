@@ -145,13 +145,21 @@ function updatePipelineLoading(message) {
 
 
 
+
+
 function finishLoading(message = "Process completed successfully!") {
 
     document.getElementById("loadingTitle").textContent = "Complete";
 
-    document.getElementById("loadingMessage").textContent = message;
 
-    // hide spinner & loading bar
+    const stepMessage = document.getElementById("loadingStepMessage");
+
+    if(stepMessage){
+        stepMessage.textContent = message;
+    }
+
+
+    // hide spinner and progress bars
     document.getElementById("loadingSpinner").classList.add("hidden");
     document.getElementById("stepProgressContainer").classList.add("hidden");
     document.getElementById("pipelineProgressContainer").classList.add("hidden");
@@ -1386,18 +1394,22 @@ window.electronAPI.onBackendResponse((response) => {
     // ----------------------------------------
     // Command completion
     // ----------------------------------------
-    if (
-        response.success &&
-        response.individualStep === true
-    ) {
+    if (response.success) {
 
-        finishLoading(
-            response.result?.message ||
-            `${response.command} completed`
-        );
+        if (
+            response.individualStep === true ||
+            response.result ||
+            response.message
+        ) {
 
-        activeCommand = null;
+            finishLoading(
+                response.result?.message ||
+                response.message ||
+                `${activeCommand} completed`
+            );
 
+            activeCommand = null;
+        }
     }
 
 });
