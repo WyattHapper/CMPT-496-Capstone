@@ -339,7 +339,6 @@ class UTAgent:
 
         # Write generated tests to Xunit .cs file
         test_imports = state["test_imports"]
-        logger.info(test_imports)
         unit_tests = state["unit_tests"]
         with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
             for import_statement in test_imports:
@@ -459,8 +458,8 @@ async def _generate_single_test(
 
         system_message = (
             "You are a Senior Software Architect and expert Automated Test Engineer. "
-            "Your sole objective is to output a syntactically flawless, concrete unit test method based "
-            "strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
+            "Your sole objective is to output a syntactically flawless, concrete unit test method and its corresponding imports"
+            "based strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
         )
 
         prompt = f"""
@@ -481,16 +480,16 @@ async def _generate_single_test(
 1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
 2. Generate exactly one realistic, structurally sound, executable unit test method.
 3. Generate the full import code statements required for the unit test method to function. 
-4. Match the exact programming language, naming conventions, and recommended testing framework for that language (example: Xunit for C#).
+4. Match the exact programming language, naming conventions, and recommended testing framework for that language (Example: Xunit for C#).
 
 ### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
 ---
-- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language.
+- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
 - **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `unit_test` field; `unit_test` must contain only the method block.
 - **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
 - **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
-- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. 
+- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
 
 *Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
 """
