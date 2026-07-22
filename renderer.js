@@ -499,8 +499,28 @@ function renderBusinessRulesPreview(text) {
 
 }
 
-function renderErrorPreview(text){
-    
+function renderErrorPreview(errors) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    if (!errors || errors.length === 0) {
+
+        output.textContent =
+            "No errors have been recorded.";
+
+        return;
+    }
+
+    const pre = document.createElement("pre");
+
+    pre.className = "file-preview-text";
+
+    pre.textContent = errors.join("\n\n");
+
+    output.appendChild(pre);
 }
 
 function renderTextPreview(text) {
@@ -689,6 +709,21 @@ document.getElementById("viewDisplaySourcesBtn")
             path:`agent/directory_agent_output/${codebaseName}`
         }
     );
+
+});
+
+document.getElementById("viewDisplayErrorsBtn")
+.addEventListener("click", async () => {
+
+    showButtons("viewErrorsBtns");
+
+    const response = await runBackendCommand(
+        "get_errors"
+    );
+
+    if (response.success) {
+        renderErrorPreview(response.errors);
+    }
 
 });
 

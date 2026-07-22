@@ -19,6 +19,9 @@ class CommandDispatcher:
     def __init__(self):
         self.commands = Commands()
 
+        # Store all backend errors for this session
+        self.error_log = []
+
         self.routes = {
 
 
@@ -50,8 +53,25 @@ class CommandDispatcher:
             # Pipeline
             "full_pipeline": self.commands.full_pipeline,
 
+            # Error log
+            "get_errors": self.get_errors,
+
         }
 
+    def get_errors(self):
+        """
+        Return every recorded backend error.
+        """
+        return {
+            "success": True,
+            "errors": self.error_log
+        }
+
+    def clear_errors(self):
+        """
+        Clear the error log.
+        """
+        self.error_log.clear()
 
     def dispatch(self, command: str, **kwargs):
         """
@@ -63,27 +83,47 @@ class CommandDispatcher:
                 "build_database",
                 codebase="C:/project"
             )
-
         """
 
-        if command not in self.routes:
-            return {
-                "success": False,
-                "error": (
-                    f"Unknown command: {command}"
-                )
-            }
+    if command not in self.routes:
+        error = f"Unknown command: {command}"
+        self.error_log.append(error)
 
+        return {
+            "success": False,
+            "error": error,
+            "command": command
+        }
 
-        handler = self.routes[command]
-        try:
+    # Optional: clear old errors when running the full pipeline
+    if command == "full_pipeline":
+        self.clear_errors()
 
-            return handler(**kwargs)
+    handler = self.routes[command]
 
-        except Exception as e:
+    try:
 
-            return {
-                "success":False,
-                "error":str(e),
-                "command":command
-            }
+        result = handler(**kwargs)
+
+        # Some commands return {"success": False}
+        if (
+            isinstance(result, dict)
+            and result.get("success") is False
+        ):
+            self.error_log.append(
+                f"[{command}] {result.get('error', 'Unknown error')}"
+            )
+
+        return result
+
+    except Exception as e:
+
+        error = f"[{command}] {str(e)}"
+
+        self.error_log.append(error)
+
+        return {
+            "success": False,
+            "error": error,
+            "command": command
+        }
