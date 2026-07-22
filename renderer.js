@@ -25,6 +25,14 @@ let backendOutputBuffer = "";
 
 //loadingscreen 
 let activeCommand = null;
+let pipelineMode = false;
+
+let totalSteps = 1;
+let currentStep = 0;
+
+let currentStepProgress = 0;
+
+
 let selectedValidatedRule = null;
 
 //output
@@ -79,6 +87,7 @@ window.electronAPI.hasAPIKey()
 
 function showLoading(title, message) {
 
+
     const overlay =
         document.getElementById("loadingOverlay");
 
@@ -87,20 +96,71 @@ function showLoading(title, message) {
     overlay.classList.remove("hidden");
 
     document.getElementById("loadingTitle").textContent = title;
-    document.getElementById("loadingMessage").textContent = message;
+    document.getElementById("loadingStepMessage").textContent = message;
+
+    // show spinner & loading bar
+    document.getElementById("loadingSpinner").classList.remove("hidden");
+    document.getElementById("stepProgressContainer").classList.remove("hidden");
+
+    // Hide pipeline progress by default
+    document.getElementById("pipelineProgressContainer").classList.add("hidden");
+
+
+    //hide ok button
+    document.getElementById("loadingOkBtn").classList.add("hidden");
+
+   
 }
 
 
-function updateLoading(message) {
+function updateStepLoading(message) {
 
     const messageElement =
-        document.getElementById("loadingMessage");
+        document.getElementById("loadingStepMessage");
 
     if (!messageElement) return;
+
+    message = message.replace(
+        /^\s*\[\s*progress\s*\]\s*/i,
+        ""
+    );
 
     messageElement.textContent = message;
 }
 
+function updatePipelineLoading(message) {
+
+    const messageElement =
+        document.getElementById("loadingPipelineMessage");
+
+    if (!messageElement) return;
+
+    message = message.replace(
+        /^\s*\[\s*progress\s*\]\s*/i,
+        ""
+    );
+
+    messageElement.textContent = message;
+}
+
+
+
+function finishLoading(message = "Process completed successfully!") {
+
+    document.getElementById("loadingTitle").textContent = "Complete";
+
+    document.getElementById("loadingMessage").textContent = message;
+
+    // hide spinner & loading bar
+    document.getElementById("loadingSpinner").classList.add("hidden");
+    document.getElementById("stepProgressContainer").classList.add("hidden");
+    document.getElementById("pipelineProgressContainer").classList.add("hidden");
+    document.getElementById("stepProgressTitle").classList.add("hidden");
+
+
+    // show OK button
+    document.getElementById("loadingOkBtn").classList.remove("hidden");
+}
 
 function hideLoading() {
 
@@ -111,6 +171,42 @@ function hideLoading() {
 
     overlay.classList.add("hidden");
 }
+
+function updatePipleineProgressBar(percent){
+
+    document.getElementById("pipelineProgressContainer").classList.remove("hidden");
+    document.getElementById("stepProgressTitle").classList.remove("hidden");
+
+    const bar =
+        document.getElementById("loadingPipelineProgressBar");
+
+    const text =
+        document.getElementById("loadingPipelineProgressText");
+
+
+    if(bar)
+        bar.style.width = `${percent}%`;
+
+    if(text)
+        text.textContent = `${Math.round(percent)}%`;
+}
+
+function updateStepProgressBar(percent){
+
+    const bar =
+        document.getElementById("loadingStepProgressBar");
+
+    const text =
+        document.getElementById("loadingStepProgressText");
+
+
+    if(bar)
+        bar.style.width = `${percent}%`;
+
+    if(text)
+        text.textContent = `${Math.round(percent)}%`;
+}
+
 
 async function runBackendCommand(command,args={}){
 
@@ -625,7 +721,14 @@ async function loadValidatedRulesSelection() {
 }
 
 
+//loading complete button
+document.getElementById("loadingOkBtn").addEventListener("click", () => {
 
+    hideLoading();
+
+    document.getElementById("loadingOkBtn").classList.add("hidden");
+
+});
 
 // MENU BUTTONS
 document.getElementById('analysisBtn')
@@ -1131,11 +1234,6 @@ document.getElementById('submitPathBtn')
     );
 
 
-    document
-        .getElementById("analysisOutput")
-        .classList
-        .remove("hidden");
-
 });
 
 
@@ -1157,6 +1255,7 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+    
 
     // ----------------------------------------
     // Formatted file previews
@@ -1202,7 +1301,28 @@ window.electronAPI.onBackendResponse((response) => {
     // ----------------------------------------
     if (response.type === "progress") {
 
-        updateLoading(response.stage);
+        console.log(response);
+
+        updateStepLoading(response.stage);
+
+        if (response.progress !== undefined) {
+            console.log("Progress:", response.progress);
+            updateStepProgressBar(response.progress);
+        }
+
+        return;
+    }
+
+    if (response.type === "pipeline_progress") {
+
+        console.log(response);
+
+        updatePipelineLoading(response.stage);
+
+        if (response.progress !== undefined) {
+            console.log("Progress:", response.progress);
+            updatePipleineProgressBar(response.progress);
+        }
 
         return;
     }
@@ -1227,6 +1347,7 @@ window.electronAPI.onBackendResponse((response) => {
 
         }
 
+        console.log("ERROR RESPONSE:", response);
 
         if (activeCommand) {
 
@@ -1266,11 +1387,14 @@ window.electronAPI.onBackendResponse((response) => {
     // Command completion
     // ----------------------------------------
     if (
-        activeCommand &&
-        response.command === activeCommand
+        response.success &&
+        response.individualStep === true
     ) {
 
-        hideLoading();
+        finishLoading(
+            response.result?.message ||
+            `${response.command} completed`
+        );
 
         activeCommand = null;
 

@@ -19,6 +19,10 @@ sys.stdout.reconfigure(
 from backend.dispatcher import CommandDispatcher
 from backend.preview_collections import CollectionPreview
 
+from backend.progress_logging import configure_progress_logging
+
+configure_progress_logging()
+
 
 def format_response(result):
     """

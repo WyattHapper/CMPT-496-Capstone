@@ -15,6 +15,8 @@ from pathlib import Path
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
+from backend.progress_logging import progress
+
 
 def format_parameters(parameters: list[dict] | None) -> str:
     """
@@ -61,12 +63,30 @@ def build_database(codebase_name: str) -> None:
     json_dir = (base_dir / "agent" / "file_summary_agent_output" / codebase_name).resolve()
     db_dir = (base_dir / "vectorStores").resolve()
 
+    progress(
+        f"Preparing summary database for {codebase_name}...",
+        percent=5
+    )
+
     if not json_dir.exists() or not json_dir.is_dir():
         logger.error(f"Error: The provided JSON directory '{json_dir}' does not exist or is not a directory.")
         sys.exit(1)
 
     client = chromadb.PersistentClient(path=str(db_dir))
-    embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+
+    progress(
+        "Loading embedding model...",
+        percent=15
+    )
+
+    embedding_fn = SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+
+    progress(
+        "Embedding model loaded",
+        percent=25
+    )
 
     collection_name = f"{codebase_name}_summary_db"
     logger.info(f"\n--- Building Collection: {collection_name} ---")
@@ -75,12 +95,35 @@ def build_database(codebase_name: str) -> None:
         embedding_function=embedding_fn
     )
 
+    progress(
+        "Initialized summary vector collection",
+        percent=30
+    )
+
     ids: list[str] = []
     documents: list[str] = []
     metadatas: list[dict] = []
     seen_ids: set[str] = set()
 
-    for file_path in sorted(json_dir.glob("*.json")):
+    json_files = sorted(json_dir.glob("*.json"))
+
+    progress(
+        f"Processing {len(json_files)} summary files...",
+        percent=35
+    )
+
+
+    for index, file_path in enumerate(json_files, start=1):
+
+        file_progress = 35 + int(
+            (index / len(json_files)) * 35
+        )
+
+        progress(
+            f"Indexing summary {index}/{len(json_files)}: {file_path.name}",
+            percent=file_progress
+        )
+
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
@@ -273,11 +316,33 @@ def build_database(codebase_name: str) -> None:
                     "path": src_path,
                 })
 
+    
+
     if ids:
+        progress(
+            f"Uploading {len(ids)} summary embeddings...",
+            percent=80
+        )
         collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
-        logger.info(f"Finished indexing {len(ids)} unique items for {codebase_name}")
+        progress(
+            f"Finished indexing {len(ids)} summary items",
+            percent=100,
+            step_complete=True
+        )
+
+        logger.info(
+            f"Finished indexing {len(ids)} unique items for {codebase_name}"
+        )
     else:
-        logger.info(f"No JSON summaries found to index for {codebase_name}.")
+        progress(
+            "No JSON summaries found",
+            percent=100,
+            step_complete=True
+        )
+
+        logger.info(
+            f"No JSON summaries found to index for {codebase_name}."
+        )
 
 
 if __name__ == "__main__":
