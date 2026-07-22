@@ -47,6 +47,7 @@ class UTAgent:
         @brief Initializes the UTAgent with a specified language model.
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
+        progress("Intializing unit test agent...", 5)
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -98,6 +99,10 @@ class UTAgent:
         @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
         @return Final state of the graph after execution.
         """
+        progress(
+            "Running unit test generation pipeline...",
+            10
+        )
         if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
         else:
@@ -116,6 +121,11 @@ class UTAgent:
         summary_collection = client.get_collection(
             name=f"{codebase_name}_summary_db",
             embedding_function=embedding_fn
+        )
+
+        progress(
+            "Loaded code and summary databases.",
+            20
         )
 
         initial_state = {
@@ -159,7 +169,10 @@ class UTAgent:
         @return Updated state with rule_contexts populated/extended.
         @raises ValueError If current_rules is empty.
         """
-        progress("Collecting validated business rules...")
+        progress(
+            "Retrieving context for validated business rules...",
+            30
+        )
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
             raise ValueError("No validated rules to retrieve context for.")
@@ -238,6 +251,10 @@ class UTAgent:
 
             updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
 
+        progress(
+            "Business rule context retrieval complete.",
+            50
+        )
         return {
             "rule_contexts": updated_contexts,
         }
@@ -252,7 +269,10 @@ class UTAgent:
         in the workflow state for the final writer node.
         """
 
-        progress("Generating unit tests...")
+        progress(
+            "Generating unit tests from validated business rules...",
+            60
+        )
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
             return {"unit_tests": []}
@@ -270,6 +290,16 @@ class UTAgent:
 
         results = self._loop.run_until_complete(run_batch())
 
+        progress(
+            f"Generated {len(results)} unit test candidates.",
+            80
+        )
+
+        progress(
+            f"Generated {len(results)} unit test candidates.",
+            80
+        )
+
         test_imports = set()
         unit_tests = []
         for rule, output, err in results:
@@ -280,6 +310,10 @@ class UTAgent:
             test_imports.update(output.imports)
             unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule))
 
+        progress(
+            f"Validated {len(unit_tests)} generated unit tests.",
+            85
+        )
         return {"unit_tests": unit_tests, "test_imports": test_imports}
 
     def writer_node(self, state: UTGraphState) -> UTGraphState:
@@ -294,8 +328,10 @@ class UTAgent:
         @param state Current workflow state containing validated_rules.
         @return Empty dict (terminal node).
         """
-
-        progress("Writing unit tests to JSON output file...")
+        progress(
+            "Writing generated unit tests...",
+            90
+        )
 
         codebase_name = state["codebase_name"]
         base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
@@ -316,7 +352,7 @@ class UTAgent:
                         except Exception:
                             pass
                     file.write(test.unit_test + "\n\n")
-            progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
+            progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
         return {}
 
     def runner_node(self, state: UTGraphState) -> UTGraphState:
@@ -529,4 +565,4 @@ if __name__ == "__main__":
 
     agent = UTAgent()
     agent.run(input_rules, codebase_name, codebase)
-    progress("UTAgent has completed its task!")
+    progress("UTAgent has completed its task!", 100, True)

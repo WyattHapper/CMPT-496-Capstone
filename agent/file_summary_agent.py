@@ -53,7 +53,7 @@ class FileSummaryAgent:
 
         @return None
         """
-        progress("Initializing file summary agent...")
+        progress("Initializing file summary agent...", 5)
         if llm is not None:
             self.llm = llm
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
@@ -115,7 +115,7 @@ class FileSummaryAgent:
         @param directory_path str: Absolute path to the codebase to analyze.
         @return dict: Final state of the graph after execution.
         """
-        progress("Running file summary agent...")
+        progress("Running file summary agent...", 10)
         # Initialize starting GraphState
         initial_state = {
             "directory_path": directory_path,
@@ -151,7 +151,10 @@ class FileSummaryAgent:
             - files (Deque[str]): Queue of discovered file paths.
             - total_number_of_files (int): Count of files found.
         """
-        
+        progress(
+            "Scanning codebase for source files...",
+            15
+        )
         files = deque()
         acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css"]
 
@@ -166,6 +169,10 @@ class FileSummaryAgent:
                     # add file to queue
                     files.append(os.path.join(root, f))
 
+        progress(
+            f"File scan complete. Found {len(files)} files.",
+            25
+        )
         # update the GraphState
         return {
             "files": files,
@@ -174,6 +181,11 @@ class FileSummaryAgent:
         }
     
     def summarizer_node(self, state):
+
+        progress(
+            "Generating file summaries...",
+            35
+        )
         # pop a batch
         batch = []
         while state["files"] and len(batch) < BATCH_SIZE:
@@ -187,6 +199,11 @@ class FileSummaryAgent:
             return await asyncio.gather(*(guarded(fp) for fp in batch))
 
         results = self._loop.run_until_complete(run_batch())
+
+        progress(
+            f"Generated summaries for {len(batch)} files.",
+            60
+        )
 
         summaries = []
         for file_path, output, err in results:
@@ -212,6 +229,12 @@ class FileSummaryAgent:
 
         
     def write_file_summary_node(self, state: FileGraphState):
+
+        progress(
+            "Writing file summary JSON outputs...",
+            80
+        )
+                
         base_output_dir = "./agent/file_summary_agent_output"
         codebase_subdir = os.path.join(base_output_dir, f'{state["codebase_name"]}')
         os.makedirs(codebase_subdir, exist_ok=True)
@@ -232,7 +255,10 @@ class FileSummaryAgent:
 
             with open(full_path, "w", encoding="utf-8") as f:
                 f.write(summary.model_dump_json(indent=2))
-
+        progress(
+            "File summaries written successfully.",
+            90
+        )
         return {"filename_counters": counters}
 
     def write_business_rules_node(self, state: FileGraphState):
@@ -247,7 +273,7 @@ class FileSummaryAgent:
         @return dict: Unchanged state.
         """
 
-        progress("Writing business rules to JSON output file...")
+        progress("Writing extracted business rules...", 95)
         base_output_dir = "./agent/file_summary_agent_output"
         br_dir = os.path.join(base_output_dir, state["codebase_name"], "business_rules")
         os.makedirs(br_dir, exist_ok=True)
@@ -262,6 +288,10 @@ class FileSummaryAgent:
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(serializable, f, indent=2)
 
+        progress(
+            "Business rules saved.",
+            98
+        )
         return {}
 
 async def _summarize_one(structured_llm, file_path: str):
@@ -423,5 +453,5 @@ if __name__ == "__main__":
 
     agent = FileSummaryAgent()
     agent.run(directory_path)
-    progress("FileSummaryAgent has completed its task!")
+    progress("FileSummaryAgent has completed its task!", 100, True)
     

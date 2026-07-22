@@ -21,7 +21,7 @@ class DirectoryAgent:
         @brief Initializes the DirectoryAgent with a specified language model. If no model is provided, it defaults to "gemini-3-flash-preview".
         @param model An optional language model to use for generating summaries
         """
-        progress("Initializing summary agent...")
+        progress("Initializing directory agent...", 5)
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -83,7 +83,7 @@ class DirectoryAgent:
         @brief Executes the DirectoryAgent workflow starting from the provided initial state.
         @param directory_path The path to the directory to be analyzed.
         """
-        progress(f'Running directory agent on {directory_path}')
+        progress(f'Running directory agent on {directory_path}', 10)
         codebase_name = Path(directory_path).name
 
         if getattr(sys, 'frozen', False):
@@ -139,6 +139,9 @@ class DirectoryAgent:
             - "codebase_name": name of the root directory
         @raises ValueError if "directory_path" is not a valid directory.
         """
+
+        progress("Scanning codebase directories...", 15)
+
         root_path = state["directory_path"]
 
         # error check path
@@ -174,6 +177,11 @@ class DirectoryAgent:
         
         total_dirs = len(discovered_directories)
         first_dir = discovered_directories.pop()
+
+        progress(
+            f"Directory scan complete. Found {total_dirs} directories.",
+            25
+        )
         return {
             "directories": deque(discovered_directories),
             "total_number_of_directories": total_dirs,
@@ -221,6 +229,11 @@ class DirectoryAgent:
             responsible for clearing these lists when a directory summary has been generated,
             ensuring that the next directory begins with a fresh retrieval context.
         """
+
+        progress(
+            f"Retrieving context for {Path(current_directory).name}...",
+            35
+        )
         # get current directory
         current_directory = state.get("current_directory")
         if not current_directory:
@@ -306,6 +319,10 @@ class DirectoryAgent:
             if item not in existing_summary_context:
                 updated_summary_context.append(item)
 
+        progress(
+            "Context retrieval complete.",
+            45
+        )
         return {
             "current_directory": current_directory,
             "code_context": updated_code_context,
@@ -351,6 +368,12 @@ class DirectoryAgent:
         @throws ValueError
             If no directories are available for context analysis.
         """
+
+        progress(
+            "Analyzing retrieved context...",
+            50
+        )
+        
         current_directory = state.get("current_directory")
         if not current_directory:
             raise ValueError("No directories left to retrieve context for.")
@@ -432,6 +455,11 @@ class DirectoryAgent:
         code_at_cap = next_codebase_k >= max_codebase_k
         summary_at_cap = next_file_summary_k >= max_file_summary_k
 
+        progress(
+            "Context analysis complete.",
+            55
+        )
+
         return {
             "sufficient_code_context": analysis.sufficient_code_context or code_at_cap,
             "sufficient_summary_context": analysis.sufficient_summary_context or summary_at_cap,
@@ -446,7 +474,11 @@ class DirectoryAgent:
         @return Updated state with directory summary in the form of a DirectoryOutput object.
         """
         
-        progress("Generating directory summaries...")
+        progress(
+            f"Generating summary for {Path(state['current_directory']).name}...",
+            60
+        )
+
         if (isinstance(self.llm, GenericFakeChatModel)):
             output = self.llm.invoke("")
             return {
@@ -499,7 +531,7 @@ class DirectoryAgent:
             # Generate summary using LLM
             output = structured_llm.invoke(messages)
 
-            progress(f"Generated summary for directory {state['current_directory']}")
+            progress(f"Generated summary for directory {state['current_directory']}", 70)
 
             return {
                 "directory_summary": output
@@ -515,6 +547,12 @@ class DirectoryAgent:
             }
         
     def root_summary_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+
+        progress(
+            "Generating root codebase summary...",
+            70
+        )
+
         if (isinstance(self.llm, GenericFakeChatModel)):
             output = self.llm.invoke("")
             return {
@@ -582,7 +620,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             # Generate summary using LLM
             output = structured_llm.invoke(messages)
 
-            progress(f"Generated root summary for directory {state['current_directory']}")
+            progress(f"Generated root summary for directory {state['current_directory']}, 75")
 
             return {
                 "directory_summary": output
@@ -610,7 +648,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @return Updated state with an entry added to accumulated_business_rules for
                 the current directory.
         """
-        progress("Extracting cross-file business rules...")
+        progress("Extracting cross-file business rules...", 85)
         current_dir = state["current_directory"]
 
         root_directory = state["directory_path"]
@@ -661,7 +699,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                     matched_file_paths.add(Path(summary_path).name)
 
             if not directory_file_summaries:
-                progress(f"No file summaries found for {current_dir}, skipping business rules extraction.")
+                progress(f"No file summaries found for {current_dir}, skipping business rules extraction.", 90)
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -674,7 +712,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                 }
 
             if len(matched_file_paths) < 2:
-                progress(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.")
+                progress(f"Only one unique file found for {current_dir}, skipping cross-file business rules extraction.", 90)
                 return {
                     "accumulated_business_rules": {
                         current_dir: BusinessRulesOutput(
@@ -743,7 +781,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             output.directory_name = Path(current_dir).name
             output.directory_path = rel_dir
 
-            progress(f"Extracted business rules for directory {current_dir}")
+            progress(f"Extracted business rules for directory {current_dir}", 90)
             return {
                 "accumulated_business_rules": {current_dir: output}
             }
@@ -768,7 +806,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @param state Workflow state object containing the generated directory summary.
         @return Updated state with a flag indicating whether the summary is satisfactory or if it needs to be regenerated.
         """
-        progress("Judging generated summary quality...")
+        progress("Judging generated summary quality...", 75)
         current_directory = state.get("current_directory")
         if not current_directory:
             raise ValueError("No current directory available for summary judgement.")
@@ -824,6 +862,11 @@ Show how the parts connect and the overall shape of the system, not just what ea
         judgement = structured_llm.invoke(messages)
         judgement_feedback = judgement.feedback if judgement.feedback else ""
 
+        progress(
+            "Summary quality evaluation complete.",
+            80
+        )
+
         return {
             "summary_acceptable": judgement.summary_acceptable,
             "summary_feedback": judgement_feedback
@@ -836,7 +879,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @return Updated state with a refined directory summary that addresses the feedback provided by the judgement node.
         """
         current_attempts = state.get("refinement_attempts", 0) + 1
-        progress(f"Attempting refinement for directory {state['current_directory']}")
+        progress(f"Attempting refinement for directory {state['current_directory']}"), 82
         try:
             current_directory = state.get("current_directory")
             if not current_directory:
@@ -919,7 +962,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
                     - Non-root directories: `directory_agent_output/<codebase_name>/`
                     - Root directory: `directory_agent_output/<codebase_name>/root_output/`
         """
-        progress("Writing directory sumarry to JSON output file...")
+        progress("Writing directory summary to JSON output file...", 95)
         # creates directory_agent_output subdir 
         base_output_dir = state.get("output_directory", "./agent/directory_agent_output")
 
@@ -966,6 +1009,10 @@ Show how the parts connect and the overall shape of the system, not just what ea
         else:
             next_dir = None
 
+        progress(
+            "Directory summary saved.",
+            97
+        )
         return {
             "code_context": [],
             "summary_context": [],
@@ -987,6 +1034,11 @@ Show how the parts connect and the overall shape of the system, not just what ea
         @param state Workflow state containing accumulated_business_rules and codebase_name.
         @return Empty state update (no state fields are modified).
         """
+
+        progress(
+            "Writing consolidated business rules...",
+            98
+        )
         base_output_dir = state.get("output_directory", "./agent/directory_agent_output")
         codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
         rules_dir = os.path.join(codebase_subdir, "business_rules")
@@ -999,7 +1051,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(serialized, f, indent=2)
 
-        progress(f"Business rules written to {output_path}")
+        progress(f"Business rules written to {output_path}", 100, True)
         return {}
 
     # Helper methods

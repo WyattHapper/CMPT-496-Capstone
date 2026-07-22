@@ -51,6 +51,7 @@ class BRAgent:
         @brief Initializes the BRAgent with a specified language model.
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
+        progress("Initializing business rule agent...", 0)
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -107,6 +108,11 @@ class BRAgent:
         @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
         @return Final state of the graph after execution.
         """
+
+        progress(
+        "Loading business rule validation resources...",
+        10
+        )
         if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
         else:
@@ -127,6 +133,10 @@ class BRAgent:
             embedding_function=embedding_fn
         )
 
+        progress(
+            "Vector databases loaded",
+            15
+        )
         initial_state = {
             "input_rules": input_rules,
             "current_rules": [],
@@ -165,6 +175,11 @@ class BRAgent:
         @param state Current workflow state containing input_rules and codebase_name.
         @return Updated state with current_rules and rule_contexts populated.
         """
+
+        progress(
+            "Condensing business rules...",
+            25
+        )
         input_rules = state["input_rules"]
         codebase_name = state["codebase_name"]
 
@@ -279,7 +294,8 @@ class BRAgent:
                     rule_id += 1
 
         progress(f"Condensed {sum(len(g['rules']) for g in dir_groups.values())} input rules "
-                    f"into {len(all_condensed)} condensed rules across {len(dir_groups)} directory groups.")
+                    f"into {len(all_condensed)} condensed rules across {len(dir_groups)} directory groups.",
+                    35)
 
         return {
             "current_rules": all_condensed,
@@ -306,6 +322,11 @@ class BRAgent:
         @return Updated state with rule_contexts populated/extended.
         @raises ValueError If current_rules is empty.
         """
+
+        progress(
+            "Retrieving code evidence...",
+            45
+        )
         current_rules = state.get("current_rules", [])
         if not current_rules:
             raise ValueError("No current rules to retrieve context for.")
@@ -317,8 +338,14 @@ class BRAgent:
 
         existing_contexts = state.get("rule_contexts", {})
         updated_contexts = dict(existing_contexts)
+        total_rules = len(current_rules)
 
-        for rule in current_rules:
+        for index, rule in enumerate(current_rules):
+
+            progress(
+                f"Retrieving evidence {index+1}/{total_rules}",
+                min(60, 45 + int((index / total_rules) * 15))
+            )
             source_directory = rule.source_directory
             source_file_paths = rule.source_file_paths
             query_text = f"{rule.rule} {source_directory}"
@@ -408,6 +435,11 @@ class BRAgent:
         @param state Current workflow state containing current_rules, rule_contexts, and retrieval params.
         @return Updated state reflecting the decision outcomes for all rules.
         """
+
+        progress(
+            "Validating business rules...",
+            65
+        )
         current_rules = state.get("current_rules", [])
         rule_contexts = state.get("rule_contexts", {})
         codebase_k = state["codebase_k"]
@@ -432,7 +464,16 @@ class BRAgent:
                 *(guarded(r) for r in current_rules)
             )
 
+        progress(
+            "Running validation models...",
+            75
+        )
         results = self._loop.run_until_complete(run_batch())
+
+        progress(
+            "Validation complete",
+            85
+        )
 
         new_validated = []
         new_discarded = []
@@ -479,7 +520,7 @@ class BRAgent:
                     needs_context.append(rule)
 
         progress(f"Validation pass complete: {len(new_validated)} valid, "
-                    f"{len(new_discarded)} discarded, {len(needs_context)} need more context.")
+                    f"{len(new_discarded)} discarded, {len(needs_context)} need more context.", 85)
 
         update: dict = {
             "validated_rules": new_validated,
@@ -513,6 +554,11 @@ class BRAgent:
         @param state Current workflow state containing validated_rules and discarded_rules.
         @return Empty dict (terminal node).
         """
+
+        progress(
+            "Writing validated rules...",
+            95
+        )
         base_output_dir = state.get("output_directory", "./agent/BR_agent_output")
         codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
         os.makedirs(codebase_subdir, exist_ok=True)
@@ -528,7 +574,8 @@ class BRAgent:
         with open(discarded_path, "w", encoding="utf-8") as f:
             json.dump([r.model_dump() for r in discarded], f, indent=2)
 
-        progress(f"Wrote {len(validated)} validated rules to {validated_path}\nWrote {len(discarded)} discarded rules to {discarded_path}")
+        
+        progress(f"Wrote {len(validated)} validated rules to {validated_path}\nWrote {len(discarded)} discarded rules to {discarded_path}", 98)
 
         return {}
 
@@ -845,5 +892,10 @@ if __name__ == "__main__":
     }
 
     agent = BRAgent()
+    progress(
+        "Starting BRAgent...",
+        5
+    )
     agent.run(input_rules, codebase_name)
-    progress("BRAgent has completed its task!")
+    progress("BRAgent has completed its task!", 100, True)
+    

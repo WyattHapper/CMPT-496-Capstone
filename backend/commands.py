@@ -20,6 +20,7 @@ import chromadb
 import json
 import time
 from pathlib import Path
+from backend.progress_logging import progress, pipeline_progress
 
 # ---------------------------------------------------------
 # Logging Configuration 
@@ -75,21 +76,6 @@ class Commands:
     # -----------------------------------------------------
     # Internal helper
     # -----------------------------------------------------
-
-    def send_progress(self, message: str):
-        """
-        Send a progress update to the Electron frontend.
-        """
-
-        print(
-            json.dumps(
-                {
-                    "type": "progress",
-                    "stage": message,
-                }
-            ),
-            flush=True,
-        )
 
     
     def _run_command(self, command_name: str, func, *args, individualStep = True, **kwargs):
@@ -153,7 +139,7 @@ class Commands:
         """
 
         def task():
-            self.send_progress("Building source code database...")
+            progress("Building source code database...")
             return build_database(codebase)
 
         return self._run_command(
@@ -170,7 +156,7 @@ class Commands:
         codebase_name = Path(codebase).name
 
         def task():
-            self.send_progress("Building summary database...")
+            progress("Building summary database...")
             return build_summary_database(codebase_name)
 
         return self._run_command(
@@ -185,7 +171,7 @@ class Commands:
         """
 
         def task():
-            self.send_progress("Generating file summaries...")
+            progress("Generating file summaries...")
             return FileSummaryAgent().run(codebase)
 
         return self._run_command(
@@ -207,7 +193,7 @@ class Commands:
         """
 
         def task():
-            self.send_progress("Generating directory summaries...")
+            progress("Generating directory summaries...")
             return DirectoryAgent().run(codebase)
 
         return self._run_command(
@@ -247,7 +233,7 @@ class Commands:
 
         def task():
 
-            self.send_progress("Validating business rules...")
+            progress("Validating business rules...")
 
             if not rules_path.exists():
                 raise FileNotFoundError(
@@ -318,7 +304,7 @@ class Commands:
 
         def task():
 
-            self.send_progress("Generating unit tests...")
+            progress("Generating unit tests...")
 
             if not validated_rules_path.exists():
                 raise FileNotFoundError(
@@ -376,7 +362,7 @@ class Commands:
 
         def task():
 
-            self.send_progress("Generating UML diagrams...")
+            progress("Generating UML diagrams...")
 
             old_argv = sys.argv
 
@@ -428,7 +414,7 @@ class Commands:
 
         def task():
 
-            self.send_progress("Generating UML diagrams...")
+            progress("Generating UML diagrams...")
 
             if not summary_dir.exists():
                 raise FileNotFoundError(
@@ -483,7 +469,7 @@ class Commands:
 
         def task():
 
-            self.send_progress("Saving API key...")
+            progress("Saving API key...")
 
             env_path = self.app_dir / ".env"
 
@@ -577,25 +563,25 @@ class Commands:
 
             steps = []
 
-            
+            pipeline_progress("Building database...", 5)
             steps.append( self._require_success(self.build_database(str(codebase_path), False)))
 
-            
+            pipeline_progress("Generating file summaries...", 26)
             steps.append( self._require_success(self.generate_file_summaries(str(codebase_path), False)))
 
-            
+            pipeline_progress("Building summary database...", 35)
             steps.append( self._require_success(self.build_summary_database(str(codebase_path), False)))
 
-            
+            pipeline_progress("Generating directory summaries...", 50)
             steps.append( self._require_success(self.generate_directory_summaries(str(codebase_path), False)))
             
-            
+            pipeline_progress("Validating business rules...", 65)
             steps.append( self._require_success(self.validate_business_rules(str(codebase_path), individualStep=False)))
 
-            
+            pipeline_progress("Generating unit tests...", 85)
             steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), individualStep=False)))
 
-            
+            pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))
 
 
@@ -611,7 +597,7 @@ class Commands:
                     failed
                 )
 
-
+            pipeline_progress("Pipeline Complete", 100)
             return {
                 "steps": steps,
                 "message": (

@@ -23,5 +23,34 @@ def configure_progress_logging():
 
     root.addHandler(FrontendProgressHandler())
 
-def progress(message):
-    logger.info("[PROGRESS] " + message)
+def progress(message, percent=None, step_complete=False):
+
+    data = {
+        "type": "progress",
+        "stage": message
+    }
+
+    if percent is not None:
+        data["progress"] = percent
+
+    if step_complete:
+        data["step_complete"] = True
+
+
+    print(
+        json.dumps(data),
+        flush=True
+    )
+
+    logger.info(message)
+
+def pipeline_progress(stage, percent):
+
+    print(
+        json.dumps({
+            "type": "pipeline_progress",
+            "stage": stage,
+            "progress": percent
+        }),
+        flush=True
+    )
