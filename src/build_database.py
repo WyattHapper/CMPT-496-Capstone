@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from utils.tree_parse import *
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from backend.progress_logging import progress
 
 def build_database(source_path: str) -> None:
     """
@@ -34,13 +35,28 @@ def build_database(source_path: str) -> None:
     db_dir = (base_dir / "vectorStores").resolve()
     db_name = f"{source_dir.name}_code_db"
 
+    progress(
+        f"Preparing codebase indexing: {source_dir.name}",
+        percent=5
+    )
+
     # Create the vectoreStores directory if it doesn't exist
     if not db_dir.exists():
         db_dir.mkdir(parents=True, exist_ok=True)
 
-    # Initialize embedding function
-    embedding = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+    progress(
+        "Loading embedding model...",
+        percent=15
+    )
 
+    embedding = SentenceTransformerEmbeddingFunction(
+        model_name="all-MiniLM-L6-v2"
+    )
+
+    progress(
+        "Embedding model loaded",
+        percent=25
+    )
     # Initialize ChromaDB client
     client = chromadb.PersistentClient(path=str(db_dir))
     logger.info(f"\n--- Building Collection: {db_name} ---")
@@ -48,13 +64,32 @@ def build_database(source_path: str) -> None:
     # Create or get the collection
     collection = client.get_or_create_collection(name=db_name, embedding_function = embedding)
 
-    # Parse and chunk the source files
+    progress(
+        "Initialized vector database collection",
+        percent=30
+    )
+
+    progress(
+        "Parsing source files...",
+        percent=35
+    )
+
     bundles = parse_dir(str(source_dir))
+
+    progress(
+        f"Parsed {len(bundles)} source bundles",
+        percent=45
+    )
 
     # track id's, embeddings, and metadata for upsert
     ids = []
     embeddings = []
     metadatas = []
+
+    progress(
+        "Extracting code chunks and metadata...",
+        percent=50
+    )
 
     for bundle in bundles:
         chunks = get_chunks(bundle)
@@ -83,6 +118,12 @@ def build_database(source_path: str) -> None:
             embeddings.append(embedded_string)
             metadatas.append(metadata)
 
+
+    progress(
+        f"Prepared {len(ids)} code chunks for indexing",
+        percent=70
+    )
+
     # Verification before upsert
     if not (len(ids) == len(embeddings) == len(metadatas)):
         logger.critical(f"CRITICAL ERROR: Data mismatch! IDs: {len(ids)}, Docs: {len(embeddings)}, Meta: {len(metadatas)}")
@@ -92,6 +133,11 @@ def build_database(source_path: str) -> None:
         logger.info("No valid chunks were generated. Aborting upsert.")
         sys.exit(1)
 
+
+    progress(
+        "Storing embeddings in vector database...",
+        percent=75
+    )
     # batch upsert chunks
     batch_size = 100
     for i in range(0, len(ids), batch_size):
@@ -100,7 +146,15 @@ def build_database(source_path: str) -> None:
                             documents=embeddings[i:end_index], 
                             metadatas=metadatas[i:end_index])
     
-    logger.info(f"Finished indexing {len(ids)} unique items for {db_name}")
+    progress(
+        f"Finished indexing {len(ids)} items",
+        percent=100,
+        step_complete=True
+    )
+
+    logger.info(
+        f"Finished indexing {len(ids)} unique items for {db_name}"
+    )
 
 
 if __name__ == "__main__":

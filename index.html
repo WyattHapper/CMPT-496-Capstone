@@ -203,11 +203,50 @@
                 Running Analysis...
             </h2>
 
-            <div class="loader"></div>
+            <div id = "loadingSpinner" class="loader"></div>
 
-            <p id="loadingMessage">
-                Initializing...
-            </p>
+            <div id="pipelineProgressContainer">
+
+                <h3>Pipeline Progress</h3>
+
+                <p id="loadingPipelineMessage">
+                    Initializing...
+                </p>
+
+                <div id="loadingPipelineProgressContainer">
+                    <div id="loadingPipelineProgressBar"></div>
+                </div>
+
+                <p id="loadingPipelineProgressText">
+                    0%
+                </p>
+
+                
+            </div>
+
+            <div id="stepProgressContainer">
+
+                <h3 id="stepProgressTitle" class="hidden">Current Step Progress</h3>
+
+                <p id="loadingStepMessage">
+                    Initializing...
+                </p>
+
+                <div id="loadingStepProgressContainer">
+                    <div id="loadingStepProgressBar"></div>
+                </div>
+
+                <p id="loadingStepProgressText">
+                    0%
+                </p>
+
+                
+            </div>
+
+
+            
+
+            <button id="loadingOkBtn" class="btn-primary hidden">OK</button>
         </div>
     </div>
 

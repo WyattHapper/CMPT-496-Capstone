@@ -651,6 +651,8 @@ h2{
   justify-content: center;
   text-align: center;
   gap: 1rem;
+  width: 700px;
+  max-width: 90vw;
 }
 
 #loadingTitle {
@@ -1255,4 +1257,152 @@ h2{
 
     text-align: left;
 
+}
+
+
+/* ============================
+   PIPELINE PROGRESS BAR
+   ============================ */
+
+#pipelineProgressContainer,
+#stepProgressContainer {
+    width: 600px;
+    max-width: 90vw;
+    text-align: center;
+    margin: 20px auto;
+}
+
+
+/* Progress track */
+#loadingPipelineProgressContainer,
+#loadingStepProgressContainer {
+
+    width: 100%;
+    height: 25px;
+
+    background: #e5e7eb;
+
+    border-radius: 12px;
+
+    overflow: hidden;
+
+    position: relative;
+
+    box-sizing: border-box;
+}
+
+
+/* Pipeline fill */
+#loadingPipelineProgressBar {
+
+    height: 100%;
+    width: 0%;
+
+    background: #4f46e5;
+
+    border-radius: 12px;
+
+    transition: width 0.3s ease;
+}
+
+
+/* Step fill */
+#loadingStepProgressBar {
+
+    height: 100%;
+    width: 0%;
+
+    background: #4f46e5;
+
+    border-radius: 12px;
+
+    transition: width 0.3s ease;
+}
+
+
+/* Messages above bars */
+#loadingPipelineMessage,
+#loadingStepMessage {
+
+    font-weight: 700;
+
+    margin-bottom: 10px;
+
+    min-height: 24px;
+
+    word-wrap: break-word;
+}
+
+
+/* Percentages below bars */
+#loadingPipelineProgressText,
+#loadingStepProgressText {
+
+    margin-top: 8px;
+
+    font-weight: 700;
+
+    font-size: 15px;
+
+    color: var(--text-primary);
+
+    height: 20px;
+
+    line-height: 20px;
+}
+
+
+/* ============================
+   STEP PROGRESS BAR
+   ============================ */
+
+#stepProgressContainer {
+    width: 100%;
+    max-width: 600px;
+    margin: 20px auto;
+
+    text-align: center;
+}
+
+
+/* Background track */
+#loadingStepProgressContainer {
+    width: 100%;
+    height: 25px;
+
+    background: #e5e7eb;
+    border-radius: 12px;
+
+    overflow: hidden;
+
+    position: relative;
+
+    /* remove haze */
+    backdrop-filter: none;
+    filter: none;
+    box-shadow: none;
+}
+
+
+/* Moving fill */
+#loadingStepProgressBar {
+    height: 100%;
+    width: 0%;
+
+    background: #4f46e5;
+
+    border-radius: 12px;
+
+    transition: width 0.3s ease;
+
+    max-width: 100%;
+}
+
+
+
+
+/* Stage message */
+#loadingStepMessage {
+    font-weight: 700;
+    margin-bottom: 10px;
 }

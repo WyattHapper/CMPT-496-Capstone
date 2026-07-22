@@ -22,6 +22,7 @@ from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunct
 from pathlib import Path
 from collections import defaultdict
 import subprocess
+from backend.progress_logging import progress
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -46,6 +47,7 @@ class UTAgent:
         @brief Initializes the UTAgent with a specified language model.
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
+        progress("Intializing unit test agent...", 5)
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -97,6 +99,10 @@ class UTAgent:
         @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
         @return Final state of the graph after execution.
         """
+        progress(
+            "Running unit test generation pipeline...",
+            10
+        )
         if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
         else:
@@ -115,6 +121,11 @@ class UTAgent:
         summary_collection = client.get_collection(
             name=f"{codebase_name}_summary_db",
             embedding_function=embedding_fn
+        )
+
+        progress(
+            "Loaded code and summary databases.",
+            20
         )
 
         initial_state = {
@@ -158,6 +169,10 @@ class UTAgent:
         @return Updated state with rule_contexts populated/extended.
         @raises ValueError If current_rules is empty.
         """
+        progress(
+            "Retrieving context for validated business rules...",
+            30
+        )
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
             raise ValueError("No validated rules to retrieve context for.")
@@ -236,6 +251,10 @@ class UTAgent:
 
             updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
 
+        progress(
+            "Business rule context retrieval complete.",
+            50
+        )
         return {
             "rule_contexts": updated_contexts,
         }
@@ -249,6 +268,11 @@ class UTAgent:
         for each rule that passed validation. The results are written to `unit_tests`
         in the workflow state for the final writer node.
         """
+
+        progress(
+            "Generating unit tests from validated business rules...",
+            60
+        )
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
             return {"unit_tests": []}
@@ -266,15 +290,30 @@ class UTAgent:
 
         results = self._loop.run_until_complete(run_batch())
 
+        progress(
+            f"Generated {len(results)} unit test candidates.",
+            80
+        )
+
+        progress(
+            f"Generated {len(results)} unit test candidates.",
+            80
+        )
+
         test_imports = set()
         unit_tests = []
         for rule, output, err in results:
             if err is not None:
+                progress(f"Unit test generation error for rule {rule.id}: {err}")
                 logger.error(f"Unit test generation error for rule {rule.id}: {err}")
                 continue
             test_imports.update(output.imports)
             unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule))
 
+        progress(
+            f"Validated {len(unit_tests)} generated unit tests.",
+            85
+        )
         return {"unit_tests": unit_tests, "test_imports": test_imports}
 
     def writer_node(self, state: UTGraphState) -> UTGraphState:
@@ -289,6 +328,10 @@ class UTAgent:
         @param state Current workflow state containing validated_rules.
         @return Empty dict (terminal node).
         """
+        progress(
+            "Writing generated unit tests...",
+            90
+        )
 
         codebase_name = state["codebase_name"]
         base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
@@ -309,7 +352,7 @@ class UTAgent:
                         except Exception:
                             pass
                     file.write(test.unit_test + "\n\n")
-            logger.info(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
+            progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
         return {}
 
     def runner_node(self, state: UTGraphState) -> UTGraphState:
@@ -339,7 +382,6 @@ class UTAgent:
 
         # Write generated tests to Xunit .cs file
         test_imports = state["test_imports"]
-        logger.info(test_imports)
         unit_tests = state["unit_tests"]
         with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
             for import_statement in test_imports:
@@ -459,41 +501,41 @@ async def _generate_single_test(
 
         system_message = (
             "You are a Senior Software Architect and expert Automated Test Engineer. "
-            "Your sole objective is to output a syntactically flawless, concrete unit test method based "
-            "strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
+            "Your sole objective is to output a syntactically flawless, concrete unit test method and its corresponding imports"
+            "based strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
         )
 
         prompt = f"""
-#### BUSINESS RULE TO TEST:
-- ID: {rule.id}
-- RULE STATEMENT: {rule.rule}
-- TARGET DIRECTORY: {rule.source_directory}
-- EXPLANATION FOR VALIDATION: {rule.explanation}
+            #### BUSINESS RULE TO TEST:
+            - ID: {rule.id}
+            - RULE STATEMENT: {rule.rule}
+            - TARGET DIRECTORY: {rule.source_directory}
+            - EXPLANATION FOR VALIDATION: {rule.explanation}
 
-#### RETRIEVED SOURCE CODE CONTEXT:
-{code_text}
+            #### RETRIEVED SOURCE CODE CONTEXT:
+            {code_text}
 
-#### RETRIEVED FILE SUMMARY CONTEXT:
-{summary_text}
+            #### RETRIEVED FILE SUMMARY CONTEXT:
+            {summary_text}
 
 ### [REQUIRED TASK]
 ---
 1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
 2. Generate exactly one realistic, structurally sound, executable unit test method.
 3. Generate the full import code statements required for the unit test method to function. 
-4. Match the exact programming language, naming conventions, and recommended testing framework for that language (example: Xunit for C#).
+4. Match the exact programming language, naming conventions, and recommended testing framework for that language (Example: Xunit for C#).
 
 ### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
 ---
-- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language.
+- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
 - **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `unit_test` field; `unit_test` must contain only the method block.
 - **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
 - **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
-- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. 
+- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
 
-*Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
-"""
+            *Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
+        """
 
         messages = [("system", system_message), ("user", prompt)]
         output = await structured_llm.ainvoke(messages)
@@ -507,7 +549,7 @@ if __name__ == "__main__":
     @details Loads business rules from a JSON file and runs the validation pipeline.
     """
     if len(sys.argv) != 3:
-        logger.info("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
+        progress("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
         sys.exit(1)
 
     codebase = sys.argv[1]
@@ -522,4 +564,4 @@ if __name__ == "__main__":
 
     agent = UTAgent()
     agent.run(input_rules, codebase_name, codebase)
-    logger.info("UTAgent has completed its task!")
+    progress("UTAgent has completed its task!", 100, True)
