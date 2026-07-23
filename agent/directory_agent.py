@@ -229,15 +229,14 @@ class DirectoryAgent:
             responsible for clearing these lists when a directory summary has been generated,
             ensuring that the next directory begins with a fresh retrieval context.
         """
+        current_directory = state.get("current_directory")
+        if not current_directory:
+            raise ValueError("No directories left to retrieve context for.")
 
         progress(
             f"Retrieving context for {Path(current_directory).name}...",
             35
         )
-        # get current directory
-        current_directory = state.get("current_directory")
-        if not current_directory:
-            raise ValueError("No directories left to retrieve context for.")
             
         # get collections
         code_collection = state["code_collection"]
@@ -369,14 +368,14 @@ class DirectoryAgent:
             If no directories are available for context analysis.
         """
 
+        current_directory = state.get("current_directory")
+        if not current_directory:
+            raise ValueError("No directories left to retrieve context for.")
+
         progress(
             "Analyzing retrieved context...",
             50
         )
-        
-        current_directory = state.get("current_directory")
-        if not current_directory:
-            raise ValueError("No directories left to retrieve context for.")
         
         root_directory = state["directory_path"]
 

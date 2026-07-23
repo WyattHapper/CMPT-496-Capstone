@@ -652,7 +652,7 @@ class Commands:
             steps.append( self._require_success(self.validate_business_rules(str(codebase_path), individualStep=False)))
 
             pipeline_progress("Generating unit tests...", 85)
-            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), individualStep=False)))
+            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), [], individualStep=False)))
 
             pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))

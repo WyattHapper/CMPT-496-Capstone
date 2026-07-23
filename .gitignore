@@ -1,5 +1,7 @@
 # ignore target codebases
 /targetCodebases
+# ignore generated tests (This is mainly for dev testing)
+/ConsoleTables-main/ConsoleTables-main.Tests
 /vectorStores
 /my_chroma_data
 .env
