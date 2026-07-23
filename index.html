@@ -208,7 +208,157 @@
 
         <div id="supportContainer" class="supportFAQTab hidden">
 
-            
+            <h2>Click to learn more about app functionality:</h2>
+
+            <div id="supportContainer" class="supportFAQTab">
+
+                <details class="faq-box">
+                    <summary>
+                        Run Analysis
+                    </summary>
+
+                    <p>
+                        The Run Analysis section allows you to execute different
+                        analysis operations on a selected codebase.
+                        <br><br>
+
+                        The Full Codebase Analysis Pipeline runs all available
+                        analysis stages automatically. This includes:
+                        <br><br>
+
+                        • Creating a searchable source code database<br>
+                        • Generating file-level summaries<br>
+                        • Building a summary database<br>
+                        • Performing directory-level analysis<br>
+                        • Extracting business rules<br>
+                        • Validating discovered business rules<br>
+                        • Generating unit tests<br>
+                        • Creating UML diagrams<br>
+
+                        <br>
+
+                        Individual analysis steps can also be run separately if
+                        you only need a specific output. This is useful when
+                        updating an existing analysis or troubleshooting a
+                        particular stage.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Viewing Insights
+                    </summary>
+
+                    <p>
+                        The View Insights section allows you to explore the
+                        information generated during analysis.
+                        <br><br>
+
+                        Available insights may include:
+                        <br><br>
+
+                        • File summaries describing individual source files,
+                        classes, functions, and dependencies<br><br>
+
+                        • Directory summaries explaining the purpose and
+                        responsibilities of project folders<br><br>
+
+                        • Business rule reports containing discovered system
+                        logic and requirements<br><br>
+
+                        • Source files and generated artifacts created during
+                        analysis<br><br>
+
+                        • UML diagrams representing relationships between
+                        components
+                        <br><br>
+
+                        Use the sidebar navigation to select the type of insight
+                        you would like to view.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Setting / Changing API Key
+                    </summary>
+
+                    <p>
+                        The application requires an API key to communicate with
+                        the AI model used during analysis.
+                        <br><br>
+
+                        To set your API key:
+                        <br><br>
+
+                        1. Open the API Key page from the main menu.<br>
+                        2. Enter your API key into the input field.<br>
+                        3. Submit the key to connect it with the application.<br>
+
+                        <br>
+
+                        If an API key already exists, you can choose to keep the
+                        current key or replace it with a new one.
+                        <br><br>
+
+                        Make sure your API key is valid and has access to the
+                        required AI services before running an analysis.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Submitting File Path
+                    </summary>
+
+                    <p>
+                        Before running an analysis, you must select the codebase
+                        that you want the application to analyze.
+                        <br><br>
+
+                        Use the folder selection button to open your computer's
+                        file explorer and choose the root directory of your
+                        project.
+                        <br><br>
+
+                        The selected folder should contain the source code,
+                        configuration files, and other project files you want
+                        analyzed.
+                        <br><br>
+
+                        Selecting the project root folder is recommended because
+                        it allows the application to understand the complete
+                        structure and relationships within the codebase.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        What languages are supported?
+                    </summary>
+
+                    <p>
+                        Language support depends on the parsing tools and analysis
+                        agents currently configured in the application.
+                        <br><br>
+
+                        The system works best with commonly structured software
+                        projects containing recognizable source files,
+                        dependencies, and documentation.
+                        <br><br>
+
+                        If a file type is not supported, it may be skipped during
+                        analysis while the remaining supported files continue to
+                        be processed.
+                    </p>
+                </details>
+
+
+            </div>
         </div>
 
 
@@ -276,6 +426,43 @@
                     accomodate different languages
                 </p>
             </details>
+
+            <details class="faq-box">
+                    <summary>
+                        How long does analysis take?
+                    </summary>
+
+                    <p>
+                        Analysis time depends on the size and complexity of the
+                        selected codebase.
+                        <br><br>
+
+                        Larger projects may require more time because the system
+                        must process more files, generate more summaries, and
+                        perform additional AI-based reasoning steps.
+                        <br><br>
+
+                        Progress bars are displayed during execution to show both
+                        overall pipeline progress and progress within individual
+                        tasks.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Does the application modify my code?
+                    </summary>
+
+                    <p>
+                        No. The application analyzes your existing codebase and
+                        generates additional output files and reports.
+                        <br><br>
+
+                        Your original source files are not modified during the
+                        analysis process.
+                    </p>
+                </details>
 
 
         </div>

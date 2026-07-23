@@ -1368,8 +1368,9 @@ h2{
    ============================ */
 
 
-
-#faqContainer {
+/* Both FAQ and Support expandable containers */
+#faqContainer,
+.supportFAQTab > div {
     width: 100%;
     max-width: 700px;
 
@@ -1379,7 +1380,23 @@ h2{
 }
 
 
+/* Support/FAQ page wrapper */
+.supportFAQTab {
+    width: 100%;
+    max-width: 700px;
+
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    gap: 1rem;
+}
+
+
+/* Expandable boxes */
 .faq-box {
+
+    width: 100%;
 
     background: var(--glass-bg);
 
@@ -1402,9 +1419,13 @@ h2{
 
 .faq-box:hover {
     transform: translateY(-2px);
+
+    box-shadow:
+        0 10px 25px rgba(99,102,241,0.2);
 }
 
 
+/* Question title */
 .faq-box summary {
 
     font-weight: 700;
@@ -1416,23 +1437,27 @@ h2{
     cursor: pointer;
 
     list-style: none;
+
+    text-align: left;
 }
 
 
-/* Remove default triangle */
+/* Remove default arrow */
 .faq-box summary::-webkit-details-marker {
     display: none;
 }
 
 
-/* Add custom arrow */
+/* Add custom expand icon */
 .faq-box summary::after {
 
     content: "＋";
 
     float: right;
 
-    font-size: 1.2rem;
+    font-size: 1.3rem;
+
+    color: var(--accent);
 }
 
 
@@ -1443,38 +1468,59 @@ h2{
 }
 
 
+/* Expanded text */
 .faq-box p {
 
     margin-top: 1rem;
 
-    line-height: 1.6;
+    padding-top: 1rem;
+
+    border-top:
+        1px solid var(--glass-border);
+
+    line-height: 1.7;
 
     text-align: left;
 
     color: var(--text-primary);
+
+    font-size: 0.95rem;
 }
 
+
+/* FAQ/Support selector buttons */
+
 #faqAndSupportBtnContainer {
+
     display: flex;
+
     flex-direction: row;
+
     justify-content: center;
+
     align-items: center;
 
     gap: 1rem;
 
     width: 100%;
+
     margin-top: 1rem;
 }
 
 
 #faqAndSupportBtnContainer button {
+
     width: 160px;
+
 }
 
 
-/* Inverted button style */
+/* Active/inactive tab button */
+
 .btn-inverted {
+
     background: white;
+
     color: #5E5DF0;
 
     border: 2px solid #5E5DF0;
