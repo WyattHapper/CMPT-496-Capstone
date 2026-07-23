@@ -145,13 +145,21 @@ function updatePipelineLoading(message) {
 
 
 
+
+
 function finishLoading(message = "Process completed successfully!") {
 
     document.getElementById("loadingTitle").textContent = "Complete";
 
-    document.getElementById("loadingMessage").textContent = message;
 
-    // hide spinner & loading bar
+    const stepMessage = document.getElementById("loadingStepMessage");
+
+    if(stepMessage){
+        stepMessage.textContent = message;
+    }
+
+
+    // hide spinner and progress bars
     document.getElementById("loadingSpinner").classList.add("hidden");
     document.getElementById("stepProgressContainer").classList.add("hidden");
     document.getElementById("pipelineProgressContainer").classList.add("hidden");
@@ -595,8 +603,44 @@ function renderBusinessRulesPreview(text) {
 
 }
 
-function renderErrorPreview(text){
-    
+function renderErrorPreview(errors) {
+
+
+    console.log("renderErrorPreview called");
+    console.log(errors);
+
+    const errorList = Array.isArray(errors)
+        ? errors
+        : errors
+            ? [errors]
+            : [];
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    if (errorList.length === 0) {
+
+        output.textContent =
+            "No errors have been recorded.";
+
+        return;
+    }
+
+    const pre = document.createElement("pre");
+
+    pre.className = "file-preview-text";
+
+    pre.textContent = errorList
+        .map(error => (
+            typeof error === "string"
+                ? error
+                : JSON.stringify(error, null, 2)
+        ))
+        .join("\n\n");
+
+    output.appendChild(pre);
 }
 
 function renderTextPreview(text) {
@@ -792,6 +836,15 @@ document.getElementById("viewDisplaySourcesBtn")
             path:`agent/directory_agent_output/${codebaseName}`
         }
     );
+
+});
+
+document.getElementById("viewDisplayErrorsBtn")
+.addEventListener("click", async () => {
+
+    showButtons("viewErrorsBtns");
+
+    await runBackendCommand("get_errors");
 
 });
 
@@ -1264,6 +1317,16 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+
+    // The command acknowledgement does not contain the error list.
+    if (activeCommand === "get_errors" && response.errors !== undefined) {
+
+        renderErrorPreview(response.errors);
+        activeCommand = null;
+
+        return;
+    }
+
     
 
     // ----------------------------------------
@@ -1395,18 +1458,22 @@ window.electronAPI.onBackendResponse((response) => {
     // ----------------------------------------
     // Command completion
     // ----------------------------------------
-    if (
-        response.success &&
-        response.individualStep === true
-    ) {
+    if (response.success) {
 
-        finishLoading(
-            response.result?.message ||
-            `${response.command} completed`
-        );
+        if (
+            response.individualStep === true ||
+            response.result ||
+            response.message
+        ) {
 
-        activeCommand = null;
+            finishLoading(
+                response.result?.message ||
+                response.message ||
+                `${activeCommand} completed`
+            );
 
+            activeCommand = null;
+        }
     }
 
 });
