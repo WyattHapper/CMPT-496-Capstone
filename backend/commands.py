@@ -43,6 +43,7 @@ from backend.progress_logging import progress
 
 from agent.BR_agent import BRAgent
 from agent.UT_agent import UTAgent
+from agent.UTV_agent import UTVAgent
 from agent.directory_agent import DirectoryAgent
 from agent.file_summary_agent import FileSummaryAgent
 from agent.structured_output.file_summary_output import BusinessRule
@@ -345,7 +346,79 @@ class Commands:
             individualStep=individualStep,
         )
     
+    def validate_unit_tests(
+        self,
+        codebase: str,
+        selected_rules: list,
+        validated_rules_path: str = None,
+        individualStep = True
+    ):
+        """
+        Generate unit tests from validated rules.
 
+        Refactor of old:
+            run_ut()
+        """
+
+        codebase_path = Path(codebase)
+        codebase_name = codebase_path.name
+
+
+        if validated_rules_path is None:
+            validated_rules_path = (
+                self.app_dir
+                / "agent"
+                / "BR_agent_output"
+                / codebase_name
+                / "validated_rules.json"
+            )
+
+
+        validated_rules_path = Path(validated_rules_path)
+
+
+        def task():
+
+            progress("Validating unit tests...")
+
+            if not validated_rules_path.exists():
+                raise FileNotFoundError(
+                    f"Validated rules not found: {validated_rules_path}"
+                )
+
+
+            with open(
+                validated_rules_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+
+                raw_rules = json.load(file)
+
+            if selected_rules == []:
+                input_rules = [
+                    ValidatedRule.model_validate(rule)
+                    for rule in raw_rules
+                ]
+
+            else:
+                input_rules = []
+                for rule in raw_rules:
+                    if rule["id"] in selected_rules:
+                        input_rules.append(ValidatedRule.model_validate(rule))
+
+            UTVAgent().run(
+                input_rules,
+                codebase_name,
+                str(codebase_path)
+            )
+
+
+        return self._run_command(
+            "generate_unit_tests",
+            task,
+            individualStep=individualStep,
+        )
     # -----------------------------------------------------
     # UML Commands
     # -----------------------------------------------------

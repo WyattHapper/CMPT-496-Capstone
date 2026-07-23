@@ -6,9 +6,9 @@ generates unit tests and writes the results to JSON.
 """
 import logging
 logger = logging.getLogger(__name__)
-from agent.states.UT_agent_state import UTGraphState
-from agent.structured_output.UT_output import (
-    ValidatedRule, UnitTest
+from agent.states.UTV_agent_state import UTVGraphState
+from agent.structured_output.UTV_output import (
+    UnitTest, ValidatedTest, DiscardedTest
 )
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -31,7 +31,7 @@ MAX_CODEBASE_K = 30
 MAX_FILE_SUMMARY_K = 10
 
 
-class UTAgent:
+class UTVAgent:
     """
     @brief LangGraph-based agent for generating unit tests based on business rules.
 
@@ -74,7 +74,7 @@ class UTAgent:
             - If current_rules is empty (all rules processed) → writer
         """
 
-        builder = StateGraph(UTGraphState)
+        builder = StateGraph(UTVGraphState)
 
         # Set nodes
         builder.add_node("retriever", self.retriever_node)
@@ -91,7 +91,7 @@ class UTAgent:
 
         return builder.compile()
 
-    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str, codebase_path: str):
+    def run(self, input_tests: dict[str, list[UnitTest]], codebase_name: str, codebase_path: str):
         """
         @brief Executes the UTAgent workflow.
         @param input_rules Dictionary of validated business rules from BR_agent output. Keys are file or directory paths,
@@ -101,7 +101,7 @@ class UTAgent:
         """
         progress(
             "Running unit test generation pipeline...",
-            10
+            5
         )
         if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
@@ -125,21 +125,21 @@ class UTAgent:
 
         progress(
             "Loaded code and summary databases.",
-            20
+            10
         )
 
         initial_state = {
-            "validated_rules": validated_rules,
-            "unit_tests": [],
+            "input_tests": input_tests,
+            "validated_tests": [],
+            "discarded_tests": [],
             "rule_contexts": {},
-            "test_imports": set(),
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
             "codebase_path": codebase_path,
-            "output_directory": "./agent/UT_agent_output",
+            "output_directory": "./agent/UTV_agent_output",
         }
 
         self._loop = asyncio.new_event_loop()
@@ -149,7 +149,7 @@ class UTAgent:
             self._loop.close()
             self._loop = None
     
-    def retriever_node(self, state: UTGraphState) -> UTGraphState:
+    def retriever_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Retrieves relevant code snippets and file summaries for all current validated business rules.
 
@@ -171,10 +171,10 @@ class UTAgent:
         """
         progress(
             "Retrieving context for validated business rules...",
-            30
+            20
         )
-        validated_rules = state.get("validated_rules", [])
-        if not validated_rules:
+        input_tests = state.get("input_tests", [])
+        if not input_tests:
             raise ValueError("No validated rules to retrieve context for.")
 
         code_collection = state["code_collection"]
@@ -185,10 +185,10 @@ class UTAgent:
         existing_contexts = state.get("rule_contexts", {})
         updated_contexts = dict(existing_contexts)
 
-        for rule in validated_rules:
-            source_directory = rule.source_directory
-            source_file_paths = rule.source_file_paths
-            query_text = f"{rule.rule} {source_directory}"
+        for test in input_tests:
+            source_directory = test.source_directory
+            source_file_paths = test.source_file_paths
+            query_text = f"{test.rule} {source_directory}"
 
             safe_code_k = min(code_k, code_collection.count()) or 1
             safe_summary_k = min(summary_k, summary_collection.count()) or 1
@@ -203,7 +203,7 @@ class UTAgent:
             )
 
             # Get existing per-rule context for deduplication (str key for JSON serialization safety)
-            rule_key = str(rule.id)
+            rule_key = str(test.id)
             rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": []})
             existing_code = set(rule_ctx["code_context"])
             existing_summary = set(rule_ctx["summary_context"])
@@ -259,7 +259,7 @@ class UTAgent:
             "rule_contexts": updated_contexts,
         }
 
-    def test_generator_node(self, state: UTGraphState) -> UTGraphState:
+    def test_generator_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Generates unit tests for validated business rules.
 
@@ -282,7 +282,7 @@ class UTAgent:
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
-            async def guarded(rule: ValidatedRule):
+            async def guarded(rule: ValidatedTest):
                 async with sem:
                     ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
                     return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
@@ -308,7 +308,7 @@ class UTAgent:
                 logger.error(f"Unit test generation error for rule {rule.id}: {err}")
                 continue
             test_imports.update(output.imports)
-            unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule, source_directory = rule.source_directory, source_file_paths = rule.source_file_paths))
+            unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule))
 
         progress(
             f"Validated {len(unit_tests)} generated unit tests.",
@@ -316,7 +316,7 @@ class UTAgent:
         )
         return {"unit_tests": unit_tests, "test_imports": test_imports}
 
-    def writer_node(self, state: UTGraphState) -> UTGraphState:
+    def writer_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Writes unit tests to JSON output files.
 
@@ -334,7 +334,7 @@ class UTAgent:
         )
 
         codebase_name = state["codebase_name"]
-        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
+        base_output_dir = state.get("output_directory", "./agent/UTV_agent_output")
         codebase_subdir = os.path.join(base_output_dir, codebase_name)
         os.makedirs(codebase_subdir, exist_ok=True)
         unit_tests = state.get("unit_tests", [])
@@ -355,7 +355,7 @@ class UTAgent:
             progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
         return {}
 
-    def runner_node(self, state: UTGraphState) -> UTGraphState:
+    def runner_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Creates test framework in target codebase and runs it
 
@@ -369,10 +369,12 @@ class UTAgent:
         test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
 
         # Generate Xunit framework
+        progress("Creating test framework...", 98)
         if not Path(test_subdir).is_dir():
             try:
-                progress("Generating test framework", 98)
+                progress("Initializing xUnit project...", 98)
                 subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
+                progress("Configuring project references...", 98)
                 with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
                     lines = file.readlines()
                     lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
@@ -380,9 +382,10 @@ class UTAgent:
                     file.writelines(lines)
             except Exception as e:
                 logger.error(f"Error: {e}")
-                progress("Error generating framework", 98)
+                progress(f"Error setting up test framework: {e}", 98)
 
         # Write generated tests to Xunit .cs file
+        progress("Writing generated tests to file...", 98)
         test_imports = state["test_imports"]
         unit_tests = state["unit_tests"]
         with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
@@ -395,16 +398,16 @@ class UTAgent:
             file.write("}")
         
         # Run generated tests and produce report
-        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
+        progress("Running unit tests (this may take a moment)...", 99)
+        base_output_dir = state.get("output_directory", "./agent/UTV_agent_output")
         codebase_dir = os.path.join(base_output_dir, codebase_name)
         try:
-            progress("Running generated tests", 99)
             subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_dir}"])
             logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
-            progress(f"Successfully ran tests and report generated to {codebase_dir}", 100, True)
+            progress("Tests completed. Generating report...", 100)
         except Exception as e:
             logger.error(e)
-            progress("Error running tests!", 100, True)
+            progress(f"Error running tests: {e}", 100)
         return {}
     
     # Helper methods
@@ -496,7 +499,7 @@ class UTAgent:
 
 async def _generate_single_test(
     structured_llm,
-    rule: ValidatedRule,
+    rule: ValidatedTest,
     code_context: list[str],
     summary_context: list[str],
 ) -> tuple:
@@ -565,8 +568,8 @@ if __name__ == "__main__":
         raw_rules = json.load(f)
 
     # Convert raw JSON dicts back to BusinessRule objects
-    input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]   
+    input_rules = [ValidatedTest.model_validate(rule) for rule in raw_rules]   
 
-    agent = UTAgent()
+    agent = UTVAgent()
     agent.run(input_rules, codebase_name, codebase)
-    progress("UTAgent has completed its task!", 100, True)
+    progress("UTVAgent has completed its task!", 100, True)

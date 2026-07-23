@@ -33,4 +33,6 @@ class UnitTest(BaseModel):
     id: int = Field(..., description="Stable unique identifier matching the ValidatedRule ID.")
     rule: str = Field(..., description="The business rule statement that this unit test corresponds to.")
     imports: list[str] = Field(default_factory=list, description="List of import statements required for the unit test (one per list item), in the correct syntax for the target language.")
+    source_directory: str = Field(..., description="The directory this test pertains to.")
+    source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")

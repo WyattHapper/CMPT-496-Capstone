@@ -1088,11 +1088,20 @@ document.getElementById('chooseUnitTestPageBackBtn')
 
 document.getElementById('runUnitTestValidationOnlyBtn')
     .addEventListener('click', () => {
-        
-        
-        
-        showPage('unitTestPage');
-        
+        event.preventDefault();
+        event.stopPropagation();
+        showLoading(
+            "Unit Test Validation",
+            "Preparing..."
+        );
+
+        runBackendCommand(
+            "validate_unit_tests",
+            {
+                codebase:selectedCodebasePath,
+                selected_rules: []
+            }
+        );
     });
 
 // FILLER FOR WHEN VALIDATION GETS ADDED ONTO THIS BRANCH, FOR NOW IT WILL NOT DO ANYTHING WHEN CLICKED
