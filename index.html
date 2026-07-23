@@ -17,6 +17,7 @@
         <button class="btn-primary unusable-btn" id="analysisBtn">Run Operations</button>
         <button class="btn-primary" id="mainViewBtn">View Insights</button>
         <button class="btn-primary" id="apiBtn">Upload API Key</button>
+        <button class="btn-primary" id="faqAndSupportBtn">FAQ & Support</button>
         <button class="btn-primary back-btn" id="exitBtn">Exit</button>
 
     </div>
@@ -69,8 +70,11 @@
     <div id="codebasePipelinePage" class="page hidden">
         <h1>Codebase Analysis Pipeline</h1>
 
-        <a>Enter the path to the codebase: </a>
-        <input class="input-glass" id="codebasePath" type="text" />
+        <a>Click the file button and select a directory: </a>
+        <div id="pathInputContainer">
+            <input class="input-glass" id="codebasePath" type="text" readonly/>
+            <button id="browseCodebaseBtn" class="btn-primary">📂</button>
+        </div>
         <button class="btn-primary" id="submitPathBtn">Submit</button>
         <button class="btn-primary back-btn" id="codebaseBackBtn">Back</button>
 
@@ -188,6 +192,95 @@
         
         
 
+    </div>
+
+
+    <!-- FAQ/Support -->
+    <div id="faqAndSupportPage" class="page hidden">
+
+
+        <h1 id="faqAndSupportPageHeader">Frequently Asked Questions</h1>
+
+        <div id="faqAndSupportBtnContainer">
+            <button id="faqBtn" class="btn-primary btn-inverted" >FAQ</button>
+            <button id="supportBtn" class="btn-primary">Support</button>
+        </div>
+
+        <div id="supportContainer" class="supportFAQTab hidden">
+
+            
+        </div>
+
+
+        <div id="faqContainer" class="supportFAQTab">
+
+            <details class="faq-box">
+                <summary>
+                    What is CheckPoint?
+                </summary>
+
+                <p>
+                    CheckPoint analyzes software codebases using AI agents
+                    to generate summaries, business rules, UML diagrams, and
+                    other insights about the project.
+                </p>
+            </details>
+
+            <details class="faq-box">
+                <summary>
+                    Why use CheckPoint?
+                </summary>
+
+                <p>
+                    Checkpoint is designed to make it easier for software
+                    engineers to learn about the components of their 
+                    desired codebases to create a faster, more convient workflow 
+                    when changes are needed to be implemented. Especially in cases 
+                    of sparsely documented legacy code.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    How do I analyze a codebase?
+                </summary>
+
+                <p>
+                    Select your codebase using the folder picker, then run the
+                    desired analysis operation. CheckPoint will process the
+                    project and display generated results.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    Why does analysis take a long time?
+                </summary>
+
+                <p>
+                    Processing time depends on the size of the codebase, number
+                    of files, and AI processing requirements.
+                </p>
+            </details>
+
+            <details class="faq-box">
+                <summary>
+                    What languages are supported?
+                </summary>
+
+                <p>
+                    In this current iteration we only support C# for the full 
+                    pipeline, however more work is being done to integrate and 
+                    accomodate different languages
+                </p>
+            </details>
+
+
+        </div>
+
+        <button id="faqAndSupportBackBtn" class="btn-primary back-btn">Main Menu</button>
     </div>
 
     

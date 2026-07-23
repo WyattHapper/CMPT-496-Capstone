@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require("fs");
@@ -648,6 +648,9 @@ ipcMain.handle(
     }
 );
 
+
+
+
 // ----------------------------------------------------
 // CREATE WINDOW
 // ----------------------------------------------------
@@ -690,7 +693,22 @@ function createWindow() {
 
 }
 
+// ----------------------------------------------------
+// Open file directory
+// ----------------------------------------------------
 
+ipcMain.handle("select-codebase", async () => {
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"]
+    });
+
+    if (result.canceled) {
+        return null;
+    }
+
+    return result.filePaths[0];
+});
 
 // ----------------------------------------------------
 // START PYTHON BACKEND

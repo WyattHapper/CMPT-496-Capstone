@@ -685,6 +685,27 @@ function showButtons(buttonId) {
     document.getElementById(buttonId).classList.remove('hidden');
 }
 
+function setFAQSupportActive(activeButton) {
+
+    const supportBtn = document.getElementById("supportBtn");
+    const faqBtn = document.getElementById("faqBtn");
+
+
+    supportBtn.classList.remove("btn-inverted");
+    faqBtn.classList.remove("btn-inverted");
+
+
+    if (activeButton === "support") {
+
+        supportBtn.classList.add("btn-inverted");
+
+    } else {
+
+        
+        faqBtn.classList.add("btn-inverted");
+
+    }
+}
 
 
 function escapeHtml(value) {
@@ -809,6 +830,13 @@ document.getElementById('apiBtn')
 
 
     
+    });
+
+
+document.getElementById('faqAndSupportBtn')
+    .addEventListener('click', () => {
+
+        showPage('faqAndSupportPage')
     });
 
 
@@ -1266,6 +1294,41 @@ document.getElementById('codebaseBackBtn')
         showPage('analysisPage');
     });
 
+document.getElementById('faqAndSupportBackBtn')
+    .addEventListener('click', () => {
+
+        
+
+        showPage('homePage');
+    });
+
+//======================================================
+// FAQ Page Buttons
+//======================================================
+document.getElementById("supportBtn")
+.addEventListener("click", () => {
+
+    setFAQSupportActive("support");
+
+    document.getElementById('faqContainer').classList.add('hidden');
+    document.getElementById('supportContainer').classList.remove('hidden');
+    
+
+});
+
+
+document.getElementById("faqBtn")
+.addEventListener("click", () => {
+
+    setFAQSupportActive("faq");
+
+    // show FAQ content here
+    document.getElementById('supportContainer').classList.add('hidden');
+    document.getElementById('faqContainer').classList.remove('hidden');
+    
+    
+
+});
 
 //======================================================
 // Analysis Page Buttons
@@ -1286,16 +1349,31 @@ document.getElementById('submitPathBtn')
             'codebasePath'
         ).value;
 
+    if (selectedCodebasePath != ""){
+
+        runBackendCommand(
+            "set_codebase",
+            {
+                path:selectedCodebasePath
+            }
+        );
+    }
 
 
-    runBackendCommand(
-        "set_codebase",
-        {
-            path:selectedCodebasePath
-        }
-    );
+});
 
+document.getElementById("browseCodebaseBtn")
+.addEventListener("click", async () => {
 
+    const path =
+        await window.electronAPI.selectCodebase();
+
+    if (!path)
+        return;
+
+    document.getElementById("codebasePath").value = path;
+
+    selectedCodebasePath = path;
 });
 
 

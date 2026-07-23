@@ -127,8 +127,10 @@ contextBridge.exposeInMainWorld(
                 "backend-response"
             );
 
+        },
+        
+        selectCodebase: () =>
+        ipcRenderer.invoke("select-codebase"),
+
         }
-
-
-    }
 );
