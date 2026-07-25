@@ -1,5 +1,5 @@
 {
-  "name": "cmpt-496-capstone",
+  "name": "checkpoint",
   "version": "1.0.0",
   "description": "Codebase Analysis System",
   "main": "main.js",
@@ -22,9 +22,11 @@
     "dotenv": "^17.4.2"
   },
   "build": {
-    "appId": "com.yourname.capstone",
+    "appId": "com.cmpt496.checkpoint",
+    "productName": "Checkpoint",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "assets/checkpoint.ico"
     },
     "extraResources": [
       {

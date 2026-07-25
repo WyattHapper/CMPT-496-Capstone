@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require("fs");
@@ -661,9 +661,9 @@ function createWindow() {
     mainWindow = new BrowserWindow({
 
         width:1200,
-
         height:800,
-
+        icon: path.join(__dirname, "assets", "checkpoint.ico"),
+        autoHideMenuBar: true,
 
         webPreferences: {
 
@@ -681,13 +681,19 @@ function createWindow() {
 
     });
 
-
-
     mainWindow.loadFile(
         "index.html"
     );
 
+    // This just gets rid of the top bar
+    Menu.setApplicationMenu(null);
 
+    // This is for using f12 to see the dev tools since you can't toggle menu with alt
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+        if (input.key === "F12") {
+            mainWindow.webContents.toggleDevTools();
+        }
+    });
 
     startPythonBackend();
 
