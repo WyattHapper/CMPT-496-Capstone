@@ -295,11 +295,6 @@ class UTAgent:
             80
         )
 
-        progress(
-            f"Generated {len(results)} unit test candidates.",
-            80
-        )
-
         test_imports = set()
         unit_tests = []
         for rule, output, err in results:
