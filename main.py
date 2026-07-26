@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
 
             print(
-                json.dumps(result),
+                json.dumps(result, default=lambda o: list(o) if hasattr(o, '__iter__') else str(o)),
                 flush=True
             )
 
@@ -192,7 +192,8 @@ if __name__ == "__main__":
                     {
                         "success": False,
                         "error": str(e)
-                    }
+                    },
+                    default=lambda o: list(o) if hasattr(o, '__iter__') else str(o)
                 ),
                 flush=True
             )

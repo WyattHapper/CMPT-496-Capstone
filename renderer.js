@@ -790,8 +790,8 @@ async function loadValidatedRulesSelection() {
 document.getElementById("loadingOkBtn").addEventListener("click", () => {
 
     hideLoading();
-
     document.getElementById("loadingOkBtn").classList.add("hidden");
+    showPage('homePage');
 
 });
 
