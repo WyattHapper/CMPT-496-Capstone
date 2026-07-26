@@ -6,7 +6,7 @@ structured state passed between nodes in the LangGraph execution graph.
 """
 
 from typing import TypedDict, Annotated, Any
-from agent.structured_output.IT_output import ValidatedRule, IntegrationTest
+from agent.structured_output.IT_output import ValidatedRule, IntegrationTest, WorkflowGroup, WorkflowGroups
 from operator import add
 
 
@@ -57,9 +57,10 @@ class ITGraphState(TypedDict):
         Base directory for writing output JSON files. Defaults to
         ./agent/IT_agent_output if not specified.
     """
-    validated_rules: dict[str, list[ValidatedRule]]
+    validated_rules: list[ValidatedRule]
     integration_tests: list[IntegrationTest]
-    rule_contexts: dict[int, dict]
+    workflow_contexts: dict[int, dict]
+    workflow_groups: list[WorkflowGroup]
     test_imports: set
     test_path: str
     codebase_k: int

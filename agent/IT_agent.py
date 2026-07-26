@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 from agent.states.IT_agent_state import ITGraphState
 from agent.structured_output.IT_output import (
-    ValidatedRule, IntegrationTest
+    ValidatedRule, IntegrationTest, WorkflowGroup, WorkflowGroups
 )
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -75,14 +75,16 @@ class ITAgent:
 
         builder = StateGraph(ITGraphState)
 
-        # Set nodes
+        builder.add_node("workflow_grouper", self.workflow_grouper_node)
         builder.add_node("retriever", self.retriever_node)
         builder.add_node("test_generator", self.test_generator_node)
         builder.add_node("writer", self.writer_node)
         builder.add_node("runner", self.runner_node)
 
-        # Set edges
-        builder.set_entry_point("retriever")
+
+        builder.set_entry_point("workflow_grouper")
+
+        builder.add_edge("workflow_grouper", "retriever")
         builder.add_edge("retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
         builder.add_edge("writer", "runner")
@@ -90,7 +92,7 @@ class ITAgent:
 
         return builder.compile()
 
-    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str, codebase_path: str):
+    def run(self, validated_rules: list[ValidatedRule], codebase_name: str, codebase_path: str):
         """
         @brief Executes the ITAgent workflow.
         @param input_rules Dictionary of validated business rules from BR_agent output. Keys are file or directory paths,
@@ -130,7 +132,7 @@ class ITAgent:
         initial_state = {
             "validated_rules": validated_rules,
             "integration_tests": [],
-            "rule_contexts": {},
+            "workflow_contexts": {},
             "test_imports": set(),
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
@@ -147,117 +149,389 @@ class ITAgent:
         finally:
             self._loop.close()
             self._loop = None
+
+    def workflow_grouper_node(self, state: ITGraphState) -> ITGraphState:
+        """
+            @brief Groups validated business rules into business workflows.
+
+            @details
+            Uses the language model to analyze all validated business rules and identify
+            groups of rules that participate in the same end-to-end business workflow.
+
+            Each workflow represents a collection of related business rules that should
+            be exercised together in a single integration test.
+
+            @param state Current workflow state containing validated business rules.
+            @return Updated state containing workflow_groups.
+        """
+
+        progress(
+            "Grouping validated business rules into workflows...",
+         25
+        )
+
+        validated_rules = state.get("validated_rules", [])
+        if not validated_rules:
+            raise ValueError("No validated business rules provided.")
+
+        structured_llm = self.llm.with_structured_output(WorkflowGroups)
+        rules_text = ""
+
+        for rule in validated_rules:
+            rules_text += f"""
+            ----------------------------------------
+
+            Rule ID:
+            {rule.id}
+
+            Business Rule:
+            {rule.rule}
+
+            Validation Explanation:
+            {rule.explanation}
+
+            Source Directory:
+            {rule.source_directory}
+
+            Source Files:
+            {", ".join(rule.source_file_paths)}
+
+            """
+
+        system_message = (
+                    "You are a Senior Software Architect specializing in software "
+                    "architecture analysis and integration testing."
+            )
+
+        prompt = f"""
+            You are given a collection of validated business rules extracted from a software system.
+
+            Your task is to identify which business rules belong to the same end-to-end business workflow.
+
+            A workflow is a sequence of related business operations that together accomplish a user or
+            system goal.
+
+            Examples of workflows include:
+
+            • User Registration
+                - Validate Email
+                - Create User
+                - Save User
+                - Send Welcome Email
+
+            • Order Checkout
+                - Validate Shopping Cart
+                - Reserve Inventory
+                - Process Payment
+                - Generate Receipt
+
+            • Password Reset
+                - Validate Account
+                - Generate Reset Token
+                - Send Reset Email
+                - Update Password
+
+            Guidelines:
+
+            - Every workflow should contain business rules that interact with one another.
+            - A business rule may belong to ONLY ONE workflow.
+            - Do NOT invent new business rules.
+            - Do NOT modify existing business rules.
+            - Use the validation explanations, directories, and source files to determine
+            which rules are likely part of the same workflow.
+            - Prefer grouping rules that span multiple files or components.
+
+            Return only structured output.
+
+            BUSINESS RULES
+
+            {rules_text}
+        """
+
+        messages = [
+            ("system", system_message),
+            ("user", prompt),
+        ]
+
+        output = structured_llm.invoke(messages)
+
+        # Build lookup table from rule ID -> ValidatedRule
+        rule_lookup = {
+            rule.id: rule
+            for rule in validated_rules
+        }
+
+        workflow_groups = []
+
+        for workflow in output.workflows:
+
+            grouped_rules = [
+                rule
+                for rule in validated_rules
+                if rule.id in workflow.rule_ids
+            ]
+
+            workflow_groups.append(
+                WorkflowGroup(
+                    workflow_name=workflow.workflow_name,
+                    workflow_description=workflow.workflow_description,
+                    rules=grouped_rules
+                )
+            )
+
+        progress(
+            f"Grouped {len(validated_rules)} business rules into "
+            f"{len(workflow_groups)} workflows.",
+            30
+        )
+
+        return {
+            "workflow_groups": workflow_groups,
+        }
+            
     
     def retriever_node(self, state: ITGraphState) -> ITGraphState:
         """
-        @brief Retrieves relevant code snippets and file summaries for all current validated business rules.
+        @brief Retrieves relevant code snippets and file summaries for each business workflow.
 
         @details
-        Iterates over every rule in validated_rules and queries two ChromaDB vector
-        collections (code and summary) for each. Results are prioritized in three tiers:
-            1. Results from the rule's source files (highest priority)
-            2. Results from the rule's source directory
-            3. All other results (fallback)
+        Iterates over workflow groups and queries ChromaDB code and summary collections.
+        Each workflow combines the context of all business rules it contains.
 
-        Per-rule context is stored in rule_contexts[rule.id] and accumulates across
-        retrieval iterations for the same rule (deduplication against prior results).
-        Retrieval depth is controlled by codebase_k and file_summary_k, which may be
-        increased by the validator on "need_more_context" decisions.
+        Retrieval priority:
+            1. Files directly referenced by workflow rules
+            2. Files inside workflow directories
+            3. Other relevant retrieved files
 
-        @param state Current workflow state containing validated_rules and retrieval parameters.
-        @return Updated state with rule_contexts populated/extended.
-        @raises ValueError If current_rules is empty.
+        Workflow context is stored in workflow_contexts[workflow_name].
+
+        @param state Current workflow state containing workflow groups and retrieval parameters.
+        @return Updated state with workflow_contexts populated.
         """
+
         progress(
-            "Retrieving context for validated business rules...",
+            "Retrieving context for business workflows...",
             30
         )
+
+        workflow_groups = state.get("workflow_groups", [])
+        if not workflow_groups:
+            raise ValueError("No workflow groups to retrieve context for.")
+
+
         validated_rules = state.get("validated_rules", [])
         if not validated_rules:
-            raise ValueError("No validated rules to retrieve context for.")
+            raise ValueError("No validated rules available.")
+
+        # Build lookup table:
+        # rule_id -> ValidatedRule
+        rule_lookup = {
+            rule.id: rule
+            for rule in validated_rules
+        }
+
 
         code_collection = state["code_collection"]
         summary_collection = state["summary_collection"]
         code_k = state["codebase_k"]
         summary_k = state["file_summary_k"]
-
-        existing_contexts = state.get("rule_contexts", {})
+        existing_contexts = state.get("workflow_contexts", {})
         updated_contexts = dict(existing_contexts)
 
-        for rule in validated_rules:
-            source_directory = rule.source_directory
-            source_file_paths = rule.source_file_paths
-            query_text = f"{rule.rule} {source_directory}"
 
-            safe_code_k = min(code_k, code_collection.count()) or 1
-            safe_summary_k = min(summary_k, summary_collection.count()) or 1
+        for workflow in workflow_groups:
 
-            code_results = code_collection.query(
-                query_texts=[query_text],
-                n_results=safe_code_k
+            # Resolve workflow rule IDs back into ValidatedRule objects
+            workflow_rules = workflow.rules
+
+            if not workflow_rules:
+                continue
+
+            source_directories = set()
+            source_file_paths = []
+            rule_descriptions = []
+
+            for rule in workflow_rules:
+                source_directories.add(rule.source_directory)
+                source_file_paths.extend(rule.source_file_paths)
+                rule_descriptions.append(rule.rule)
+
+
+            source_directory = ", ".join(source_directories)
+
+
+            query_text = f"""
+            Workflow:
+            {workflow.workflow_name}
+
+            Workflow Description:
+            {workflow.workflow_description}
+
+            Business Rules:
+            {chr(10).join(rule_descriptions)}
+
+            Source Directories:
+            {source_directory}
+            """
+
+
+            safe_code_k = min(
+                code_k,
+                code_collection.count()
+            ) or 1
+
+            safe_summary_k = min(
+                summary_k,
+                summary_collection.count()
+            ) or 1
+
+
+            code_results = code_collection.query(query_texts=[query_text],n_results=safe_code_k)
+            summary_results = summary_collection.query(query_texts=[query_text],n_results=safe_summary_k)
+
+
+            # Workflow-level context storage
+            workflow_key = workflow.workflow_name
+
+
+            workflow_ctx = updated_contexts.get(
+                workflow_key,
+                {
+                    "code_context": [],
+                    "summary_context": []
+                }
             )
-            summary_results = summary_collection.query(
-                query_texts=[query_text],
-                n_results=safe_summary_k
-            )
 
-            # Get existing per-rule context for deduplication (str key for JSON serialization safety)
-            rule_key = str(rule.id)
-            rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": []})
-            existing_code = set(rule_ctx["code_context"])
-            existing_summary = set(rule_ctx["summary_context"])
+            existing_code = set(workflow_ctx["code_context"])
+            existing_summary = set(workflow_ctx["summary_context"])
 
-            # Process code results with three-tier prioritization
-            code_docs = code_results.get("documents", [[]])[0]
-            code_metas = code_results.get("metadatas", [[]])[0]
+            # -------------------------
+            # Process code results
+            # -------------------------
 
-            source_file_code, directory_code, fallback_code = [], [], []
+            code_docs = code_results.get("documents",[[]])[0]
+
+            code_metas = code_results.get("metadatas",[[]])[0]
+
+            source_file_code = []
+            directory_code = []
+            fallback_code = []
+
+
             for doc, meta in zip(code_docs, code_metas):
-                file_path = self._normalize_path(meta.get("file", ""))
-                formatted = self._format_code_result(doc, meta, source_directory)
-                if self._is_from_source_file(file_path, source_file_paths):
+
+                file_path = self._normalize_path(
+                    meta.get("file", "")
+                )
+
+                formatted = self._format_code_result(
+                    doc,
+                    meta,
+                    source_directory
+                )
+
+
+                if self._is_from_source_file(
+                    file_path,
+                    source_file_paths
+                ):
                     source_file_code.append(formatted)
-                elif self._is_in_directory(file_path, source_directory):
+
+
+                elif self._is_in_directory(
+                    file_path,
+                    source_directory
+                ):
                     directory_code.append(formatted)
+
                 else:
                     fallback_code.append(formatted)
 
-            # Process summary results with three-tier prioritization
-            summary_docs = summary_results.get("documents", [[]])[0]
-            summary_metas = summary_results.get("metadatas", [[]])[0]
+            # -------------------------
+            # Process summary results
+            # -------------------------
+            summary_docs = summary_results.get(
+                "documents",
+                [[]]
+            )[0]
 
-            source_file_summary, directory_summary, fallback_summary = [], [], []
+            summary_metas = summary_results.get(
+                "metadatas",
+                [[]]
+            )[0]
+
+            source_file_summary = []
+            directory_summary = []
+            fallback_summary = []
+
+
             for doc, meta in zip(summary_docs, summary_metas):
-                summary_path = self._normalize_path(meta.get("path", ""))
-                formatted = self._format_summary_result(doc, meta, source_directory)
-                if self._is_from_source_file(summary_path, source_file_paths):
+
+                summary_path = self._normalize_path(
+                    meta.get("path", "")
+                )
+
+
+                formatted = self._format_summary_result(
+                    doc,
+                    meta,
+                    source_directory
+                )
+
+
+                if self._is_from_source_file(
+                    summary_path,
+                    source_file_paths
+                ):
                     source_file_summary.append(formatted)
-                elif self._is_in_directory(summary_path, source_directory):
+                elif self._is_in_directory(
+                    summary_path,
+                    source_directory
+                ):
                     directory_summary.append(formatted)
                 else:
                     fallback_summary.append(formatted)
 
-            # Append new results (prioritized order, no duplicates)
-            new_code = list(rule_ctx["code_context"])
-            for item in source_file_code + directory_code + fallback_code:
+            # -------------------------
+            # Merge contexts
+            # -------------------------
+
+            new_code = list(
+                workflow_ctx["code_context"]
+            )
+
+            for item in (
+                source_file_code
+                + directory_code
+                + fallback_code
+            ):
                 if item not in existing_code:
                     new_code.append(item)
 
-            new_summary = list(rule_ctx["summary_context"])
-            for item in source_file_summary + directory_summary + fallback_summary:
+            new_summary = list(workflow_ctx["summary_context"])
+
+            for item in (
+                source_file_summary
+                + directory_summary
+                + fallback_summary
+            ):
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
+            updated_contexts[workflow_key] = {"code_context": new_code,"summary_context": new_summary}
+
 
         progress(
-            "Business rule context retrieval complete.",
+            "Workflow context retrieval complete.",
             50
         )
-        return {
-            "rule_contexts": updated_contexts,
-        }
 
+
+        return {
+            "workflow_contexts": updated_contexts
+        }
+    
+    
     def test_generator_node(self, state: ITGraphState) -> ITGraphState:
         """
         @brief Generates integration tests for validated business rules.
@@ -269,23 +543,28 @@ class ITAgent:
         """
 
         progress(
-            "Generating integration tests from validated business rules...",
+            "Generating integration tests from workflows...",
             60
         )
-        validated_rules = state.get("validated_rules", [])
-        if not validated_rules:
-            return {"integration_tests": []}
 
-        rule_contexts = state.get("rule_contexts", {})
+        workflow_groups = state.get("workflow_groups", [])
+        if not workflow_groups:
+            return {
+                "integration_tests": [],
+                "test_imports": set()
+            }
+        
+        workflow_contexts = state.get("workflow_contexts", {})  
+        
         structured_llm = self.llm.with_structured_output(IntegrationTest)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
-            async def guarded(rule: ValidatedRule):
+            async def guarded(workflow):
                 async with sem:
-                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
-                    return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
-            return await asyncio.gather(*(guarded(r) for r in validated_rules))
+                    ctx = workflow_contexts.get(workflow.workflow_name, {"code_context": [], "summary_context": []})
+                    return await _generate_single_test(structured_llm, workflow, workflow.rules, ctx["code_context"], ctx["summary_context"])
+            return await asyncio.gather(*(guarded(workflow) for workflow in workflow_groups))
 
         results = self._loop.run_until_complete(run_batch())
 
@@ -296,16 +575,15 @@ class ITAgent:
 
         test_imports = set()
         integration_tests = []
-        for rule, output, err in results:
+        for workflow, output, err in results:
             if err is not None:
-                progress(f"Integration test generation error for rule {rule.id}: {err}")
-                logger.error(f"Integration test generation error for rule {rule.id}: {err}")
+                progress(f"Integration test generation error for workflow {workflow.workflow_name}: {err}")
+                logger.error(f"Integration test generation error for workflow {workflow.workflow_name}: {err}")
                 continue
             test_imports.update(output.imports)
-            integration_tests.append(IntegrationTest(imports=output.imports, integration_test=output.integration_test, id=rule.id, rule=rule.rule, source_directory = rule.source_directory, source_file_paths = rule.source_file_paths))
-
+            integration_tests.append(IntegrationTest(workflow_name=workflow.workflow_name,workflow_description=workflow.workflow_description,rule_ids=workflow.rule_ids,imports=output.imports,integration_test=output.integration_test))
         progress(
-            f"Validated {len(integration_tests)} generated integration tests.",
+            f"Generated integration tests for {len(integration_tests)} workflows.",
             85
         )
         return {"integration_tests": integration_tests, "test_imports": test_imports}
@@ -332,21 +610,40 @@ class ITAgent:
         codebase_subdir = os.path.join(base_output_dir, codebase_name)
         os.makedirs(codebase_subdir, exist_ok=True)
         integration_tests = state.get("integration_tests", [])
+
         if integration_tests:
+
             integration_tests_path_json = os.path.join(codebase_subdir, "integration_tests.json")
             integration_tests_path_txt = os.path.join(codebase_subdir, "integration_tests.txt")
+
             with open(integration_tests_path_json, "w", encoding="utf-8") as f:
                 json.dump([u.model_dump() for u in integration_tests], f, indent=2)
+
             with open(integration_tests_path_txt, "w", encoding="utf-8") as file:
                 for test in integration_tests:
-                    # Write imports first (if any), then the integration test method
+
+                    file.write(f"// Workflow: {test.workflow_name}\n")
+                    file.write(f"// Description: {test.workflow_description}\n")
+                    file.write(f"// Covered Business Rules: {test.rule_ids}\n\n")
+
+                    # Write imports first
                     if getattr(test, "imports", None):
                         try:
-                            file.write("\n".join(test.imports) + "\n\n")
+                            file.write(
+                                "\n".join(test.imports) + "\n\n"
+                            )
                         except Exception:
                             pass
-                    file.write(test.integration_test + "\n\n")
-            progress(f"Wrote {len(integration_tests)} integration tests to {integration_tests_path_json} and {integration_tests_path_txt}", 98)
+
+                    # Write test method
+                    file.write(
+                        test.integration_test + "\n\n"
+                    )
+            progress(
+                f"Wrote {len(integration_tests)} workflow integration tests to "
+                f"{integration_tests_path_json} and {integration_tests_path_txt}",
+                98
+            )
         return {}
 
     def runner_node(self, state: ITGraphState) -> ITGraphState:
@@ -491,7 +788,8 @@ class ITAgent:
 
 async def _generate_single_test(
     structured_llm,
-    rule: ValidatedRule,
+    workflow,
+    workflow_rules,
     code_context: list[str],
     summary_context: list[str],
 ) -> tuple:
@@ -499,52 +797,100 @@ async def _generate_single_test(
         code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
         summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"
 
+
+        workflow_rules_text = ""
+
+        for rule in workflow_rules:
+            workflow_rules_text += f"""
+            ----------------------------------------
+
+            Rule ID:
+            {rule.id}
+
+            Business Rule:
+            {rule.rule}
+
+            Validation Explanation:
+            {rule.explanation}
+
+            Source Directory:
+            {rule.source_directory}
+
+            Source Files:
+            {", ".join(rule.source_file_paths)}
+
+            """
+
+
         system_message = (
             "You are a Senior Software Architect and expert Automated Test Engineer. "
-            "Your sole objective is to output a syntactically flawless, concrete integration test method and its corresponding imports"
-            "based strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
+            "Your objective is to generate a syntactically flawless end-to-end integration "
+            "test for a complete software workflow. "
+            "The workflow may span multiple files, services, and components. "
+            "Generate tests that verify the interaction between these components."
         )
 
         prompt = f"""
-            #### BUSINESS RULE TO TEST:
-            - ID: {rule.id}
-            - RULE STATEMENT: {rule.rule}
-            - TARGET DIRECTORY: {rule.source_directory}
-            - EXPLANATION FOR VALIDATION: {rule.explanation}
+        ### WORKFLOW TO TEST
 
-            #### RETRIEVED SOURCE CODE CONTEXT:
-            {code_text}
+        Workflow Name:
+        {workflow.workflow_name}
 
-            #### RETRIEVED FILE SUMMARY CONTEXT:
-            {summary_text}
+        Workflow Description:
+        {workflow.workflow_description}
 
-### [REQUIRED TASK]
----
-1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
-2. Generate exactly one realistic, structurally sound, executable integration test method.
-3. Test the complete workflow rather than a single method.
-4. The test should verify that multiple application components work together correctly.
-5. Use the application's real dependency injection where possible.
-6. Generate the full import code statements required for the integration test method to function. 
-7. Match the exact programming language, naming conventions, and recommended testing framework for that language (Example: Xunit for C#).
 
-### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
----
-- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
-- **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `integration_test` field; `integration_test` must contain only the method block.
-- **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
-- **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
-- **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
-- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
+        ### BUSINESS RULES IN THIS WORKFLOW
 
-            *Note: If context is scarce, construct the most precise, narrow integration test possible based purely on the available evidence without making external assumptions or inventing anything.*
+        {workflow_rules_text}
+
+
+        ### RETRIEVED SOURCE CODE CONTEXT
+
+        {code_text}
+
+
+        ### RETRIEVED FILE SUMMARY CONTEXT
+
+        {summary_text}
+
+
+
+        ### REQUIRED TASK
+
+        1. Analyze the provided source code and file summaries.
+
+        2. Determine how this workflow is implemented across the application.
+
+        3. Generate exactly ONE executable integration test.
+
+        4. The test must exercise the complete workflow from start to finish.
+
+        5. The test should verify interaction between multiple components where possible.
+
+        6. Use the application's real dependency injection and service architecture.
+
+        7. Generate all required imports.
+
+        8. Match the target programming language and testing framework.
+
+
+
+        ### STRICT CONSTRAINTS
+
+        - Do not invent classes, services, repositories, APIs, or methods.
+        - Only use components found in the provided context.
+        - Do not create separate tests for each business rule.
+        - The output must represent one end-to-end workflow test.
+        - The integration_test field must contain only the test method.
+        - Imports must be returned separately.
         """
 
         messages = [("system", system_message), ("user", prompt)]
         output = await structured_llm.ainvoke(messages)
-        return rule, output, None
+        return workflow, output, None
     except Exception as e:
-        return rule, None, e
+        return workflow, None, e
 
 if __name__ == "__main__":
     """

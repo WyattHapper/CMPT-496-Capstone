@@ -26,14 +26,27 @@ class ValidatedRule(BaseModel):
     source_file_paths: list[str] = Field(default_factory=list, description="File paths that were retrieved as evidence for this rule.")
     explanation: Explanation = Field(..., description="Evidence and reasoning supporting the rule's validity.")
 
+class WorkflowGroup(BaseModel):
+    """
+    @brief Represents a single workflow's group of related business rules.
+    """
+    workflow_name: str = Field(...,description="Name of the workflow to be tested")
+    workflow_description: str = Field(...,description="description of the workflow to be tested")
+    rules: list[ValidatedRule] = Field(..., description="List of rules pertinent to the workflow")
+
+class WorkflowGroups(BaseModel):
+    """
+    @brief Represents multiple workflow groups.
+    """
+    workflows: list[WorkflowGroup]
+
 class IntegrationTest(BaseModel):
     """
-    @brief Represents integration tests generated that correspond to a validated business rule
+    @brief Represents a generated integration test for a complete business workflow.
     """
     model_config = ConfigDict(extra="forbid")
-    id: int = Field(..., description="Stable unique identifier matching the ValidatedRule ID.")
-    rule: str = Field(..., description="The business rule statement that this integration test corresponds to.")
-    imports: list[str] = Field(default_factory=list, description="List of import statements required for the integration test (one per list item), in the correct syntax for the target language.")
-    source_directory: str = Field(..., description="The directory this test pertains to.")
-    source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
-    integration_test: str = Field(..., description = "Corresponding Integration Test generated for a validated business rule")
+    workflow_name: str = Field(...,description="Name of the workflow this integration test validates.")
+    workflow_description: str = Field(...,description="Description of the workflow being tested.")
+    rule_ids: list[int] = Field(default_factory=list,description="Business rule IDs covered by this workflow test.")
+    imports: list[str] = Field(default_factory=list,description="Required import statements for the generated integration test.")
+    integration_test: str = Field(...,description="Executable integration test method for the workflow.")
