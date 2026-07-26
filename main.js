@@ -23,7 +23,7 @@ function hasAPIKey() {
 
     // If exe exists, .env should be next to it
     // If not, .env should be next to main.py
-    const envDir = fs.existsSync(exePath) ? backendDir : path.join(__dirname, "releases", "main");
+    const envDir = fs.existsSync(exePath) ? backendDir : __dirname;
     const envPath = path.join(envDir, ".env");
 
     if (!fs.existsSync(envPath))

@@ -1241,23 +1241,20 @@ document.getElementById('apiBackBtn')
     });
 
 document.getElementById('submitApiKeyBtn')
-    .addEventListener('click', () => {
-
-        
+    .addEventListener('click', async () => {
 
         showPage('homePage');
 
         document.getElementById('apiBtn').classList.add('unusable-btn');
         document.getElementById('analysisBtn').classList.remove('unusable-btn');
 
-        const apiKey =
-            document.getElementById('apiKeyInput').value;
+        const apiKey = document.getElementById('apiKeyInput').value;
 
-        runBackendCommand(
-        "set_api_key",
-        {
-            api_key: apiKey
-        });
+        const response = await runBackendCommand("set_api_key", { api_key: apiKey });
+
+        if (response?.success) {
+            hasAPI = true;
+        }
 
     });
 
@@ -1291,7 +1288,7 @@ document.getElementById('codebaseBackBtn')
 
         
 
-        showPage('analysisPage');
+        showPage('homePage');
     });
 
 document.getElementById('faqAndSupportBackBtn')
@@ -1348,16 +1345,6 @@ document.getElementById('submitPathBtn')
         document.getElementById(
             'codebasePath'
         ).value;
-
-    if (selectedCodebasePath != ""){
-
-        runBackendCommand(
-            "set_codebase",
-            {
-                path:selectedCodebasePath
-            }
-        );
-    }
 
 
 });
@@ -1502,6 +1489,7 @@ window.electronAPI.onBackendResponse((response) => {
         if (activeCommand) {
 
             hideLoading();
+            showPage('homePage');
             activeCommand = null;
 
         }
