@@ -493,7 +493,7 @@ class Commands:
                         )
 
 
-            ITAgent().run(
+            result = ITAgent().run(
                 input_rules,
                 codebase_name,
                 str(codebase_path)
@@ -502,7 +502,10 @@ class Commands:
 
             return {
                 "message": "Integration tests generated successfully",
-                "rules_processed": len(input_rules)
+                "rules_processed": len(input_rules),
+                "workflows_generated": len(
+                    result.get("integration_tests", [])
+                )
             }
 
 
@@ -745,6 +748,11 @@ class Commands:
 
             pipeline_progress("Generating unit tests...", 85)
             steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), individualStep=False)))
+
+            pipeline_progress("Generating integration tests...", 90)
+            steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],individualStep=False)))
+
+
 
             pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))
