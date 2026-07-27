@@ -1,21 +1,28 @@
-# CMPT-496-Capstone
+# Checkpoint
 
 ## Purpose
-This repository contains a tool which can be used to perform analysis of large codebases. The tool creates as output:
+This repository contains a tool which can be used to perform analysis and test generation for large codebases. The tool creates as output:
 - Summaries of each file
 - Code structure information for each file, including PlantUML
 - Summaries of the contents of each directory
 - A summary of the entire repository
 - A list of business rules extracted from the codebase
+- UML reports for each given file
+- Unit tests for the codebase
+- A test report for all generated unit tests
 
-This is all completed using LangGraph, with an LLM acting as the generator of outputs. There is included a command line tool for running the project, in main.py.
+This is all completed using LangGraph, with an LLM acting as the generator of outputs.
+
+## Installation
+- If you are a user then navigate to the releases tab of this repository and follow the instructions under the latest release
+- If you are a dev then continue reading to setup the dev environment on your device
 
 ## Notes
-- This tool is currently able to parse codebases written in C# or Javascript for the vector store component. Other languages are not supported.
-- The system defaults to using Gemini 3 Flash, given a valid API key in a .env file. Your API key should be titled "GOOGLE_API_KEY" in your .env file
+- This tool is currently able to parse codebases written in C# or Javascript for the vector store component. For the unit test component only C# is supported. Other languages are not supported
+- The system defaults to using Gemini 3 Flash, given a valid API key in a .env file. This file is generated automatically
 - The system is mostly set up to support the use of other models. Additional steps required: Either the agents should be instantiated and run manually, by passing in the desired model, or main.py should be modified slightly to do so
-- When running the tool, a filepath to the target codebase is needed. Use relative paths
-- It is recommended to store the target codebase in a directory in the root of the project called "targetCodebases", as this directory is already included in the .gitignore
+- When running the tool, a filepath to the target codebase is needed. Use absolute paths
+- It is recommended to store the target codebase in a directory in the root of the project called "targetCodebases", as this directory is already included in the .gitignore. The target codebase can be located anywhere though
 
 ## Requirements
 
@@ -24,6 +31,8 @@ This is all completed using LangGraph, with an LLM acting as the generator of ou
 **DotNet 10+** is required for this project.
 
 Download Python: [https://www.python.org/downloads/](https://www.python.org/downloads/)
+Downlaod Java: 
+Download Dotnet: 
 
 ## Setup Instructions
 
@@ -91,4 +100,13 @@ Notes:
 
 Package backend using main.spec found in releases. Copy and paste any needed programs in before going to the next step. Stuff like plantuml.jar
 
+Use this command to package the backend assuming the project is located directly in your c drive. Otherwise use the correct path to your project
+```powershell
+pyinstaller --clean --distpath "C:\CMPT-496-Capstone\releases" --workpath "C:\CMPT-496-Capstone\build" "releases\main.spec"
+```
+
 ## Packaging the electron application
+
+```powershell
+npm run dist
+```
