@@ -929,6 +929,19 @@ document.getElementById("viewDisplayBusinessRulesBtn").addEventListener("click",
 
 });
 
+document.getElementById("viewUnitTestsBtn")
+    .addEventListener("click", () => {
+
+        showButtons("viewSummariesBtns");
+
+        const codebaseName = selectedCodebasePath.split("/").pop();
+
+        runPreviewCommand("files", {
+            path: `agent/UT_agent_output/${codebaseName}`
+        });
+
+    });
+
 //Hardcoded to see if outputs work
 document.getElementById("validatedBusinessRulesBtn").addEventListener("click", () => {
 
