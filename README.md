@@ -89,4 +89,6 @@ Notes:
 
 ## Packaging the backend using Pyinstaller
 
+Package backend using main.spec found in releases. Copy and paste any needed programs in before going to the next step. Stuff like plantuml.jar
+
 ## Packaging the electron application
