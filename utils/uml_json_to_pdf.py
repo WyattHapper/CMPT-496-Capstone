@@ -758,7 +758,7 @@ def main() -> int:
 
         for idx, type_info in enumerate(data.get("types") or []):
             image_paths[f"type_{idx}"] = render_plantuml(
-                type_info.get("plantuml", ""),
+                type_info.get("plantuml", "").replace("\\n", "\n"),
                 f"type_{idx}_{type_info.get('name', 'type')}",
                 temp_dir,
                 args,
