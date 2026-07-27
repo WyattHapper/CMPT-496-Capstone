@@ -10,6 +10,10 @@ This repository contains a tool which can be used to perform analysis of large c
 
 This is all completed using LangGraph, with an LLM acting as the generator of outputs. There is included a command line tool for running the project, in main.py.
 
+## Installation
+If you are a user then navigate to the releases tab of this repository and follow the instructions under the latest release
+If you are a dev then continue reading to setup the dev environment on your device
+
 ## Notes
 - This tool is currently able to parse codebases written in C# or Javascript for the vector store component. Other languages are not supported.
 - The system defaults to using Gemini 3 Flash, given a valid API key in a .env file. Your API key should be titled "GOOGLE_API_KEY" in your .env file
