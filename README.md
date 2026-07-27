@@ -20,29 +20,43 @@ This is all completed using LangGraph, with an LLM acting as the generator of ou
 ## Requirements
 
 **Python 3.13+** is required for this project.
+**Java 11+** is required for this project.
+**DotNet 10+** is required for this project.
 
 Download Python: [https://www.python.org/downloads/](https://www.python.org/downloads/)
 
 ## Setup Instructions
 
-1. **Create a virtual environment:**
+1. **Clone the repository**
+
+2. **Navigate to the directory containing the project folder:**
+   ```powershell
+   cd path/to/project
+   ```
+
+3. **Create a virtual environment:**
    ```powershell
    python -m venv .venv
    ```
 
-2. **Activate the virtual environment:**
+4. **Activate the virtual environment:**
    ```powershell
    .\.venv\Scripts\Activate.ps1
    ```
 
-3. **Install dependencies:**
+5. **Install Python dependencies:**
    ```powershell
    pip install -r requirements.txt
    ```
 
-4. **Run the program:**
+6. **Install Node.js dependencies:**
    ```powershell
-   python main.py
+   npm install
+   ```
+
+7. **Run the program:**
+   ```powershell
+   npm.cmd start
    ```
 
 ## Deactivate Virtual Environment
@@ -72,3 +86,7 @@ Flags:
 
 Notes:
 - Run the command from the project root so the default input path resolves correctly.
+
+## Packaging the backend using Pyinstaller
+
+## Packaging the electron application
