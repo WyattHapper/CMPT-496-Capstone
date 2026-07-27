@@ -325,7 +325,25 @@ function renderViewFileButtons(files)
 
     container.classList.remove("hidden");
 
-    files.forEach(file => {
+    // Filter out PDF files and business_rules folder
+    const filteredFiles = files.filter(file => {
+        const isPdf = file.name.toLowerCase().endsWith('.pdf');
+        const isBusinessRulesFolder = file.isDirectory && file.name === 'business_rules';
+        return !isPdf && !isBusinessRulesFolder;
+    });
+
+    // If there's only one directory, automatically navigate into it
+    if (filteredFiles.length === 1 && filteredFiles[0].isDirectory) {
+        runPreviewCommand(
+            "files",
+            {
+                path: filteredFiles[0].path
+            }
+        );
+        return;
+    }
+
+    filteredFiles.forEach(file => {
 
         const button =
             document.createElement("button");
