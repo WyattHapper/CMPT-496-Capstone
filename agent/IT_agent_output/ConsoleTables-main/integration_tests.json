@@ -1,0 +1,57 @@
+[
+  {
+    "workflow_name": "Table Initialization and Data Ingestion",
+    "workflow_description": "Handles the creation of table structures and the ingestion of data from multiple formats including POCOs, dictionaries, and arrays while ensuring column-to-row integrity.",
+    "rule_ids": [
+      1,
+      3,
+      9,
+      11
+    ],
+    "imports": [
+      "System",
+      "System.Collections.Generic",
+      "System.Data",
+      "System.Linq",
+      "Xunit",
+      "ConsoleTables"
+    ],
+    "integration_test": "[Fact]\\npublic void TableInitializationAndDataIngestion_IntegrationTest()\\n{\\n    // 1. Rule 3: Verify rows cannot be added before columns are defined\\n    var emptyTable = new ConsoleTable();\\n    var emptyEx = Assert.Throws<Exception>(() => emptyTable.AddRow(1, 2));\\n    Assert.Equal(\\\"Please set the columns first\\\", emptyEx.Message);\\n\\n    // 2. Rule 1 & 3: Manual initialization and Column-to-Row count integrity\\n    var manualTable = new ConsoleTable(\\\"Col1\\\", \\\"Col2\\\");\\n    manualTable.AddRow(\\\"Val1\\\", \\\"Val2\\\");\\n    \\n    var countEx = Assert.Throws<Exception>(() => manualTable.AddRow(\\\"OnlyOneVal\\\"));\\n    Assert.Contains(\\\"The number columns in the row (2) does not match the values (1)\\\", countEx.Message);\\n\\n    // 3. Rule 1 & 11: Render from POCO (Plain Old CLR Object)\\n    var users = new List<User>\\n    {\\n        new() { Name = \\\"Alexandre\\\", Age = 36 }\\n    };\\n    var pocoTable = ConsoleTable.From(users);\\n    Assert.Equal(2, pocoTable.Columns.Count);\\n    Assert.Contains(\\\"Name\\\", pocoTable.Columns);\\n    Assert.Contains(\\\"Age\\\", pocoTable.Columns);\\n\\n    // 4. Rule 9 & 11: Render from Nested Dictionary (Keys as row headers)\\n    var dictData = new Dictionary<string, Dictionary<string, object>>\\n    {\\n        {\\n            \\\"Row1\\\", new Dictionary<string, object> \\n            { \\n                { \\\"ColA\\\", 100 }, \\n                { \\\"ColB\\\", 200 } \\n            } \\n        }\\n    };\\n    var dictTable = ConsoleTable.FromDictionary(dictData);\\n    // FromDictionary adds an empty string for the row header column at index 0\\n    Assert.Equal(\\\"\\\", dictTable.Columns[0]);\\n    Assert.Equal(\\\"Row1\\\", dictTable.Rows[0][0]);\\n\\n    // 5. Rule 11: Render from Object Array (Jagged Array)\\n    object[][] arrayData = new object[][]\\n    {\\n        new object[] { \\\"Header1\\\", \\\"Header2\\\" },\\n        new object[] { \\\"Data1\\\", \\\"Data2\\\" }\\n    };\\n    var arrayTable = ConsoleTable.From(arrayData);\\n    Assert.Equal(2, arrayTable.Columns.Count);\\n    Assert.Single(arrayTable.Rows);\\n\\n    // 6. Rule 11: Render from DataTable\\n    DataTable dt = new DataTable();\\n    dt.Columns.Add(\\\"A\\\");\\n    dt.Columns.Add(\\\"B\\\");\\n    dt.Rows.Add(\\\"1\\\", \\\"2\\\");\\n    var dtTable = ConsoleTable.From(dt);\\n    Assert.Equal(2, dtTable.Columns.Count);\\n    Assert.Equal(\\\"1\\\", dtTable.Rows[0][0]);\\n\\n    // Final validation of output formatting across ingested data\\n    string output = dtTable.ToMarkDownString();\\n    Assert.NotEmpty(output);\\n    Assert.Contains(\\\"| A | B |\\\", output);\\n}"
+  },
+  {
+    "workflow_name": "Table Visual Styling and Configuration",
+    "workflow_description": "Defines the visual presentation and formatting capabilities of the table, including predefined themes, Unicode-aware alignment, and data-specific positioning.",
+    "rule_ids": [
+      2,
+      5,
+      7,
+      10
+    ],
+    "imports": [
+      "System",
+      "System.Collections.Generic",
+      "System.Linq",
+      "System.Text",
+      "Xunit",
+      "ConsoleTables"
+    ],
+    "integration_test": "[Fact]\npublic void VerifyTableVisualStylingAndConfigurationWorkflow()\n{\n    // 1. Setup data representing a mix of types and Unicode characters\n    var users = new List<User>\n    {\n        new User { Name = \"Alexandre \u54c8\u54c8\", Age = 36 },\n        new User { Name = \"Ren\u00e9\", Age = 59 }\n    };\n\n    // 2. Initialize the table from the collection and configure visual properties\n    // Rule 2 & 7: Column alignment configuration for numeric data types\n    var table = ConsoleTable\n        .From(users)\n        .Configure(o => \n        {\n            o.NumberAlignment = Alignment.Right;\n            o.EnableCount = true;\n        });\n\n    // 3. Verify Default Boxed Output (Rule 2, 5, 10)\n    // Testing Unicode-aware width calculation and right-aligned numeric '36' and '59'\n    var defaultOutput = table.ToString();\n    Assert.Contains(\"Alexandre \u54c8\u54c8\", defaultOutput);\n    Assert.Contains(\"|  36 |\", defaultOutput); // Note the leading space for right alignment\n    Assert.Contains(\"|  59 |\", defaultOutput);\n    Assert.Contains(\"Count: 2\", defaultOutput);\n\n    // 4. Verify Markdown Style (Rule 10)\n    var markdownOutput = table.ToMarkDownString();\n    Assert.StartsWith(\"| Name\", markdownOutput.Trim());\n    Assert.Contains(\"|-----------\", markdownOutput);\n    Assert.Contains(\"| Alexandre \u54c8\u54c8 |  36 |\", markdownOutput);\n\n    // 5. Verify Minimal Style (Rule 2, 10)\n    var minimalOutput = table.ToMinimalString();\n    Assert.DoesNotContain(\"|\", minimalOutput);\n    Assert.Contains(\"Alexandre \u54c8\u54c8\", minimalOutput);\n    Assert.Contains(\"36\", minimalOutput);\n\n    // 6. Verify Alternative Style (Rule 2)\n    var alternativeOutput = table.ToStringAlternative();\n    Assert.Contains(\"+\", alternativeOutput);\n    Assert.Contains(\"| Name\", alternativeOutput);\n\n    // 7. Verify interaction with Manual Row Addition and Unicode\n    var manualTable = new ConsoleTable(\"Item\", \"Value\")\n        .AddRow(\"Total \u7e3d\u984d\", 1000)\n        .Configure(o => o.NumberAlignment = Alignment.Right);\n\n    var manualOutput = manualTable.ToString();\n    \n    // Check if Unicode string and right-aligned number co-exist correctly in formatted string\n    Assert.Contains(\"Total \u7e3d\u984d\", manualOutput);\n    Assert.Contains(\"| 1000 |\", manualOutput);\n}"
+  },
+  {
+    "workflow_name": "Table Finalization and Output Execution",
+    "workflow_description": "Manages the final rendering process, including cell content wrapping, the inclusion of optional summary footers, and directing the formatted string to the output stream.",
+    "rule_ids": [
+      4,
+      6,
+      8,
+      12
+    ],
+    "imports": [
+      "System.IO",
+      "Xunit",
+      "ConsoleTables",
+      "System.Linq"
+    ],
+    "integration_test": "[Fact]\npublic void TableFinalizationAndOutputExecution_ShouldWrapContentAndHonorOptions()\n{\n    using (var testWriter = new StringWriter())\n    {\n        var options = new ConsoleTableOptions\n        {\n            Columns = new[] { \"Data\" },\n            EnableCount = true,\n            OutputTo = testWriter\n        };\n        var table = new ConsoleTable(options);\n        table.MaxWidth = 10;\n        table.AddRow(\"Wrapping Logic\");\n        table.Write();\n        string output = testWriter.ToString();\n        Assert.Contains(\"Wrapping\", output);\n        Assert.Contains(\"Logic\", output);\n        Assert.Contains(\"Count: 2\", output);\n        Assert.False(string.IsNullOrWhiteSpace(output));\n    }\n}"
+  }
+]

@@ -217,7 +217,7 @@ class ITAgent:
                 - Validate Email
                 - Create User
                 - Save User
-                - Send Welcome Email
+                - Send Welcome
 
             • Order Checkout
                 - Validate Shopping Cart
@@ -241,7 +241,40 @@ class ITAgent:
             which rules are likely part of the same workflow.
             - Prefer grouping rules that span multiple files or components.
 
-            Return only structured output.
+            Your response will be parsed into the following schema:
+
+            WorkflowGroups
+            └── workflows[]
+                ├── workflow_name
+                ├── workflow_description
+                └── rule_ids
+
+            Do not output markdown, explanations, or JSON examples.
+            Only populate the schema fields.
+
+            For each workflow:
+
+            - workflow_name:
+            A concise business workflow name.
+
+            - workflow_description:
+            One or two sentences describing the overall purpose of the workflow.
+
+            - rule_ids:
+            A list of the integer IDs of the validated business rules that belong to this workflow.
+
+            Important constraints:
+
+            - Every validated business rule must appear in exactly one workflow.
+            - Do not omit any rule IDs.
+            - Do not duplicate rule IDs across workflows.
+            - Do not invent new rule IDs.
+            - Do not return business rule objects.
+            - Return only the integer IDs corresponding to the validated rules provided below.
+            - Use the exact field names:
+                • workflow_name
+                • workflow_description
+                • rule_ids
 
             BUSINESS RULES
 
@@ -253,7 +286,25 @@ class ITAgent:
             ("user", prompt),
         ]
 
+        
+        # DEBUG ------
+        response = self.llm.invoke(messages)
+
+        progress("Raw response received.")
+
+        logger.info(response.content)
+        # DEBUG ------
+
+
+
+        progress("LLM returned workflow grouping.")
         output = structured_llm.invoke(messages)
+        progress("Structured output parsed successfully.")
+
+        progress(f"Output type: {type(output)}")
+        logger.info(type(output))
+
+        logger.info(output)
 
         # Build lookup table from rule ID -> ValidatedRule
         rule_lookup = {
@@ -261,15 +312,22 @@ class ITAgent:
             for rule in validated_rules
         }
 
+        progress("Structured output parsed.", 26)
+
         workflow_groups = []
 
-        for workflow in output.workflows:
+        progress(f"Found {len(output.workflows)} workflows.", 27)
+
+        for i, workflow in enumerate(output.workflows):
+            progress(f"Processing workflow {i+1}/{len(output.workflows)}", 27)
 
             grouped_rules = [
                 rule
                 for rule in validated_rules
                 if rule.id in workflow.rule_ids
             ]
+
+            progress(f"Matched {len(grouped_rules)} rules.", 28)
 
             workflow_groups.append(
                 WorkflowGroup(
@@ -278,6 +336,8 @@ class ITAgent:
                     rules=grouped_rules
                 )
             )
+
+        progress("Finished workflow grouping.", 29)
 
         progress(
             f"Grouped {len(validated_rules)} business rules into "
@@ -581,7 +641,7 @@ class ITAgent:
                 logger.error(f"Integration test generation error for workflow {workflow.workflow_name}: {err}")
                 continue
             test_imports.update(output.imports)
-            integration_tests.append(IntegrationTest(workflow_name=workflow.workflow_name,workflow_description=workflow.workflow_description,rule_ids=workflow.rule_ids,imports=output.imports,integration_test=output.integration_test))
+            integration_tests.append(IntegrationTest(workflow_name=workflow.workflow_name,workflow_description=workflow.workflow_description,rule_ids=[rule.id for rule in workflow.rules],imports=output.imports,integration_test=output.integration_test))
         progress(
             f"Generated integration tests for {len(integration_tests)} workflows.",
             85
@@ -663,7 +723,12 @@ class ITAgent:
         if not Path(test_subdir).is_dir():
             try:
                 progress("Generating test framework", 98)
-                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
+                subprocess.run(
+                    ["dotnet", "new", "xunit", "-o", f"{test_subdir}"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
                 with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
                     lines = file.readlines()
                     lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
@@ -690,7 +755,20 @@ class ITAgent:
         codebase_dir = os.path.join(base_output_dir, codebase_name)
         try:
             progress("Running generated tests", 99)
-            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_dir}"])
+            subprocess.run(
+                [
+                    "dotnet",
+                    "test",
+                    f"{test_subdir}",
+                    "--logger",
+                    "html",
+                    "--results-directory",
+                    f"{codebase_dir}"
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
             logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
             progress(f"Successfully ran tests and report generated to {codebase_dir}", 100, True)
         except Exception as e:

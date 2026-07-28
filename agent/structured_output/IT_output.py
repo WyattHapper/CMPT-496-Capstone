@@ -5,6 +5,7 @@
 """
 
 from pydantic import BaseModel, Field, ConfigDict
+from agent.UT_agent import ValidatedRule
 
 class Explanation(BaseModel):
     """
@@ -14,18 +15,10 @@ class Explanation(BaseModel):
     evidence: dict[str, list[str]] = Field(..., description="Dictionary mapping filenames to lists of code snippets that support the tests.")
     reasoning: str = Field(..., description="Explanation of how the retrieved code snippets imply or support the tests.")
 
-
-class ValidatedRule(BaseModel):
-    """
-    @brief Represents a business rule that has been validated with supporting evidence.
-    """
-    model_config = ConfigDict(extra="forbid")
-    id: int = Field(..., description="Stable unique identifier matching the validated ID.")
-    rule: str = Field(..., description="The business rule statement.")
-    source_directory: str = Field(..., description="The directory this rule pertains to.")
-    source_file_paths: list[str] = Field(default_factory=list, description="File paths that were retrieved as evidence for this rule.")
-    explanation: Explanation = Field(..., description="Evidence and reasoning supporting the rule's validity.")
-
+class WorkflowGroupOutput(BaseModel):
+    workflow_name: str = Field(...,description="Name of the workflow to be tested")
+    workflow_description: str = Field(...,description="description of the workflow to be tested")
+    rule_ids: list[int] = Field(..., description="List of rules ids pertinent to the workflow")
 class WorkflowGroup(BaseModel):
     """
     @brief Represents a single workflow's group of related business rules.
@@ -38,7 +31,7 @@ class WorkflowGroups(BaseModel):
     """
     @brief Represents multiple workflow groups.
     """
-    workflows: list[WorkflowGroup]
+    workflows: list[WorkflowGroupOutput]
 
 class IntegrationTest(BaseModel):
     """

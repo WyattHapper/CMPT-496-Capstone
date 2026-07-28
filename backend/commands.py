@@ -752,8 +752,6 @@ class Commands:
             pipeline_progress("Generating integration tests...", 90)
             steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],individualStep=False)))
 
-
-
             pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))
 
