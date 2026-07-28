@@ -35,6 +35,7 @@ imports:
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
  &#8226;   <a href="#backend.dispatcher">backend.dispatcher</a>
  &#8226;   <a href="#backend.preview_collections">backend.preview_collections</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#chromadb.api">chromadb.api</a>
  &#8226;   <a href="#chromadb.api.async_api">chromadb.api.async_api</a>
@@ -16151,6 +16152,7 @@ imported by:
 <span class="moduletype">Package</span>  <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -16171,6 +16173,7 @@ imports:
  &#8226;   <a href="#agent.structured_output.BR_output">agent.structured_output.BR_output</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
  &#8226;   <a href="#asyncio">asyncio</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#chromadb.utils.embedding_functions">chromadb.utils.embedding_functions</a>
  &#8226;   <a href="#collections">collections</a>
@@ -16194,14 +16197,15 @@ imported by:
 </div>
 
 <div class="node">
-  <a name="agent.UT_agent"></a>
-  <a target="code" href="///C:/CMPT-496-Capstone/agent/UT_agent.py" type="text/plain"><tt>agent.UT_agent</tt></a>
+  <a name="agent.UTV_agent"></a>
+  <a target="code" href="///C:/CMPT-496-Capstone/agent/UTV_agent.py" type="text/plain"><tt>agent.UTV_agent</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#agent">agent</a>
- &#8226;   <a href="#agent.states.UT_agent_state">agent.states.UT_agent_state</a>
- &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
+ &#8226;   <a href="#agent.states.UTV_agent_state">agent.states.UTV_agent_state</a>
+ &#8226;   <a href="#agent.structured_output.UTV_output">agent.structured_output.UTV_output</a>
  &#8226;   <a href="#asyncio">asyncio</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#chromadb.utils.embedding_functions">chromadb.utils.embedding_functions</a>
  &#8226;   <a href="#collections">collections</a>
@@ -16212,6 +16216,39 @@ imports:
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#os">os</a>
  &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#subprocess">subprocess</a>
+ &#8226;   <a href="#sys">sys</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#backend.commands">backend.commands</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="agent.UT_agent"></a>
+  <a target="code" href="///C:/CMPT-496-Capstone/agent/UT_agent.py" type="text/plain"><tt>agent.UT_agent</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#agent">agent</a>
+ &#8226;   <a href="#agent.states.UT_agent_state">agent.states.UT_agent_state</a>
+ &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
+ &#8226;   <a href="#asyncio">asyncio</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
+ &#8226;   <a href="#chromadb">chromadb</a>
+ &#8226;   <a href="#chromadb.utils.embedding_functions">chromadb.utils.embedding_functions</a>
+ &#8226;   <a href="#collections">collections</a>
+ &#8226;   <a href="#dotenv">dotenv</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#langchain_google_genai">langchain_google_genai</a>
+ &#8226;   <a href="#langgraph.graph">langgraph.graph</a>
+ &#8226;   <a href="#logging">logging</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+ &#8226;   <a href="#subprocess">subprocess</a>
  &#8226;   <a href="#sys">sys</a>
 
   </div>
@@ -16232,6 +16269,7 @@ imports:
     <a href="#agent">agent</a>
  &#8226;   <a href="#agent.states.directory_agent_state">agent.states.directory_agent_state</a>
  &#8226;   <a href="#agent.structured_output.directory_output">agent.structured_output.directory_output</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#chromadb.utils.embedding_functions">chromadb.utils.embedding_functions</a>
  &#8226;   <a href="#collections">collections</a>
@@ -16264,6 +16302,7 @@ imports:
  &#8226;   <a href="#agent.states.file_summary_agent_state">agent.states.file_summary_agent_state</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
  &#8226;   <a href="#asyncio">asyncio</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#collections">collections</a>
  &#8226;   <a href="#dotenv">dotenv</a>
  &#8226;   <a href="#json">json</a>
@@ -16296,6 +16335,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.states.BR_agent_state">agent.states.BR_agent_state</a>
+ &#8226;   <a href="#agent.states.UTV_agent_state">agent.states.UTV_agent_state</a>
  &#8226;   <a href="#agent.states.UT_agent_state">agent.states.UT_agent_state</a>
  &#8226;   <a href="#agent.states.directory_agent_state">agent.states.directory_agent_state</a>
  &#8226;   <a href="#agent.states.file_summary_agent_state">agent.states.file_summary_agent_state</a>
@@ -16321,6 +16361,25 @@ imports:
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
  &#8226;   <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="agent.states.UTV_agent_state"></a>
+  <a target="code" href="///C:/CMPT-496-Capstone/agent/states/UTV_agent_state.py" type="text/plain"><tt>agent.states.UTV_agent_state</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#agent.states">agent.states</a>
+ &#8226;   <a href="#agent.structured_output.UTV_output">agent.structured_output.UTV_output</a>
+ &#8226;   <a href="#operator">operator</a>
+ &#8226;   <a href="#typing">typing</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#agent.UTV_agent">agent.UTV_agent</a>
 
   </div>
 
@@ -16396,6 +16455,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.structured_output.BR_output">agent.structured_output.BR_output</a>
+ &#8226;   <a href="#agent.structured_output.UTV_output">agent.structured_output.UTV_output</a>
  &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
  &#8226;   <a href="#agent.structured_output.directory_output">agent.structured_output.directory_output</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
@@ -16426,6 +16486,25 @@ imported by:
 </div>
 
 <div class="node">
+  <a name="agent.structured_output.UTV_output"></a>
+  <a target="code" href="///C:/CMPT-496-Capstone/agent/structured_output/UTV_output.py" type="text/plain"><tt>agent.structured_output.UTV_output</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#agent.structured_output">agent.structured_output</a>
+ &#8226;   <a href="#pydantic">pydantic</a>
+ &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#agent.UTV_agent">agent.UTV_agent</a>
+ &#8226;   <a href="#agent.states.UTV_agent_state">agent.states.UTV_agent_state</a>
+
+  </div>
+
+</div>
+
+<div class="node">
   <a name="agent.structured_output.UT_output"></a>
   <a target="code" href="///C:/CMPT-496-Capstone/agent/structured_output/UT_output.py" type="text/plain"><tt>agent.structured_output.UT_output</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
@@ -16433,7 +16512,6 @@ imports:
     <a href="#agent.structured_output">agent.structured_output</a>
  &#8226;   <a href="#pydantic">pydantic</a>
  &#8226;   <a href="#pydantic.BaseModel">pydantic.BaseModel</a>
- &#8226;   <a href="#typing">typing</a>
 
   </div>
   <div class="import">
@@ -17981,6 +18059,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
  &#8226;   <a href="#anyio._backends._asyncio">anyio._backends._asyncio</a>
@@ -19572,6 +19651,7 @@ imported by:
     <a href="#backend.commands">backend.commands</a>
  &#8226;   <a href="#backend.dispatcher">backend.dispatcher</a>
  &#8226;   <a href="#backend.preview_collections">backend.preview_collections</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
 
   </div>
 
@@ -19583,12 +19663,14 @@ imported by:
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
  &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
  &#8226;   <a href="#backend">backend</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#logging">logging</a>
@@ -19641,6 +19723,32 @@ imports:
   <div class="import">
 imported by:
     <a href="#main.py">main.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="backend.progress_logging"></a>
+  <a target="code" href="///C:/CMPT-496-Capstone/backend/progress_logging.py" type="text/plain"><tt>backend.progress_logging</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#backend">backend</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#logging">logging</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
+ &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
+ &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
+ &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
+ &#8226;   <a href="#backend.commands">backend.commands</a>
+ &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#src.build_database">src.build_database</a>
+ &#8226;   <a href="#src.build_database_JSON">src.build_database_JSON</a>
 
   </div>
 
@@ -21209,6 +21317,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#backend.commands">backend.commands</a>
@@ -24401,6 +24510,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#chromadb.api.collection_configuration">chromadb.api.collection_configuration</a>
@@ -26279,6 +26389,7 @@ imported by:
  &#8226;   <a href="#_pytest.threadexception">_pytest.threadexception</a>
  &#8226;   <a href="#_pytest.unraisableexception">_pytest.unraisableexception</a>
  &#8226;   <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -32617,6 +32728,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -60195,10 +60307,12 @@ imports:
 imported by:
     <a href="#_pytest.cacheprovider">_pytest.cacheprovider</a>
  &#8226;   <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
  &#8226;   <a href="#backend.commands">backend.commands</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#charset_normalizer.models">charset_normalizer.models</a>
  &#8226;   <a href="#chromadb.api.collection_configuration">chromadb.api.collection_configuration</a>
  &#8226;   <a href="#chromadb.api.configuration">chromadb.api.configuration</a>
@@ -65919,6 +66033,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -67938,6 +68053,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -70497,6 +70613,7 @@ imported by:
  &#8226;   <a href="#PIL.TiffImagePlugin">PIL.TiffImagePlugin</a>
  &#8226;   <a href="#_pytest.logging">_pytest.logging</a>
  &#8226;   <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -70504,6 +70621,7 @@ imported by:
  &#8226;   <a href="#asyncio.futures">asyncio.futures</a>
  &#8226;   <a href="#asyncio.log">asyncio.log</a>
  &#8226;   <a href="#backend.commands">backend.commands</a>
+ &#8226;   <a href="#backend.progress_logging">backend.progress_logging</a>
  &#8226;   <a href="#backoff._common">backoff._common</a>
  &#8226;   <a href="#backoff._decorator">backoff._decorator</a>
  &#8226;   <a href="#backoff._typing">backoff._typing</a>
@@ -124356,6 +124474,7 @@ imported by:
  &#8226;   <a href="#PIL.ImageOps">PIL.ImageOps</a>
  &#8226;   <a href="#_pydatetime">_pydatetime</a>
  &#8226;   <a href="#agent.states.BR_agent_state">agent.states.BR_agent_state</a>
+ &#8226;   <a href="#agent.states.UTV_agent_state">agent.states.UTV_agent_state</a>
  &#8226;   <a href="#agent.states.UT_agent_state">agent.states.UT_agent_state</a>
  &#8226;   <a href="#agent.states.directory_agent_state">agent.states.directory_agent_state</a>
  &#8226;   <a href="#attr.validators">attr.validators</a>
@@ -125124,6 +125243,7 @@ imported by:
  &#8226;   <a href="#_sitebuiltins">_sitebuiltins</a>
  &#8226;   <a href="#_strptime">_strptime</a>
  &#8226;   <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -130879,7 +130999,6 @@ imports:
  &#8226;   <a href="#pandas.tseries.frequencies">pandas.tseries.frequencies</a>
  &#8226;   <a href="#pandas.util._decorators">pandas.util._decorators</a>
  &#8226;   <a href="#pandas.util._exceptions">pandas.util._exceptions</a>
- &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#pyarrow">pyarrow</a>
  &#8226;   <a href="#re">re</a>
  &#8226;   <a href="#textwrap">textwrap</a>
@@ -131722,7 +131841,6 @@ imports:
  &#8226;   <a href="#pandas.io.formats.printing">pandas.io.formats.printing</a>
  &#8226;   <a href="#pandas.util._decorators">pandas.util._decorators</a>
  &#8226;   <a href="#pandas.util._exceptions">pandas.util._exceptions</a>
- &#8226;   <a href="#pathlib">pathlib</a>
  &#8226;   <a href="#pyarrow">pyarrow</a>
  &#8226;   <a href="#typing">typing</a>
  &#8226;   <a href="#warnings">warnings</a>
@@ -133491,7 +133609,6 @@ imports:
  &#8226;   <a href="#pandas.core.resample">pandas.core.resample</a>
  &#8226;   <a href="#pandas.core.reshape.concat">pandas.core.reshape.concat</a>
  &#8226;   <a href="#pandas.core.sample">pandas.core.sample</a>
- &#8226;   <a href="#pandas.core.series">pandas.core.series</a>
  &#8226;   <a href="#pandas.core.shared_docs">pandas.core.shared_docs</a>
  &#8226;   <a href="#pandas.core.sorting">pandas.core.sorting</a>
  &#8226;   <a href="#pandas.core.tools.datetimes">pandas.core.tools.datetimes</a>
@@ -136132,7 +136249,6 @@ imported by:
  &#8226;   <a href="#pandas.core.api">pandas.core.api</a>
  &#8226;   <a href="#pandas.core.arrays.sparse.scipy_sparse">pandas.core.arrays.sparse.scipy_sparse</a>
  &#8226;   <a href="#pandas.core.frame">pandas.core.frame</a>
- &#8226;   <a href="#pandas.core.generic">pandas.core.generic</a>
  &#8226;   <a href="#pandas.core.groupby.generic">pandas.core.groupby.generic</a>
  &#8226;   <a href="#pandas.core.groupby.groupby">pandas.core.groupby.groupby</a>
  &#8226;   <a href="#pandas.core.groupby.grouper">pandas.core.groupby.grouper</a>
@@ -139891,6 +140007,7 @@ imported by:
  &#8226;   <a href="#_pytest.terminal">_pytest.terminal</a>
  &#8226;   <a href="#_pytest.tmpdir">_pytest.tmpdir</a>
  &#8226;   <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -140009,8 +140126,6 @@ imported by:
  &#8226;   <a href="#openai._utils._utils">openai._utils._utils</a>
  &#8226;   <a href="#openai.resources.uploads.uploads">openai.resources.uploads.uploads</a>
  &#8226;   <a href="#pandas._testing._io">pandas._testing._io</a>
- &#8226;   <a href="#pandas.core.arrays.arrow.array">pandas.core.arrays.arrow.array</a>
- &#8226;   <a href="#pandas.core.arrays.string_">pandas.core.arrays.string_</a>
  &#8226;   <a href="#pandas.io.common">pandas.io.common</a>
  &#8226;   <a href="#pandas.io.formats.style_render">pandas.io.formats.style_render</a>
  &#8226;   <a href="#pandas.io.spss">pandas.io.spss</a>
@@ -142804,6 +142919,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#agent.structured_output.BR_output">agent.structured_output.BR_output</a>
+ &#8226;   <a href="#agent.structured_output.UTV_output">agent.structured_output.UTV_output</a>
  &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
  &#8226;   <a href="#agent.structured_output.directory_output">agent.structured_output.directory_output</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
@@ -143002,6 +143118,7 @@ imported by:
 <span class="moduletype">MissingModule</span>  <div class="import">
 imported by:
     <a href="#agent.structured_output.BR_output">agent.structured_output.BR_output</a>
+ &#8226;   <a href="#agent.structured_output.UTV_output">agent.structured_output.UTV_output</a>
  &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
  &#8226;   <a href="#agent.structured_output.directory_output">agent.structured_output.directory_output</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
@@ -195132,7 +195249,8 @@ imported by:
   <a target="code" href="///C:/CMPT-496-Capstone/src/build_database.py" type="text/plain"><tt>src.build_database</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
-    <a href="#chromadb">chromadb</a>
+    <a href="#backend.progress_logging">backend.progress_logging</a>
+ &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#chromadb.utils.embedding_functions">chromadb.utils.embedding_functions</a>
  &#8226;   <a href="#logging">logging</a>
  &#8226;   <a href="#pathlib">pathlib</a>
@@ -195155,7 +195273,8 @@ imported by:
   <a target="code" href="///C:/CMPT-496-Capstone/src/build_database_JSON.py" type="text/plain"><tt>src.build_database_JSON</tt></a>
 <span class="moduletype">SourceModule</span>  <div class="import">
 imports:
-    <a href="#chromadb">chromadb</a>
+    <a href="#backend.progress_logging">backend.progress_logging</a>
+ &#8226;   <a href="#chromadb">chromadb</a>
  &#8226;   <a href="#chromadb.utils.embedding_functions">chromadb.utils.embedding_functions</a>
  &#8226;   <a href="#json">json</a>
  &#8226;   <a href="#logging">logging</a>
@@ -195632,6 +195751,8 @@ imported by:
  &#8226;   <a href="#_pytest._py.path">_pytest._py.path</a>
  &#8226;   <a href="#_pytest.legacypath">_pytest.legacypath</a>
  &#8226;   <a href="#_pytest.pytester">_pytest.pytester</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
+ &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#anyio._core._subprocesses">anyio._core._subprocesses</a>
  &#8226;   <a href="#asyncio.base_events">asyncio.base_events</a>
  &#8226;   <a href="#asyncio.base_subprocess">asyncio.base_subprocess</a>
@@ -216475,6 +216596,7 @@ imported by:
  &#8226;   <a href="#_pytest.warnings">_pytest.warnings</a>
  &#8226;   <a href="#_sitebuiltins">_sitebuiltins</a>
  &#8226;   <a href="#agent.BR_agent">agent.BR_agent</a>
+ &#8226;   <a href="#agent.UTV_agent">agent.UTV_agent</a>
  &#8226;   <a href="#agent.UT_agent">agent.UT_agent</a>
  &#8226;   <a href="#agent.directory_agent">agent.directory_agent</a>
  &#8226;   <a href="#agent.file_summary_agent">agent.file_summary_agent</a>
@@ -361044,11 +361166,11 @@ imported by:
  &#8226;   <a href="#_pytest.warning_types">_pytest.warning_types</a>
  &#8226;   <a href="#_pytest.warnings">_pytest.warnings</a>
  &#8226;   <a href="#agent.states.BR_agent_state">agent.states.BR_agent_state</a>
+ &#8226;   <a href="#agent.states.UTV_agent_state">agent.states.UTV_agent_state</a>
  &#8226;   <a href="#agent.states.UT_agent_state">agent.states.UT_agent_state</a>
  &#8226;   <a href="#agent.states.directory_agent_state">agent.states.directory_agent_state</a>
  &#8226;   <a href="#agent.states.file_summary_agent_state">agent.states.file_summary_agent_state</a>
  &#8226;   <a href="#agent.structured_output.BR_output">agent.structured_output.BR_output</a>
- &#8226;   <a href="#agent.structured_output.UT_output">agent.structured_output.UT_output</a>
  &#8226;   <a href="#agent.structured_output.directory_output">agent.structured_output.directory_output</a>
  &#8226;   <a href="#agent.structured_output.file_summary_output">agent.structured_output.file_summary_output</a>
  &#8226;   <a href="#annotated_types">annotated_types</a>
