@@ -688,12 +688,24 @@ class ITAgent:
 
                     # Write imports first
                     if getattr(test, "imports", None):
-                        try:
-                            file.write(
-                                "\n".join(test.imports) + "\n\n"
-                            )
-                        except Exception:
-                            pass
+                        for imp in test.imports:
+                            imp = imp.strip()
+
+                            # Skip invalid imports
+                            if not imp:
+                                continue
+
+                            # Add using automatically
+                            if not imp.startswith("using "):
+                                imp = f"using {imp}"
+
+                            # Add semicolon automatically
+                            if not imp.endswith(";"):
+                                imp += ";"
+
+                            file.write(imp + "\n")
+
+                        file.write("\n")
 
                     # Write test method
                     file.write(
@@ -948,7 +960,23 @@ async def _generate_single_test(
 
         6. Use the application's real dependency injection and service architecture.
 
-        7. Generate all required imports.
+        7. Generate required C# namespace imports.
+
+            The imports field must contain ONLY namespace names.
+
+            Examples:
+            - System
+            - System.Collections.Generic
+            - Xunit
+            - ConsoleTables
+
+            Rules:
+            - Do NOT include the word "using".
+            - Do NOT include semicolons.
+            - Do NOT include file paths.
+            - Do NOT include comments.
+            - Do NOT include markdown.
+            - Each entry must be a valid C# namespace.
 
         8. Match the target programming language and testing framework.
 
@@ -956,12 +984,28 @@ async def _generate_single_test(
 
         ### STRICT CONSTRAINTS
 
-        - Do not invent classes, services, repositories, APIs, or methods.
         - Only use components found in the provided context.
         - Do not create separate tests for each business rule.
         - The output must represent one end-to-end workflow test.
         - The integration_test field must contain only the test method.
         - Imports must be returned separately.
+
+        ### TYPE USAGE RULES
+
+
+
+        When creating test data:
+
+        - Prefer using existing application classes, models, DTOs, and entities found in the retrieved source context.
+        - Before instantiating any custom class, verify that the class definition exists in the provided context.
+        - Do not create fake domain objects that are not present in the source code.
+        - Do not assume properties, constructors, or methods exist.
+        - If a required type cannot be found, use the simplest valid input supported by the existing API.
+        - Framework types such as List<T>, Dictionary<TKey,TValue>, DataTable, StringWriter, etc. may be used normally.
+
+        If a required object/class does not exist in retrieved context:
+        - Create test data using primitive types already supported by the API.
+        - Never invent domain models.
         """
 
         messages = [("system", system_message), ("user", prompt)]

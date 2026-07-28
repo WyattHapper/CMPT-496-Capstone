@@ -4,7 +4,7 @@
 @details Includes models for condensed validated rules with evidence and unit tests.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 from agent.UT_agent import ValidatedRule
 
 class Explanation(BaseModel):
@@ -41,5 +41,25 @@ class IntegrationTest(BaseModel):
     workflow_name: str = Field(...,description="Name of the workflow this integration test validates.")
     workflow_description: str = Field(...,description="Description of the workflow being tested.")
     rule_ids: list[int] = Field(default_factory=list,description="Business rule IDs covered by this workflow test.")
-    imports: list[str] = Field(default_factory=list,description="Required import statements for the generated integration test.")
+    imports: list[str] = Field(default_factory=list)
+
+    @field_validator("imports")
+    @classmethod
+    def clean_imports(cls, imports):
+        cleaned = []
+
+        for imp in imports:
+            imp = imp.strip()
+
+            if imp.startswith("using "):
+                imp = imp[6:]
+
+            imp = imp.rstrip(";")
+
+            if "/" in imp or "\\" in imp:
+                continue
+
+            cleaned.append(imp)
+
+        return cleaned
     integration_test: str = Field(...,description="Executable integration test method for the workflow.")
