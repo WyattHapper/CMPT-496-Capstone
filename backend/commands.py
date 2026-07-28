@@ -48,6 +48,7 @@ from agent.directory_agent import DirectoryAgent
 from agent.file_summary_agent import FileSummaryAgent
 from agent.structured_output.file_summary_output import BusinessRule
 from agent.structured_output.UT_output import ValidatedRule
+from agent.structured_output.UTV_output import UnitTest
 
 from src.build_database import build_database
 from src.build_database_JSON import build_database as build_summary_database
@@ -349,8 +350,7 @@ class Commands:
     def validate_unit_tests(
         self,
         codebase: str,
-        selected_rules: list,
-        validated_rules_path: str = None,
+        test_path: str = None,
         individualStep = True
     ):
         """
@@ -364,58 +364,50 @@ class Commands:
         codebase_name = codebase_path.name
 
 
-        if validated_rules_path is None:
-            validated_rules_path = (
+        if test_path is None:
+            test_path = (
                 self.app_dir
                 / "agent"
-                / "BR_agent_output"
+                / "UT_agent_output"
                 / codebase_name
-                / "validated_rules.json"
+                / "unit_tests.json"
             )
 
 
-        validated_rules_path = Path(validated_rules_path)
+        test_path = Path(test_path)
 
 
         def task():
 
             progress("Validating unit tests...")
 
-            if not validated_rules_path.exists():
+            if not test_path.exists():
                 raise FileNotFoundError(
-                    f"Validated rules not found: {validated_rules_path}"
+                    f"Validated rules not found: {test_path}"
                 )
 
 
             with open(
-                validated_rules_path,
+                test_path,
                 "r",
                 encoding="utf-8"
             ) as file:
 
-                raw_rules = json.load(file)
+                raw_tests = json.load(file)
 
-            if selected_rules == []:
-                input_rules = [
-                    ValidatedRule.model_validate(rule)
-                    for rule in raw_rules
-                ]
-
-            else:
-                input_rules = []
-                for rule in raw_rules:
-                    if rule["id"] in selected_rules:
-                        input_rules.append(ValidatedRule.model_validate(rule))
+            input_tests = []
+            for test in raw_tests:
+                input_tests.append(UnitTest.model_validate(test))
 
             UTVAgent().run(
-                input_rules,
+                input_tests,
                 codebase_name,
                 str(codebase_path)
             )
 
 
         return self._run_command(
-            "generate_unit_tests",
+            "validate_unit_tests",
             task,
             individualStep=individualStep,
         )

@@ -442,8 +442,8 @@ class BRAgent:
         )
         current_rules = state.get("current_rules", [])
         rule_contexts = state.get("rule_contexts", {})
-        codebase_k = state["codebase_k"]
 
+        codebase_k = state["codebase_k"]
         is_final_pass = codebase_k >= MAX_CODEBASE_K
 
         structured_llm = self.llm.with_structured_output(ValidatorOutput)

@@ -3,7 +3,7 @@
 @brief Defines structured output models for the Unit Test generation agent (G3).
 @details Includes models for condensed validated rules with evidence and unit tests.
 """
-
+from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 class Explanation(BaseModel):
@@ -34,6 +34,8 @@ class ValidatedTest(BaseModel):
     id: int = Field(..., description = "Stable unique identifier matching the ValidatedRule ID.")
     rule: str = Field(..., description = "The validated rule statement that the unit test corresponds to.")
     imports: list[str] = Field(..., description = "List of import statements that are required for the unit test code to run.")
+    source_directory: str = Field(..., description="The directory this test pertains to.")
+    source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding unit test code that has been validated.")
     explanation: Explanation = Field(..., description = "Evidence and reasoning supporting the rule's validity")
 
@@ -45,5 +47,22 @@ class DiscardedTest(BaseModel):
     id: int = Field(..., description = "Stable unique identifier matching the ValidatedRule ID.")
     rule: str = Field(..., description = "The validated rule statement that the unit test corresponds to.")
     imports: list[str] = Field(..., description = "List of import statements that are required for the unit test code to run.")
+    source_directory: str = Field(..., description="The directory this test pertains to.")
+    source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding unit test code that has been validated.")
     reason: str = Field(..., description = "Reason as to why the unit test was discarded")
+
+class ValidatorOutput(BaseModel):
+    """
+    @brief class that represents the ouptut given from the validator node
+    @details The LLM assesses the tests validity based on code context and determines if the test is valid, discarded or needs more context
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["need_more_context", "valid", "discard"] = Field(None, description = "The validator's decision: 'need_more_context' if retrieval should be retried with increased depth, 'valid' if the rule is supported by evidence, 'discard' if the rule cannot be substantiated.")
+    explanation: Optional[Explanation] = Field(
+        None,
+        description="Evidence and reasoning supporting the rule. Populated when decision is 'valid', otherwise None.")
+    discard_reason: Optional[str] = Field(
+        None,
+        description="Explanation of why the rule was discarded. Populated when decision is 'discard', otherwise None.")
+

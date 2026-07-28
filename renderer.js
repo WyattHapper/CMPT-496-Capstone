@@ -1168,7 +1168,7 @@ document.getElementById('chooseUnitTestPageBackBtn')
     });
 
 document.getElementById('runUnitTestValidationOnlyBtn')
-    .addEventListener('click', () => {
+    .addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         showLoading(
@@ -1180,7 +1180,6 @@ document.getElementById('runUnitTestValidationOnlyBtn')
             "validate_unit_tests",
             {
                 codebase:selectedCodebasePath,
-                selected_rules: []
             }
         );
     });
