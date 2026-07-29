@@ -43,6 +43,7 @@ class CommandDispatcher:
             "validate_business_rules": self.commands.validate_business_rules,
             "generate_unit_tests": self.commands.generate_unit_tests,
             "validate_unit_tests": self.commands.validate_unit_tests,
+            "generate_integration_tests": self.commands.generate_integration_tests,
 
             # UML
             "generate_uml": self.commands.generate_uml,

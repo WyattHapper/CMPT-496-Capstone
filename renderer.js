@@ -1215,6 +1215,25 @@ document.getElementById('runUnitTestValidationOnlyBtn')
         );
     });
 
+
+document.getElementById('runIntegrationTestGenerationOnlyBtn')
+    .addEventListener('click', () => {
+        event.preventDefault();
+        event.stopPropagation();
+        showLoading(
+            "Integration Test Generation",
+            "Preparing..."
+        );
+
+        runBackendCommand(
+            "generate_integration_tests",
+            {
+                codebase:selectedCodebasePath,
+                selected_rules: []
+            }
+        );
+    });
+
 // FILLER FOR WHEN VALIDATION GETS ADDED ONTO THIS BRANCH, FOR NOW IT WILL NOT DO ANYTHING WHEN CLICKED
 
 // document.getElementById('allUnitTestsBtn')
