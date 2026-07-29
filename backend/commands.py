@@ -42,6 +42,7 @@ from backend.progress_logging import progress
 # ---------------------------------------------------------
 
 from agent.BR_agent import BRAgent
+from agent.IT_agent import ITAgent
 from agent.UT_agent import UTAgent
 from agent.UTV_agent import UTVAgent
 from agent.directory_agent import DirectoryAgent
@@ -411,6 +412,100 @@ class Commands:
             task,
             individualStep=individualStep,
         )
+    
+
+
+    def generate_integration_tests(
+        self,
+        codebase: str,
+        selected_rules: list,
+        validated_rules_path: str = None,
+        individualStep=True
+    ):
+        """
+        Generate integration tests from validated business rules.
+
+        Uses workflow grouping to combine multiple business rules
+        into end-to-end integration tests.
+        """
+
+        codebase_path = Path(codebase)
+        codebase_name = codebase_path.name
+
+
+        if validated_rules_path is None:
+            validated_rules_path = (
+                self.app_dir
+                / "agent"
+                / "BR_agent_output"
+                / codebase_name
+                / "validated_rules.json"
+            )
+
+
+        validated_rules_path = Path(validated_rules_path)
+
+
+        def task():
+
+            progress("Generating integration tests...")
+
+
+            if not validated_rules_path.exists():
+                raise FileNotFoundError(
+                    f"Validated rules not found: {validated_rules_path}"
+                )
+
+
+            with open(
+                validated_rules_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+
+                raw_rules = json.load(file)
+
+
+            # Convert JSON into ValidatedRule objects
+            if selected_rules == []:
+
+                input_rules = [
+                    ValidatedRule.model_validate(rule)
+                    for rule in raw_rules
+                ]
+
+            else:
+
+                input_rules = []
+
+                for rule in raw_rules:
+                    if rule["id"] in selected_rules:
+                        input_rules.append(
+                            ValidatedRule.model_validate(rule)
+                        )
+
+
+            result = ITAgent().run(
+                input_rules,
+                codebase_name,
+                str(codebase_path)
+            )
+
+
+            return {
+                "message": "Integration tests generated successfully",
+                "rules_processed": len(input_rules),
+                "workflows_generated": len(
+                    result.get("integration_tests", [])
+                )
+            }
+
+
+        return self._run_command(
+            "generate_integration_tests",
+            task,
+            individualStep=individualStep,
+        )
     # -----------------------------------------------------
     # UML Commands
     # -----------------------------------------------------
@@ -645,6 +740,9 @@ class Commands:
 
             pipeline_progress("Generating unit tests...", 85)
             steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), [], individualStep=False)))
+
+            pipeline_progress("Generating integration tests...", 90)
+            steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],individualStep=False)))
 
             pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))
