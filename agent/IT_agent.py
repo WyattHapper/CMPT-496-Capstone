@@ -286,15 +286,6 @@ class ITAgent:
             ("user", prompt),
         ]
 
-        
-        # DEBUG ------
-        response = self.llm.invoke(messages)
-
-        progress("Raw response received.")
-
-        logger.info(response.content)
-        # DEBUG ------
-
 
 
         progress("LLM returned workflow grouping.")
@@ -302,9 +293,6 @@ class ITAgent:
         progress("Structured output parsed successfully.")
 
         progress(f"Output type: {type(output)}")
-        logger.info(type(output))
-
-        logger.info(output)
 
         # Build lookup table from rule ID -> ValidatedRule
         rule_lookup = {
