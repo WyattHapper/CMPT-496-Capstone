@@ -297,9 +297,6 @@ function formatSource(json) {
 
 }
 
-function formatBusinessRules(json) {
-
-
 function canonicalizeRelativeOutputPath(rawPath) {
     if (!rawPath || path.isAbsolute(rawPath)) {
         return rawPath;
@@ -344,6 +341,9 @@ function canonicalizeRelativeOutputPath(rawPath) {
 
     return normalized;
 }
+
+function formatBusinessRules(json) {
+
     // Handle empty JSON or []
     if (!Array.isArray(json) || json.length === 0) {
         return "No business rules were found.";
