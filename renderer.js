@@ -37,8 +37,15 @@ let selectedValidatedRule = null;
 
 let activeFileListView = {
     includePdfs: false,
-    onlyPdfs: false
+    onlyPdfs: false,
+    recursivePdfs: false
 };
+
+let insightFolderHistory = [];
+let currentInsightFolderPath = null;
+let insightRootPath = null;
+let insightParentPath = null;
+let suppressAutoEnterOnce = false;
 
 //output
 let pendingLine = '';
@@ -265,7 +272,30 @@ async function runPreviewCommand(
 
     if (response.files) {
         console.log("Rendering file buttons", response.files);
-        renderViewFileButtons(response.files, activeFileListView);
+        renderViewFileButtons(response.files, activeFileListView, response.path);
+    }
+
+    if (response.type === "file-preview") {
+        const preview = response.preview || {};
+
+        // Clear existing output
+        const outputBox = document.getElementById("viewDisplayOutputBox");
+        if (outputBox) outputBox.innerHTML = "";
+
+        if (preview.type === "pdf") {
+            renderPdfPreview(preview.content);
+        } else if (preview.type === "summary") {
+            renderSummaryPreview(preview.content);
+        } else if (preview.type === "source") {
+            renderSourcePreview(preview.content);
+        } else if (preview.type === "business_rules") {
+            renderBusinessRulesPreview(preview.content);
+        } else if (preview.type === "integration_tests") {
+            renderIntegrationTestsPreview(preview.content);
+        } else {
+            // Unknown or plain text — try to pretty-print JSON when possible
+            renderJsonPreview(preview.content);
+        }
     }
 
     return response;
@@ -294,9 +324,12 @@ function renderViewSummaryButtons(collections) {
 
         button.addEventListener("click", () => {
 
-            const codebaseName = selectedCodebasePath
-                .split(/[\\/]/)
-                .pop();
+            const codebaseName = getSelectedCodebaseName();
+
+            if (!codebaseName) {
+                renderTextPreview("Select a codebase first from the pipeline page.");
+                return;
+            }
 
             const summaryPath = [
                 "agent",
@@ -324,8 +357,78 @@ function renderViewSummaryButtons(collections) {
 function setActiveFileListView(options = {}) {
     activeFileListView = {
         includePdfs: Boolean(options.includePdfs),
-        onlyPdfs: Boolean(options.onlyPdfs)
+        onlyPdfs: Boolean(options.onlyPdfs),
+        recursivePdfs: Boolean(options.recursivePdfs)
     };
+}
+
+function resetInsightFolderNavigation(rootPath) {
+    // Clear history and wait for the renderer response to provide
+    // the canonical (absolute) path. We avoid storing the raw
+    // incoming rootPath because it may be relative.
+    insightFolderHistory = [];
+    currentInsightFolderPath = null;
+    insightRootPath = null;
+    insightParentPath = null;
+}
+
+function normalizePath(p) {
+    if (!p) return p;
+    return p.replace(/\\/g, "/").replace(/\/+$|\\+$/g, "").toLowerCase();
+}
+
+function getSelectedCodebaseName() {
+    if (!selectedCodebasePath) return null;
+    const parts = selectedCodebasePath.split(/[\\/]/).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : null;
+}
+
+function enterInsightFolder(targetPath) {
+
+    const normTarget = normalizePath(targetPath);
+    const normCurrent = normalizePath(currentInsightFolderPath);
+
+    console.log("enterInsightFolder() target:", targetPath);
+    console.log("  normTarget:", normTarget, "normCurrent:", normCurrent);
+
+    if (normCurrent && normTarget && normCurrent !== normTarget) {
+        insightFolderHistory.push(currentInsightFolderPath);
+    }
+
+    currentInsightFolderPath = targetPath;
+
+    runPreviewCommand("files", {
+        path: targetPath,
+        recursivePdfs: activeFileListView.recursivePdfs
+    });
+}
+
+function goBackOneInsightFolder() {
+    console.log("goBackOneInsightFolder() history:", insightFolderHistory, "root:", insightRootPath, "current:", currentInsightFolderPath);
+    if (insightFolderHistory.length > 0) {
+        currentInsightFolderPath = insightFolderHistory.pop();
+
+        // When navigating back, avoid immediately auto-entering
+        // a single-child directory. The next render will honor
+        // `suppressAutoEnterOnce` and not auto-enter.
+        suppressAutoEnterOnce = true;
+
+        runPreviewCommand("files", {
+            path: currentInsightFolderPath,
+            recursivePdfs: activeFileListView.recursivePdfs
+        });
+        return;
+    }
+
+    // If there is no history, and we have a canonical root, show it.
+    if (insightRootPath) {
+        currentInsightFolderPath = insightRootPath;
+        console.log("goBackOneInsightFolder(): no history, returning to root:", insightRootPath);
+        runPreviewCommand("files", {
+            path: insightRootPath,
+            recursivePdfs: activeFileListView.recursivePdfs
+        });
+    }
 }
 
 function toFileUrl(filePath) {
@@ -335,7 +438,7 @@ function toFileUrl(filePath) {
         : `file:///${normalizedPath}`;
 }
 
-function renderViewFileButtons(files, options = {})
+function renderViewFileButtons(files, options = {}, currentPath = null)
 {
     const container =
         document.getElementById("viewFilesBtns");
@@ -346,14 +449,47 @@ function renderViewFileButtons(files, options = {})
 
     const activeOptions = {
         includePdfs: Boolean(options.includePdfs),
-        onlyPdfs: Boolean(options.onlyPdfs)
+        onlyPdfs: Boolean(options.onlyPdfs),
+        recursivePdfs: Boolean(options.recursivePdfs)
     };
 
-    const filteredFiles = files.filter(file => {
-        const isPdf = file.name.toLowerCase().endsWith('.pdf');
-        const isBusinessRulesFolder = file.isDirectory && file.name === 'business_rules';
+    /*if (currentPath) {
+        if (!insightRootPath || currentPath === insightRootPath) {
+            resetInsightFolderNavigation(currentPath);
+        } else if (!currentInsightFolderPath) {
+            currentInsightFolderPath = currentPath;
+        }
+    }*/
 
-        if (isBusinessRulesFolder) {
+    if (currentPath) {
+        // Ensure we use the canonical path returned by the backend
+        // as the root so absolute/relative mismatches don't occur.
+        if (!insightRootPath) {
+            console.log("renderViewFileButtons(): setting root to", currentPath);
+            insightRootPath = currentPath;
+            currentInsightFolderPath = currentPath;
+            insightFolderHistory = [];
+        } else if (currentPath !== currentInsightFolderPath) {
+            // If the renderer is showing a different path than we
+            // currently have, set it without pushing into history.
+            console.log("renderViewFileButtons(): updating currentInsightFolderPath to", currentPath);
+            currentInsightFolderPath = currentPath;
+        }
+    }
+
+    const filteredFiles = files.filter(file => {
+        const name = file.name.toLowerCase();
+        const isPdf = name.endsWith('.pdf');
+        const isPy = name.endsWith('.py');
+        const isTxt = name.endsWith('.txt');
+        const isPycache = file.isDirectory && name === '__pycache__';
+        const isBusinessRulesFolder = file.isDirectory && name === 'business_rules';
+
+        if (isBusinessRulesFolder || isPycache) {
+            return false;
+        }
+
+        if (isPy || isTxt) {
             return false;
         }
 
@@ -369,14 +505,19 @@ function renderViewFileButtons(files, options = {})
     });
 
     // If there's only one directory, automatically navigate into it
+    // unless the render was triggered by a Back action. In that
+    // case `suppressAutoEnterOnce` will prevent re-entering so the
+    // UI actually stays at the parent folder.
     if (filteredFiles.length === 1 && filteredFiles[0].isDirectory) {
-        runPreviewCommand(
-            "files",
-            {
-                path: filteredFiles[0].path
-            }
-        );
-        return;
+        console.log("renderViewFileButtons(): single directory detected ->", filteredFiles[0].path, "suppressAutoEnterOnce:", suppressAutoEnterOnce);
+
+        if (suppressAutoEnterOnce) {
+            // consume the suppression and show the parent contents
+            suppressAutoEnterOnce = false;
+        } else {
+            enterInsightFolder(filteredFiles[0].path);
+            return;
+        }
     }
 
     filteredFiles.forEach(file => {
@@ -392,12 +533,7 @@ function renderViewFileButtons(files, options = {})
 
             if(file.isDirectory){
 
-                runPreviewCommand(
-                    "files",
-                    {
-                        path:file.path
-                    }
-                );
+                enterInsightFolder(file.path);
 
             }
             else{
@@ -416,6 +552,15 @@ function renderViewFileButtons(files, options = {})
         container.appendChild(button);
 
     });
+
+    if (insightFolderHistory.length > 0) {
+        console.log("renderViewFileButtons(): showing back button, history:", insightFolderHistory);
+        const backButton = document.createElement("button");
+        backButton.className = "btn-back-nav";
+        backButton.textContent = "⬅ Back";
+        backButton.addEventListener("click", goBackOneInsightFolder);
+        container.appendChild(backButton);
+    }
 
 }
 
@@ -938,12 +1083,18 @@ document.getElementById("viewDisplaySourcesBtn")
 
     showButtons("viewSourcesBtns");
 
-    const codebaseName = selectedCodebasePath.split("/").pop();
+    const codebaseName = getSelectedCodebaseName();
+    if (!codebaseName) {
+        renderTextPreview("Select a codebase first from the pipeline page.");
+        return;
+    }
+    const rootPath = `agent/directory_agent_output/${codebaseName}`;
+    resetInsightFolderNavigation(rootPath);
 
     runPreviewCommand(
         "files",
         {
-            path:`agent/directory_agent_output/${codebaseName}`
+            path: rootPath
         }
     );
 
@@ -962,12 +1113,19 @@ document.getElementById("viewDisplaySummariesBtn")
     .addEventListener("click", () => {
 
         showButtons("viewFilesBtns");
-        setActiveFileListView({ includePdfs: false, onlyPdfs: false });
+        setActiveFileListView({ includePdfs: false, onlyPdfs: false, recursivePdfs: false });
 
-        const codebaseName = selectedCodebasePath.split("/").pop();
+        const codebaseName = getSelectedCodebaseName();
+        if (!codebaseName) {
+            renderTextPreview("Select a codebase first from the pipeline page.");
+            return;
+        }
+        const rootPath = `agent/file_summary_agent_output/${codebaseName}`;
+
+        resetInsightFolderNavigation(rootPath);
 
         runPreviewCommand("files", {
-            path: `agent/file_summary_agent_output/${codebaseName}`
+            path: rootPath
         });
 
     });
@@ -975,7 +1133,9 @@ document.getElementById("viewDisplaySummariesBtn")
 document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
 
     showButtons("viewFilesBtns");
-    setActiveFileListView({ includePdfs: true, onlyPdfs: false });
+    setActiveFileListView({ includePdfs: true, onlyPdfs: false, recursivePdfs: false });
+
+    resetInsightFolderNavigation("agent");
 
     runPreviewCommand(
         "files",
@@ -999,12 +1159,19 @@ document.getElementById("viewUnitTestsBtn")
     .addEventListener("click", () => {
 
         showButtons("viewFilesBtns");
-        setActiveFileListView({ includePdfs: false, onlyPdfs: false });
+        setActiveFileListView({ includePdfs: false, onlyPdfs: false, recursivePdfs: false });
 
-        const codebaseName = selectedCodebasePath.split("/").pop();
+        const codebaseName = getSelectedCodebaseName();
+        if (!codebaseName) {
+            renderTextPreview("Select a codebase first from the pipeline page.");
+            return;
+        }
+        const rootPath = `agent/UT_agent_output/${codebaseName}`;
+
+        resetInsightFolderNavigation(rootPath);
 
         runPreviewCommand("files", {
-            path: `agent/UT_agent_output/${codebaseName}`
+            path: rootPath
         });
 
     });
@@ -1012,10 +1179,16 @@ document.getElementById("viewUnitTestsBtn")
 //Hardcoded to see if outputs work
 document.getElementById("validatedBusinessRulesBtn").addEventListener("click", () => {
 
+    const codebaseName = getSelectedCodebaseName();
+    if (!codebaseName) {
+        renderTextPreview("Select a codebase first from the pipeline page.");
+        return;
+    }
+
     runPreviewCommand(
         "open_file",
         {
-            path: `agent/BR_agent_output/ConsoleTables-main/validated_rules.json`
+            path: `agent/BR_agent_output/${codebaseName}/validated_rules.json`
         }
     );
 
@@ -1025,10 +1198,16 @@ document.getElementById("validatedBusinessRulesBtn").addEventListener("click", (
 //hoardcoded to see if outputs work
 document.getElementById("discardedBusinessRulesBtn").addEventListener("click", () => {
 
+    const codebaseName = getSelectedCodebaseName();
+    if (!codebaseName) {
+        renderTextPreview("Select a codebase first from the pipeline page.");
+        return;
+    }
+
     runPreviewCommand(
         "open_file",
         {
-            path: `agent/BR_agent_output/ConsoleTables-main/discarded_rules.json`
+            path: `agent/BR_agent_output/${codebaseName}/discarded_rules.json`
         }
     );
 
@@ -1047,12 +1226,19 @@ document.getElementById('viewUMLBtn')
     .addEventListener('click', () => {
 
         showButtons('viewFilesBtns');
-        setActiveFileListView({ includePdfs: true, onlyPdfs: true });
+        setActiveFileListView({ includePdfs: true, onlyPdfs: true, recursivePdfs: true });
 
-        const codebaseName = selectedCodebasePath.split(/[\\/]/).pop();
+        const codebaseName = getSelectedCodebaseName();
+        if (!codebaseName) {
+            renderTextPreview("Select a codebase first from the pipeline page.");
+            return;
+        }
+        const rootPath = `agent/file_summary_agent_output/${codebaseName}`;
+
+        resetInsightFolderNavigation(rootPath);
 
         runPreviewCommand('files', {
-            path: `agent/file_summary_agent_output/${codebaseName}`,
+            path: rootPath,
             recursivePdfs: true
         });
     });
@@ -1556,9 +1742,15 @@ window.electronAPI.onBackendResponse((response) => {
                 response.preview.content
             );
 
+        } else if (response.preview.type === "integration_tests") {
+
+            renderIntegrationTestsPreview(
+                response.preview.content
+            );
+
         } else {
 
-            renderTextPreview(
+            renderJsonPreview(
                 response.preview.content
             );
 
@@ -1842,4 +2034,140 @@ function newApiUi() {
     document.getElementById('replaceApiKeyBtn').classList.add("hidden");
     document.getElementById('keepApiKeyBtn').classList.add("hidden");
     document.getElementById('apiBackBtn').classList.remove("hidden");
+}
+
+function renderJsonPreview(content) {
+
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    if (!output) return;
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "json-card";
+
+    const title = document.createElement("h2");
+    title.className = "json-title";
+    title.textContent = "JSON Preview";
+
+    const pre = document.createElement("pre");
+    pre.className = "json-body";
+
+    let pretty = "";
+
+    try {
+        if (typeof content === 'string') {
+            pretty = JSON.stringify(JSON.parse(content), null, 2);
+        } else {
+            pretty = JSON.stringify(content, null, 2);
+        }
+    } catch (e) {
+        // not JSON, show raw text
+        pretty = String(content || "");
+    }
+
+    pre.textContent = pretty;
+
+    card.appendChild(title);
+    card.appendChild(pre);
+
+    output.appendChild(card);
+
+}
+
+function renderIntegrationTestsPreview(workflows) {
+
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    if (!output) return;
+
+    output.innerHTML = "";
+
+    const rootCard = document.createElement("div");
+    rootCard.className = "integration-tests-card";
+
+    const title = document.createElement("h2");
+    title.className = "integration-tests-title";
+    title.textContent = "Integration Test Workflows";
+    rootCard.appendChild(title);
+
+    const items = Array.isArray(workflows) ? workflows : [];
+
+    if (items.length === 0) {
+        const empty = document.createElement("pre");
+        empty.className = "integration-test-description";
+        empty.textContent = "No integration tests were found.";
+        rootCard.appendChild(empty);
+        output.appendChild(rootCard);
+        return;
+    }
+
+    items.forEach((workflow, idx) => {
+        const section = document.createElement("section");
+        section.className = "integration-test-workflow";
+
+        const heading = document.createElement("h3");
+        heading.className = "integration-test-workflow-title";
+        heading.textContent = `${idx + 1}. ${workflow.workflow_name || "Workflow"}`;
+        section.appendChild(heading);
+
+        if (workflow.workflow_description) {
+            const descHeader = document.createElement("h4");
+            descHeader.className = "integration-test-section-header";
+            descHeader.textContent = "Description";
+            section.appendChild(descHeader);
+
+            const desc = document.createElement("pre");
+            desc.className = "integration-test-description";
+            desc.textContent = workflow.workflow_description;
+            section.appendChild(desc);
+        }
+
+        const ruleIds = Array.isArray(workflow.rule_ids)
+            ? workflow.rule_ids
+            : [];
+
+        if (ruleIds.length > 0) {
+            const ruleHeader = document.createElement("h4");
+            ruleHeader.className = "integration-test-section-header";
+            ruleHeader.textContent = "Rule IDs";
+            section.appendChild(ruleHeader);
+
+            const ruleBody = document.createElement("pre");
+            ruleBody.className = "integration-test-description";
+            ruleBody.textContent = ruleIds.join(", ");
+            section.appendChild(ruleBody);
+        }
+
+        const imports = Array.isArray(workflow.imports)
+            ? workflow.imports
+            : [];
+
+        if (imports.length > 0) {
+            const importsHeader = document.createElement("h4");
+            importsHeader.className = "integration-test-section-header";
+            importsHeader.textContent = "Imports";
+            section.appendChild(importsHeader);
+
+            const importsBody = document.createElement("pre");
+            importsBody.className = "integration-test-description";
+            importsBody.textContent = imports.map(item => `• ${item}`).join("\n");
+            section.appendChild(importsBody);
+        }
+
+        const codeHeader = document.createElement("h4");
+        codeHeader.className = "integration-test-section-header";
+        codeHeader.textContent = "Integration Test";
+        section.appendChild(codeHeader);
+
+        const code = document.createElement("pre");
+        code.className = "integration-test-code";
+        code.textContent = workflow.integration_test || "";
+        section.appendChild(code);
+
+        rootCard.appendChild(section);
+    });
+
+    output.appendChild(rootCard);
 }

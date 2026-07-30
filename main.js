@@ -72,7 +72,54 @@ function detectFileType(json) {
         return "source";
     }
 
+    // Integration test workflow files
+    if (
+        Array.isArray(json) &&
+        json.length > 0 &&
+        json.every(item => (
+            item &&
+            typeof item === "object" &&
+            (item.workflow_name || item.integration_test)
+        ))
+    ) {
+        return "integration_tests";
+    }
+
     return "unknown";
+}
+
+function formatIntegrationTestCode(code) {
+    if (!code) return "";
+
+    let formatted = String(code)
+        .replace(/\\n/g, "\n")
+        .trim();
+
+    // Some entries arrive as a single line; add line breaks for readability.
+    if (!formatted.includes("\n")) {
+        formatted = formatted
+            .replace(/\s*\{\s*/g, " {\n")
+            .replace(/;\s+/g, ";\n")
+            .replace(/\s*\}\s*/g, "\n}\n")
+            .trim();
+    }
+
+    return formatted;
+}
+
+function formatIntegrationTests(json) {
+    if (!Array.isArray(json) || json.length === 0) {
+        return [];
+    }
+
+    return json.map((workflow, index) => ({
+        index: index + 1,
+        workflow_name: workflow.workflow_name || `Workflow ${index + 1}`,
+        workflow_description: workflow.workflow_description || "",
+        rule_ids: Array.isArray(workflow.rule_ids) ? workflow.rule_ids : [],
+        imports: Array.isArray(workflow.imports) ? workflow.imports : [],
+        integration_test: formatIntegrationTestCode(workflow.integration_test || "")
+    }));
 }
 // ----------------------------------------------------
 // SUMMARY FORMATTING
@@ -252,6 +299,51 @@ function formatSource(json) {
 
 function formatBusinessRules(json) {
 
+
+function canonicalizeRelativeOutputPath(rawPath) {
+    if (!rawPath || path.isAbsolute(rawPath)) {
+        return rawPath;
+    }
+
+    const normalized = String(rawPath).replace(/\\/g, "/");
+    const outputRoots = [
+        "agent/file_summary_agent_output/",
+        "agent/directory_agent_output/",
+        "agent/UT_agent_output/",
+        "agent/BR_agent_output/"
+    ];
+
+    for (const root of outputRoots) {
+        if (!normalized.toLowerCase().startsWith(root.toLowerCase())) {
+            continue;
+        }
+
+        const remainder = normalized.slice(root.length);
+
+        // Handle malformed paths like:
+        // agent/file_summary_agent_output/C:/.../Codebase
+        // agent/BR_agent_output/C:/.../Codebase/validated_rules.json
+        if (/^[a-zA-Z]:\//.test(remainder)) {
+            const segments = remainder.split("/").filter(Boolean);
+
+            if (segments.length === 0) {
+                return normalized;
+            }
+
+            const lastSegment = segments[segments.length - 1];
+            const hasExtension = /\.[^./\\]+$/.test(lastSegment);
+
+            if (hasExtension && segments.length >= 2) {
+                const codebaseName = segments[segments.length - 2];
+                return `${root}${codebaseName}/${lastSegment}`;
+            }
+
+            return `${root}${lastSegment}`;
+        }
+    }
+
+    return normalized;
+}
     // Handle empty JSON or []
     if (!Array.isArray(json) || json.length === 0) {
         return "No business rules were found.";
@@ -396,7 +488,7 @@ ipcMain.handle(
         const args = request?.args || {};
 
         if (action === "files") {
-            const rawPath = args.path || "agent";
+            const rawPath = canonicalizeRelativeOutputPath(args.path || "agent");
             const targetPath = path.isAbsolute(rawPath)
                 ? rawPath
                 : path.join(__dirname, rawPath);
@@ -482,7 +574,7 @@ ipcMain.handle(
 
 
         if (action === "open_file") {
-            const rawPath = args.path;
+            const rawPath = canonicalizeRelativeOutputPath(args.path);
             if (!rawPath) {
                 const result = {
                     success: false,
@@ -575,6 +667,13 @@ ipcMain.handle(
                     preview = {
                         type: "business_rules",
                         content: formatBusinessRules(json)
+                    };
+
+                } else if (type === "integration_tests") {
+
+                    preview = {
+                        type: "integration_tests",
+                        content: formatIntegrationTests(json)
                     };
 
                 }else {
