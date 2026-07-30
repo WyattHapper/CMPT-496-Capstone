@@ -8,7 +8,7 @@ import logging
 logger = logging.getLogger(__name__)
 from agent.states.UTV_agent_state import UTVGraphState
 from agent.structured_output.UTV_output import (
-    UnitTest, ValidatedTest, DiscardedTest
+    UnitTest, ValidatedTest, DiscardedTest, ValidatorOutput
 )
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -47,7 +47,7 @@ class UTVAgent:
         @brief Initializes the UTAgent with a specified language model.
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
-        progress("Intializing unit test agent...", 5)
+        progress("Intializing unit test validation agent...", 5)
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -78,14 +78,17 @@ class UTVAgent:
 
         # Set nodes
         builder.add_node("retriever", self.retriever_node)
-        builder.add_node("test_generator", self.test_generator_node)
+        builder.add_node("validator", self.validator_node)
         builder.add_node("writer", self.writer_node)
         builder.add_node("runner", self.runner_node)
 
         # Set edges
         builder.set_entry_point("retriever")
-        builder.add_edge("retriever", "test_generator")
-        builder.add_edge("test_generator", "writer")
+        builder.add_edge("retriever", "validator")
+        builder.add_conditional_edges(
+            "validator",
+            lambda state: "retriever" if state.get("current_tests") else "writer"
+        )
         builder.add_edge("writer", "runner")
         builder.add_edge("runner", END)
 
@@ -100,7 +103,7 @@ class UTVAgent:
         @return Final state of the graph after execution.
         """
         progress(
-            "Running unit test generation pipeline...",
+            "Running unit test validation pipeline...",
             5
         )
         if getattr(sys, 'frozen', False):
@@ -130,8 +133,10 @@ class UTVAgent:
 
         initial_state = {
             "input_tests": input_tests,
+            "current_tests": input_tests,
             "validated_tests": [],
             "discarded_tests": [],
+            "imports": set(),
             "rule_contexts": {},
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
@@ -173,9 +178,9 @@ class UTVAgent:
             "Retrieving context for validated business rules...",
             20
         )
-        input_tests = state.get("input_tests", [])
-        if not input_tests:
-            raise ValueError("No validated rules to retrieve context for.")
+        current_tests = state.get("current_tests", [])
+        if not current_tests:
+            raise ValueError("No unit tests to retrieve context for.")
 
         code_collection = state["code_collection"]
         summary_collection = state["summary_collection"]
@@ -185,7 +190,7 @@ class UTVAgent:
         existing_contexts = state.get("rule_contexts", {})
         updated_contexts = dict(existing_contexts)
 
-        for test in input_tests:
+        for test in current_tests:
             source_directory = test.source_directory
             source_file_paths = test.source_file_paths
             query_text = f"{test.rule} {source_directory}"
@@ -252,69 +257,130 @@ class UTVAgent:
             updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
 
         progress(
-            "Business rule context retrieval complete.",
-            50
+            "Unit test context retrieval complete.",
+            30
         )
         return {
             "rule_contexts": updated_contexts,
         }
 
-    def test_generator_node(self, state: UTVGraphState) -> UTVGraphState:
+    def validator_node(self, state: UTVGraphState) -> UTVGraphState:
         """
-        @brief Generates unit tests for validated business rules.
+        @brief Validates unit tests for generated tests.
 
         @details
-        Uses the same language model but structured output to produce a unit test string
-        for each rule that passed validation. The results are written to `unit_tests`
+        Uses the same language model but structured output to validate a unit test string
+        for each inputted test. The results are written to `validated_tests`
         in the workflow state for the final writer node.
         """
 
         progress(
-            "Generating unit tests from validated business rules...",
-            60
+            "Validating unit tests...",
+            40
         )
-        validated_rules = state.get("validated_rules", [])
-        if not validated_rules:
-            return {"unit_tests": []}
+        current_tests = state.get("current_tests", [])
+        if not current_tests:
+            return {"validated_tests": []}
+        codebase_k = state["codebase_k"]
+        is_final_pass = codebase_k >= MAX_CODEBASE_K
 
         rule_contexts = state.get("rule_contexts", {})
-        structured_llm = self.llm.with_structured_output(UnitTest)
+        structured_llm = self.llm.with_structured_output(ValidatorOutput)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
-            async def guarded(rule: ValidatedTest):
+            async def guarded(test: UnitTest):
                 async with sem:
-                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
-                    return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
-            return await asyncio.gather(*(guarded(r) for r in validated_rules))
+                    ctx = rule_contexts.get(str(test.id), {"code_context": [], "summary_context": []})
+                    return await _validate_single_test(structured_llm, test, ctx["code_context"], ctx["summary_context"], is_final_pass)
+            return await asyncio.gather(*(guarded(r) for r in current_tests))
 
         results = self._loop.run_until_complete(run_batch())
 
         progress(
-            f"Generated {len(results)} unit test candidates.",
-            80
+            f"Validated {len(results)} unit test candidates.",
+            50
         )
-
-        progress(
-            f"Generated {len(results)} unit test candidates.",
-            80
-        )
-
-        test_imports = set()
-        unit_tests = []
-        for rule, output, err in results:
+               
+        validated_tests = []
+        discarded_tests = []
+        needs_context = []
+        imports = set()
+        for test, output, err in results:
             if err is not None:
-                progress(f"Unit test generation error for rule {rule.id}: {err}")
-                logger.error(f"Unit test generation error for rule {rule.id}: {err}")
+                progress(f"Unit test validation error for unit test {test.id}: {err}")
+                logger.error(f"Unit test validation error for unit test {test.id}: {err}")
+                discarded_tests.append(DiscardedTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=test.imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=test.unit_test,
+                    reason=f"Validation failed with error {err}"
+                ))
                 continue
-            test_imports.update(output.imports)
-            unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule))
+            if output.decision == "valid":
+                validated_tests.append(ValidatedTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=test.imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=test.unit_test,
+                    explanation=output.explanation
+                ))
+                imports.update(test.imports)
+            elif output.decision == "discard":
+                discarded_tests.append(DiscardedTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=test.imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=test.unit_test,
+                    reason=output.discard_reason
+                ))
+            elif output.decision == "need_more_context":
+                if is_final_pass:
+                    discarded_tests.append(DiscardedTest(
+                        id=test.id,
+                        rule=test.rule,
+                        imports=test.imports,
+                        source_directory=test.source_directory,
+                        source_file_paths=test.source_file_paths,
+                        unit_test=test.unit_test,
+                        reason="Insufficient evidence after maximum context retrieval"
+                    ))  
+                else:
+                    needs_context.append(test)
 
         progress(
-            f"Validated {len(unit_tests)} generated unit tests.",
-            85
+            f"Validation pass complete: {len(validated_tests)} valid, "
+                    f"{len(discarded_tests)} discarded, {len(needs_context)} need more context.",
+            60
         )
-        return {"unit_tests": unit_tests, "test_imports": test_imports}
+
+        update: dict = {
+            "validated_tests": validated_tests,
+            "discarded_tests": discarded_tests,
+            "imports": imports,
+        }
+
+        if needs_context:
+            update["current_tests"] = needs_context
+            update["codebase_k"] = MAX_CODEBASE_K
+            update["file_summary_k"] = MAX_FILE_SUMMARY_K
+            # Keep only contexts for unresolved rules
+            update["rule_contexts"] = {str(r.id): rule_contexts.get(str(r.id), {"code_context": [], "summary_context": []})
+                                       for r in needs_context}
+        else:
+            update["current_tests"] = []
+            update["codebase_k"] = DEFAULT_CODEBASE_K
+            update["file_summary_k"] = DEFAULT_FILE_SUMMARY_K
+            update["rule_contexts"] = {}
+
+        return update
 
     def writer_node(self, state: UTVGraphState) -> UTVGraphState:
         """
@@ -329,30 +395,24 @@ class UTVAgent:
         @return Empty dict (terminal node).
         """
         progress(
-            "Writing generated unit tests...",
-            90
+            "Writing validated and discarded unit tests...",
+            70
         )
 
         codebase_name = state["codebase_name"]
         base_output_dir = state.get("output_directory", "./agent/UTV_agent_output")
         codebase_subdir = os.path.join(base_output_dir, codebase_name)
         os.makedirs(codebase_subdir, exist_ok=True)
-        unit_tests = state.get("unit_tests", [])
-        if unit_tests:
-            unit_tests_path_json = os.path.join(codebase_subdir, "unit_tests.json")
-            unit_tests_path_txt = os.path.join(codebase_subdir, "unit_tests.txt")
-            with open(unit_tests_path_json, "w", encoding="utf-8") as f:
-                json.dump([u.model_dump() for u in unit_tests], f, indent=2)
-            with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
-                for test in unit_tests:
-                    # Write imports first (if any), then the unit test method
-                    if getattr(test, "imports", None):
-                        try:
-                            file.write("\n".join(test.imports) + "\n\n")
-                        except Exception:
-                            pass
-                    file.write(test.unit_test + "\n\n")
-            progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
+        validated_tests = state.get("validated_tests", [])
+        discarded_tests = state.get("discarded_tests", [])
+        if validated_tests:
+            validated_tests_path = os.path.join(codebase_subdir, "validated_tests.json")
+            discarded_tests_path = os.path.join(codebase_subdir, "discarded_tests.json")
+            with open(validated_tests_path, "w", encoding="utf-8") as file:
+                json.dump([test.model_dump() for test in validated_tests], file, indent=2)
+            with open(discarded_tests_path, "w", encoding="utf-8") as file:
+                json.dump([test.model_dump() for test in discarded_tests], file, indent=2)
+            progress(f"Wrote {len(validated_tests)} validated unit tests to {validated_tests_path} and wrote {len(discarded_tests)} discarded unit tests to {discarded_tests_path}", 80)
         return {}
 
     def runner_node(self, state: UTVGraphState) -> UTVGraphState:
@@ -369,12 +429,12 @@ class UTVAgent:
         test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
 
         # Generate Xunit framework
-        progress("Creating test framework...", 98)
+        progress("Creating test framework...", 90)
         if not Path(test_subdir).is_dir():
             try:
-                progress("Initializing xUnit project...", 98)
+                progress("Initializing xUnit project...", 95)
                 subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
-                progress("Configuring project references...", 98)
+                progress("Configuring project references...", 95)
                 with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
                     lines = file.readlines()
                     lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
@@ -382,18 +442,18 @@ class UTVAgent:
                     file.writelines(lines)
             except Exception as e:
                 logger.error(f"Error: {e}")
-                progress(f"Error setting up test framework: {e}", 98)
+                progress(f"Error setting up test framework: {e}", 95, True)
 
         # Write generated tests to Xunit .cs file
-        progress("Writing generated tests to file...", 98)
-        test_imports = state["test_imports"]
-        unit_tests = state["unit_tests"]
+        progress("Writing generated tests to file...", 97)
+        imports = state["imports"]
+        validated_tests = state["validated_tests"]
         with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
-            for import_statement in test_imports:
+            for import_statement in imports:
                 file.write(import_statement + "\n")
             file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
             file.write("\npublic class Tests {\n")
-            for test in unit_tests:
+            for test in validated_tests:
                 file.write(test.unit_test + "\n\n")
             file.write("}")
         
@@ -404,10 +464,10 @@ class UTVAgent:
         try:
             subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_dir}"])
             logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
-            progress("Tests completed. Generating report...", 100)
+            progress("Tests completed. Generating report...", 100, True)
         except Exception as e:
             logger.error(e)
-            progress(f"Error running tests: {e}", 100)
+            progress(f"Error running tests: {e}", 100, True)
         return {}
     
     # Helper methods
@@ -497,79 +557,82 @@ class UTVAgent:
             f"Content:\n{doc}"
         )
 
-async def _generate_single_test(
+async def _validate_single_test(
     structured_llm,
-    rule: ValidatedTest,
+    test: UnitTest,
     code_context: list[str],
     summary_context: list[str],
+    is_final_pass: bool
 ) -> tuple:
     try:
         code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
         summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"
 
+        force_decision_clause = ""
+        if is_final_pass:
+            force_decision_clause = (
+                "\nIMPORTANT: This is the final retrieval pass — maximum context has been gathered. "
+                "\"need_more_context\" is NOT available as a decision. You MUST choose either \"valid\" or \"discard\"."
+            )
+    
         system_message = (
-            "You are a Senior Software Architect and expert Automated Test Engineer. "
-            "Your sole objective is to output a syntactically flawless, concrete unit test method and its corresponding imports"
-            "based strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
+            "You are a Senior Software Architect acting as a unit test auditor. "
+            "Your task is to determine whether a generated unit test is genuinely supported "
+            "by the source code evidence provided. You must be precise and evidence-driven — "
+            "never confirm a test based on assumptions."
         )
 
         prompt = f"""
-            #### BUSINESS RULE TO TEST:
-            - ID: {rule.id}
-            - RULE STATEMENT: {rule.rule}
-            - TARGET DIRECTORY: {rule.source_directory}
-            - EXPLANATION FOR VALIDATION: {rule.explanation}
+#### UNIT TEST TO VALIDATE:
+- ID: {test.id}
+- ASSOCIATED BUSINESS RULE: {test.rule}
+- UNIT TEST: {test.unit_test}
+- TARGET DIRECTORY: {test.source_directory}
+- SOURCE FILES: {", ".join(test.source_file_paths)}
 
-            #### RETRIEVED SOURCE CODE CONTEXT:
-            {code_text}
+#### RETRIEVED SOURCE CODE CONTEXT:
+{code_text}
 
-            #### RETRIEVED FILE SUMMARY CONTEXT:
-            {summary_text}
+#### RETRIEVED FILE SUMMARY CONTEXT:
+{summary_text}
 
-### [REQUIRED TASK]
----
-1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
-2. Generate exactly one realistic, structurally sound, executable unit test method.
-3. Generate the full import code statements required for the unit test method to function. 
-4. Match the exact programming language, naming conventions, and recommended testing framework for that language (Example: Xunit for C#).
+WHAT IS A UNIT TEST:
+A unit test is a small piece of automated code written to verify that a single, isolated part of an application—usually a function or method—behaves correctly.
 
-### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
----
-- **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
-- **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `unit_test` field; `unit_test` must contain only the method block.
-- **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
-- **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
-- **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
-- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
+TASK:
+Determine whether the unit test shown above is supported by the retrieved code and summary context. Choose exactly one of three outcomes:
 
-            *Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
-        """
+1. **valid** — The test IS supported by concrete evidence in the context. The test must be clearly runnable, match the codebase's language and framework, and be likely to produce a correct result when executed. You can point to specific code snippets, method signatures, validation checks, conditional logic, or summary statements that directly enforce or implement the test.
+
+2. **discard** — The test is NOT supported, and additional retrieval is unlikely to help. Choose this when:
+   - The context covers the relevant area thoroughly but shows no evidence of the test.
+   - The test contradicts what the code actually does.
+   - The test is too vague or generic to be grounded in any specific code behavior.
+   - The test uses hallucinated methods, classes, or functions that aren't present in the context.
+   - The test contains syntax errors, incorrect imports, missing dependencies, or invalid structure that would cause it to fail or crash when run.
+   - The test would likely fail when executed, even if some parts appear plausible.
+   - The test is not a complete, concrete unit test method block that can be run directly.
+
+3. **need_more_context** — The context is insufficient to make a confident judgement. Choose this ONLY when:
+   - The context contains partial hints (e.g., a method call to an unresolved external function) that suggest the test MIGHT be supported with more code.
+   - The source directory or file area hasn't been well covered by retrieval yet.
+   - Do NOT choose this as a "safe" fallback. If the context is reasonably thorough and shows no evidence, choose "discard".
+{force_decision_clause}
+
+HANDLING BORDERLINE / PARTIAL EVIDENCE:
+- If the evidence only partially supports the test (e.g., the code enforces a narrower version of the stated constraint), choose "valid" but note the narrower scope in your reasoning.
+- If the test is broadly stated but the code only demonstrates one specific case, validate the specific case you can confirm and explain the gap in your reasoning.
+- If the code hints at the test but the logic is ambiguous or incomplete, prefer "need_more_context" over "valid" on the first pass.
+
+RESPONSE INSTRUCTIONS:
+- If "valid": populate the `explanation` field with `evidence` (a dict mapping filenames to lists of relevant code snippets that support the test) and `reasoning` (a clear explanation of how those snippets support the test).
+- If "discard": populate the `discard_reason` field explaining why the test is not supported.
+- If "need_more_context": leave both `explanation` and `discard_reason` as None.
+"""
 
         messages = [("system", system_message), ("user", prompt)]
         output = await structured_llm.ainvoke(messages)
-        return rule, output, None
+        return test, output, None
     except Exception as e:
-        return rule, None, e
+        return test, None, e
 
-if __name__ == "__main__":
-    """
-    @brief Script entry point for running BRAgent.
-    @details Loads business rules from a JSON file and runs the validation pipeline.
-    """
-    if len(sys.argv) != 3:
-        progress("Usage: python -m agent.BR_agent <codebase_path> <rules_json_path>")
-        sys.exit(1)
-
-    codebase = sys.argv[1]
-    codebase_name = os.path.basename(codebase)
-    rules_path = sys.argv[2]
-
-    with open(rules_path, "r", encoding="utf-8") as f:
-        raw_rules = json.load(f)
-
-    # Convert raw JSON dicts back to BusinessRule objects
-    input_rules = [ValidatedTest.model_validate(rule) for rule in raw_rules]   
-
-    agent = UTVAgent()
-    agent.run(input_rules, codebase_name, codebase)
-    progress("UTVAgent has completed its task!", 100, True)

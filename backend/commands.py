@@ -42,12 +42,14 @@ from backend.progress_logging import progress
 # ---------------------------------------------------------
 
 from agent.BR_agent import BRAgent
+from agent.IT_agent import ITAgent
 from agent.UT_agent import UTAgent
 from agent.UTV_agent import UTVAgent
 from agent.directory_agent import DirectoryAgent
 from agent.file_summary_agent import FileSummaryAgent
 from agent.structured_output.file_summary_output import BusinessRule
 from agent.structured_output.UT_output import ValidatedRule
+from agent.structured_output.UTV_output import UnitTest
 
 from src.build_database import build_database
 from src.build_database_JSON import build_database as build_summary_database
@@ -349,8 +351,7 @@ class Commands:
     def validate_unit_tests(
         self,
         codebase: str,
-        selected_rules: list,
-        validated_rules_path: str = None,
+        test_path: str = None,
         individualStep = True
     ):
         """
@@ -358,6 +359,74 @@ class Commands:
 
         Refactor of old:
             run_ut()
+        """
+
+        codebase_path = Path(codebase)
+        codebase_name = codebase_path.name
+
+
+        if test_path is None:
+            test_path = (
+                self.app_dir
+                / "agent"
+                / "UT_agent_output"
+                / codebase_name
+                / "unit_tests.json"
+            )
+
+
+        test_path = Path(test_path)
+
+
+        def task():
+
+            progress("Validating unit tests...")
+
+            if not test_path.exists():
+                raise FileNotFoundError(
+                    f"Validated rules not found: {test_path}"
+                )
+
+
+            with open(
+                test_path,
+                "r",
+                encoding="utf-8"
+            ) as file:
+
+                raw_tests = json.load(file)
+
+            input_tests = []
+            for test in raw_tests:
+                input_tests.append(UnitTest.model_validate(test))
+
+            UTVAgent().run(
+                input_tests,
+                codebase_name,
+                str(codebase_path)
+            )
+
+
+        return self._run_command(
+            "validate_unit_tests",
+            task,
+            individualStep=individualStep,
+        )
+    
+
+
+    def generate_integration_tests(
+        self,
+        codebase: str,
+        selected_rules: list,
+        validated_rules_path: str = None,
+        individualStep=True
+    ):
+        """
+        Generate integration tests from validated business rules.
+
+        Uses workflow grouping to combine multiple business rules
+        into end-to-end integration tests.
         """
 
         codebase_path = Path(codebase)
@@ -379,7 +448,8 @@ class Commands:
 
         def task():
 
-            progress("Validating unit tests...")
+            progress("Generating integration tests...")
+
 
             if not validated_rules_path.exists():
                 raise FileNotFoundError(
@@ -395,27 +465,44 @@ class Commands:
 
                 raw_rules = json.load(file)
 
+
+            # Convert JSON into ValidatedRule objects
             if selected_rules == []:
+
                 input_rules = [
                     ValidatedRule.model_validate(rule)
                     for rule in raw_rules
                 ]
 
             else:
+
                 input_rules = []
+
                 for rule in raw_rules:
                     if rule["id"] in selected_rules:
-                        input_rules.append(ValidatedRule.model_validate(rule))
+                        input_rules.append(
+                            ValidatedRule.model_validate(rule)
+                        )
 
-            UTVAgent().run(
+
+            result = ITAgent().run(
                 input_rules,
                 codebase_name,
                 str(codebase_path)
             )
 
 
+            return {
+                "message": "Integration tests generated successfully",
+                "rules_processed": len(input_rules),
+                "workflows_generated": len(
+                    result.get("integration_tests", [])
+                )
+            }
+
+
         return self._run_command(
-            "generate_unit_tests",
+            "generate_integration_tests",
             task,
             individualStep=individualStep,
         )
@@ -653,6 +740,9 @@ class Commands:
 
             pipeline_progress("Generating unit tests...", 85)
             steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), [], individualStep=False)))
+
+            pipeline_progress("Generating integration tests...", 90)
+            steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],individualStep=False)))
 
             pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))

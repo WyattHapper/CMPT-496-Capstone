@@ -496,6 +496,26 @@ ipcMain.handle(
                 return result;
             }
 
+            const extension = path.extname(targetPath).toLowerCase();
+
+            if (extension === ".pdf") {
+                const result = {
+                    success: true,
+                    type: "file-preview",
+                    path: targetPath,
+                    preview: {
+                        type: "pdf",
+                        content: targetPath
+                    }
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
             const content = fs.readFileSync(targetPath, "utf8");
 
             let preview;
