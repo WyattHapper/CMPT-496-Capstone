@@ -556,7 +556,7 @@ function renderViewFileButtons(files, options = {}, currentPath = null)
     if (insightFolderHistory.length > 0) {
         console.log("renderViewFileButtons(): showing back button, history:", insightFolderHistory);
         const backButton = document.createElement("button");
-        backButton.className = "btn-back-nav";
+        backButton.className = "back-btn";
         backButton.textContent = "⬅ Back";
         backButton.addEventListener("click", goBackOneInsightFolder);
         container.appendChild(backButton);

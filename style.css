@@ -420,14 +420,14 @@ h2{
   background:
     linear-gradient(
       135deg,
-      #fef3c7,
-      #fde68a
+      #3838f2,
+      #1e1ef1
     );
 
-  border: 1px solid rgba(217, 119, 6, 0.25);
-  color: #7c2d12;
+  border: none;
+  color: white;
   cursor: pointer;
-  box-shadow: 0 10px 20px -10px rgba(217, 119, 6, 0.25);
+  box-shadow: 0 10px 20px -10px #5E5DF0;
   padding: 8px 18px;
   border-radius: 999px;
   backdrop-filter: blur(12px);
