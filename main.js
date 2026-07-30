@@ -416,16 +416,47 @@ ipcMain.handle(
                 };
             }
 
-            const dirents = fs.readdirSync(targetPath, {
-                withFileTypes: true
-            });
+            const collectEntries = (currentPath, recursivePdfs = false, collected = []) => {
+                const dirents = fs.readdirSync(currentPath, {
+                    withFileTypes: true
+                });
 
-            const entries = dirents
-                .map((dirent) => ({
-                    name: dirent.name,
-                    path: path.join(targetPath, dirent.name),
-                    isDirectory: dirent.isDirectory()
-                }))
+                dirents.forEach((dirent) => {
+                    const entryPath = path.join(currentPath, dirent.name);
+
+                    if (dirent.isDirectory()) {
+                        if (recursivePdfs) {
+                            collectEntries(entryPath, true, collected);
+                        } else {
+                            collected.push({
+                                name: dirent.name,
+                                path: entryPath,
+                                isDirectory: true
+                            });
+                        }
+                        return;
+                    }
+
+                    if (recursivePdfs && path.extname(dirent.name).toLowerCase() === ".pdf") {
+                        collected.push({
+                            name: dirent.name,
+                            path: entryPath,
+                            isDirectory: false
+                        });
+                    } else if (!recursivePdfs) {
+                        collected.push({
+                            name: dirent.name,
+                            path: entryPath,
+                            isDirectory: false
+                        });
+                    }
+                });
+
+                return collected;
+            };
+
+            const recursivePdfs = Boolean(args.recursivePdfs);
+            const entries = collectEntries(targetPath, recursivePdfs)
                 .sort((a, b) => {
                     if (a.isDirectory !== b.isDirectory) {
                         return a.isDirectory ? -1 : 1;

@@ -384,7 +384,7 @@ function renderViewFileButtons(files, options = {})
         const button =
             document.createElement("button");
 
-        button.className = "btn-secondary";
+        button.className = file.isDirectory ? "btn-folder" : "btn-secondary";
 
         button.textContent = file.name;
 
@@ -1052,7 +1052,8 @@ document.getElementById('viewUMLBtn')
         const codebaseName = selectedCodebasePath.split(/[\\/]/).pop();
 
         runPreviewCommand('files', {
-            path: `agent/file_summary_agent_output/${codebaseName}`
+            path: `agent/file_summary_agent_output/${codebaseName}`,
+            recursivePdfs: true
         });
     });
 
