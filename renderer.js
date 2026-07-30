@@ -35,6 +35,11 @@ let currentStepProgress = 0;
 
 let selectedValidatedRule = null;
 
+let activeFileListView = {
+    includePdfs: false,
+    onlyPdfs: false
+};
+
 //output
 let pendingLine = '';
 let lastLine = '';
@@ -260,7 +265,7 @@ async function runPreviewCommand(
 
     if (response.files) {
         console.log("Rendering file buttons", response.files);
-        renderViewFileButtons(response.files);
+        renderViewFileButtons(response.files, activeFileListView);
     }
 
     return response;
@@ -316,7 +321,21 @@ function renderViewSummaryButtons(collections) {
 }
 
 //this function will display the buttons when the files btn is clicked
-function renderViewFileButtons(files)
+function setActiveFileListView(options = {}) {
+    activeFileListView = {
+        includePdfs: Boolean(options.includePdfs),
+        onlyPdfs: Boolean(options.onlyPdfs)
+    };
+}
+
+function toFileUrl(filePath) {
+    const normalizedPath = filePath.replace(/\\/g, "/");
+    return normalizedPath.startsWith("/")
+        ? `file://${normalizedPath}`
+        : `file:///${normalizedPath}`;
+}
+
+function renderViewFileButtons(files, options = {})
 {
     const container =
         document.getElementById("viewFilesBtns");
@@ -325,11 +344,28 @@ function renderViewFileButtons(files)
 
     container.classList.remove("hidden");
 
-    // Filter out PDF files and business_rules folder
+    const activeOptions = {
+        includePdfs: Boolean(options.includePdfs),
+        onlyPdfs: Boolean(options.onlyPdfs)
+    };
+
     const filteredFiles = files.filter(file => {
         const isPdf = file.name.toLowerCase().endsWith('.pdf');
         const isBusinessRulesFolder = file.isDirectory && file.name === 'business_rules';
-        return !isPdf && !isBusinessRulesFolder;
+
+        if (isBusinessRulesFolder) {
+            return false;
+        }
+
+        if (activeOptions.onlyPdfs) {
+            return isPdf;
+        }
+
+        if (!activeOptions.includePdfs && isPdf) {
+            return false;
+        }
+
+        return true;
     });
 
     // If there's only one directory, automatically navigate into it
@@ -381,6 +417,34 @@ function renderViewFileButtons(files)
 
     });
 
+}
+
+function renderPdfPreview(filePath) {
+    const output = document.getElementById("viewDisplayOutputBox");
+
+    if (!output) {
+        console.error("viewDisplayOutputBox not found");
+        return;
+    }
+
+    output.innerHTML = "";
+
+    const card = document.createElement("div");
+    card.className = "pdf-preview-card";
+
+    const title = document.createElement("h2");
+    title.className = "pdf-preview-title";
+    title.textContent = filePath.split(/[\\/]/).pop() || "PDF Preview";
+
+    const frame = document.createElement("iframe");
+    frame.className = "pdf-preview-frame";
+    frame.title = "PDF Preview";
+    frame.src = toFileUrl(filePath);
+    frame.setAttribute("type", "application/pdf");
+
+    card.appendChild(title);
+    card.appendChild(frame);
+    output.appendChild(card);
 }
 
 function renderViewOutput(entries) {
@@ -897,7 +961,8 @@ document.getElementById("viewDisplayErrorsBtn")
 document.getElementById("viewDisplaySummariesBtn")
     .addEventListener("click", () => {
 
-        showButtons("viewSummariesBtns");
+        showButtons("viewFilesBtns");
+        setActiveFileListView({ includePdfs: false, onlyPdfs: false });
 
         const codebaseName = selectedCodebasePath.split("/").pop();
 
@@ -910,6 +975,7 @@ document.getElementById("viewDisplaySummariesBtn")
 document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
 
     showButtons("viewFilesBtns");
+    setActiveFileListView({ includePdfs: true, onlyPdfs: false });
 
     runPreviewCommand(
         "files",
@@ -932,7 +998,8 @@ document.getElementById("viewDisplayBusinessRulesBtn").addEventListener("click",
 document.getElementById("viewUnitTestsBtn")
     .addEventListener("click", () => {
 
-        showButtons("viewSummariesBtns");
+        showButtons("viewFilesBtns");
+        setActiveFileListView({ includePdfs: false, onlyPdfs: false });
 
         const codebaseName = selectedCodebasePath.split("/").pop();
 
@@ -974,6 +1041,20 @@ document.getElementById('mainViewBackBtn')
 
         showPage('homePage');
     }); 
+
+// UML view should surface the generated PDFs for the selected codebase.
+document.getElementById('viewUMLBtn')
+    .addEventListener('click', () => {
+
+        showButtons('viewFilesBtns');
+        setActiveFileListView({ includePdfs: true, onlyPdfs: true });
+
+        const codebaseName = selectedCodebasePath.split(/[\\/]/).pop();
+
+        runPreviewCommand('files', {
+            path: `agent/file_summary_agent_output/${codebaseName}`
+        });
+    });
 
 
 
@@ -1215,6 +1296,25 @@ document.getElementById('runUnitTestValidationOnlyBtn')
         );
     });
 
+
+document.getElementById('runIntegrationTestGenerationOnlyBtn')
+    .addEventListener('click', () => {
+        event.preventDefault();
+        event.stopPropagation();
+        showLoading(
+            "Integration Test Generation",
+            "Preparing..."
+        );
+
+        runBackendCommand(
+            "generate_integration_tests",
+            {
+                codebase:selectedCodebasePath,
+                selected_rules: []
+            }
+        );
+    });
+
 // FILLER FOR WHEN VALIDATION GETS ADDED ONTO THIS BRANCH, FOR NOW IT WILL NOT DO ANYTHING WHEN CLICKED
 
 // document.getElementById('allUnitTestsBtn')
@@ -1446,6 +1546,12 @@ window.electronAPI.onBackendResponse((response) => {
         } else if (response.preview.type === "business_rules") {
 
             renderBusinessRulesPreview(
+                response.preview.content
+            );
+
+        } else if (response.preview.type === "pdf") {
+
+            renderPdfPreview(
                 response.preview.content
             );
 

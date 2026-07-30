@@ -75,6 +75,11 @@ TEXT = colors.HexColor("#1F2937")
 MUTED = colors.HexColor("#6B7280")
 BORDER = colors.HexColor("#D5DDF0")
 
+def sanitize_stem(name: str) -> str:
+    # Replace characters that give errors for windoes file names
+    import re
+    return re.sub(r'[\\/:*?"<>|]', '_', name)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -156,7 +161,7 @@ def render_plantuml(
     args: argparse.Namespace,
 ) -> Optional[Path]:
     snippet = ensure_start_end_uml(snippet)
-    if snippet.strip() == "@startuml\n@enduml":
+    if snippet.strip() in ("@startuml\n@enduml", "@startuml\n@enduml\n"):
         return None
 
     puml_path = temp_dir / f"{stem}.puml"
@@ -759,7 +764,7 @@ def main() -> int:
         for idx, type_info in enumerate(data.get("types") or []):
             image_paths[f"type_{idx}"] = render_plantuml(
                 type_info.get("plantuml", "").replace("\\n", "\n"),
-                f"type_{idx}_{type_info.get('name', 'type')}",
+                f"type_{idx}_{sanitize_stem(type_info.get('name', 'type'))}",
                 temp_dir,
                 args,
             )

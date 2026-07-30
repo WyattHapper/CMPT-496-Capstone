@@ -106,5 +106,5 @@ class FileSummaryOutput(BaseModel):
     types: list[TypeSummary] = Field(default_factory=list,description="Types defined in the file.")
     relationships: list[RelationshipSummary] = Field(default_factory=list,description="Relationships where both source and target types are defined in the file.")
     external_relationships: list[RelationshipSummary] = Field(default_factory=list,description="Relationships from types in this file to types defined outside the file.")
-    relationship_plantuml: str = Field(...,description="Standalone PlantUML diagram showing all in-file types and their relationships.")
+    relationship_plantuml: str = Field(default="", description="Standalone PlantUML diagram showing all in-file types and their relationships.")
     business_rules: list[BusinessRule] = Field(default_factory=list, description="Business rules evidenced by code in this file.")

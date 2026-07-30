@@ -1,0 +1,37 @@
+// Workflow: Table Data Population and Validation
+// Description: Handles the initialization of tables from various data structures like POCOs, dictionaries, or arrays and ensures data integrity by validating row counts against defined columns.
+// Covered Business Rules: [1, 3, 9, 11]
+
+using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using Xunit;
+using ConsoleTables;
+
+[Fact] public void Verify_Table_Data_Population_And_Validation_Workflow() { var manualTable = new ConsoleTable("Col1", "Col2"); manualTable.AddRow("Value1", "Value2"); var validationException = Assert.Throws<Exception>(() => manualTable.AddRow("OnlyOneValue")); Assert.Contains("does not match", validationException.Message); var users = new List<User> { new User { Name = "Integration Test", Age = 10 } }; var pocoTable = ConsoleTable.From(users); Assert.Equal(2, pocoTable.Columns.Count); Assert.Contains("Name", pocoTable.Columns); Assert.Contains("Age", pocoTable.Columns); var dictData = new Dictionary<string, Dictionary<string, object>> { { "HeaderKey", new Dictionary<string, object> { { "DataKey", "DataValue" } } } }; var dictTable = ConsoleTable.FromDictionary(dictData); Assert.Equal("", dictTable.Columns[0]); Assert.Equal("DataKey", dictTable.Columns[1]); Assert.Equal("HeaderKey", dictTable.Rows[0][0]); Object[][] arrayData = [ ["HeaderA", "HeaderB"], ["ValueA", "ValueB"] ]; var arrayTable = ConsoleTable.From(arrayData); Assert.Equal("HeaderA", arrayTable.Columns[0]); Assert.Equal("ValueA", arrayTable.Rows[0][0]); DataTable dataTable = new DataTable(); dataTable.Columns.Add("DtCol", typeof(string)); dataTable.Rows.Add("DtValue"); var dtTable = ConsoleTable.From(dataTable); Assert.Single(dtTable.Columns); Assert.Equal("DtCol", dtTable.Columns[0]); Assert.Equal("DtValue", dtTable.Rows[0][0]); }
+
+// Workflow: Visual Styling and Alignment Configuration
+// Description: Defines the table's presentation layer, including format styles, Unicode-aware alignment calculations, and specialized alignment for specific data types.
+// Covered Business Rules: [2, 5, 7, 10]
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using Xunit;
+using ConsoleTables;
+
+[Fact] public void VisualStylingAndAlignmentConfiguration_FullWorkflow_Test() { var users = new List<User> { new User { Name = "Alexandre", Age = 36 }, new User { Name = "Lucía 👩", Age = 28 } }; var table = ConsoleTable.From(users).Configure(o => { o.NumberAlignment = Alignment.Right; o.EnableCount = true; }); string defaultTable = table.ToString(); Assert.Contains("| Alexandre |  36 |", defaultTable); Assert.Contains("| Lucía 👩  |  28 |", defaultTable); Assert.Contains("Count: 2", defaultTable); string markdownTable = table.ToMarkDownString(); Assert.Contains("| Name      | Age |", markdownTable); Assert.Contains("|-----------|-----|", markdownTable); Assert.Contains("| Alexandre |  36 |", markdownTable); string alternativeTable = table.ToStringAlternative(); Assert.Contains("+-----------+-----+", alternativeTable); string minimalTable = table.ToMinimalString(); Assert.Contains("Name       Age", minimalTable); Assert.Contains("Alexandre   36", minimalTable); using (var sw = new StringWriter()) { table.Configure(o => o.OutputTo = sw); table.Write(Format.Minimal); var output = sw.ToString(); Assert.Equal(minimalTable + Environment.NewLine, output); } }
+
+// Workflow: Table Rendering and Output Management
+// Description: Processes the final rendered output, including word-aware cell wrapping, optional row count summaries, and routing to the standard output stream.
+// Covered Business Rules: [4, 6, 8, 12]
+
+using System.IO;
+using Xunit;
+using ConsoleTables;
+using System.Collections.Generic;
+
+[Fact]\npublic void TableRendering_Workflow_ValidatesWrappingAndOutputConfig()\n{\n    var testWriter = new StringWriter();\n    var options = new ConsoleTableOptions\n    {\n        Columns = new List<string> { "Description" },\n        EnableCount = true,\n        OutputTo = testWriter\n    };\n    \n    // Initialize the table with custom options (Rule 12 - Output Configuration)\n    var table = new ConsoleTable(options);\n\n    // Rule 4: Set MaxWidth to force word-aware cell wrapping\n    table.MaxWidth = 12;\n    table.SetWordBreakDelimiter(' ');\n    \n    // Add content that exceeds MaxWidth to trigger the wrapping logic\n    table.AddRow("Wrap this sentence");\n\n    // Act: Render the table to the configured StringWriter (Rule 12)\n    table.Write();\n\n    var result = testWriter.ToString();\n\n    // Assert: Verify Word-Aware Wrapping (Rule 4)\n    // With MaxWidth 12, "Wrap this sentence" should split into "Wrap this" and "sentence"\n    Assert.Contains("Wrap this", result);\n    Assert.Contains("sentence", result);\n\n    // Assert: Verify Row Count Summary is present (Rule 6)\n    Assert.Contains("Count: 1", result);\n\n    // Act: Verify the summary can be disabled via configuration (Rule 8)\n    var noCountWriter = new StringWriter();\n    table.Configure(o =>\n    {\n        o.EnableCount = false;\n        o.OutputTo = noCountWriter;\n    });\n    table.Write();\n\n    var noCountResult = noCountWriter.ToString();\n\n    // Assert: Verify Count is removed but content remains\n    Assert.DoesNotContain("Count:", noCountResult);\n    Assert.Contains("Wrap this", noCountResult);\n}
+
