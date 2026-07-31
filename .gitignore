@@ -1,29 +1,27 @@
 # ignore target codebases
 /targetCodebases
-# ignore generated tests (This is mainly for dev testing)
-/ConsoleTables-main/ConsoleTables-main.Tests
+
+# database stuff
 /vectorStores
 /my_chroma_data
+
+
+agent/file_summary_agent_output/
+agent/directory_agent_output/
+agent/BR_agent_output/
+agent/UT_agent_output/
+agent/UTV_agent_output/
+agent/IT_agent_output/
+
 .env
 .vscode/
 __pycache__/
 *.pyc
-agent/file_summary_agent_output/*
-agent/file_summary_agent_output/*/*.json
-agent/file_summary_agent_output/markdown/
-agent/directory_agent_output/
-agent/BR_agent_output/
-agent/BR_agent_output/*
-agent/BR_agent_output/*/*.json
-agent/UT_agent_output/
-agent/UT_agent_output/*
-agent/UT_agent_output/*/*.json
-agent/UT_agent_output/*/*.txt
-agent/UTV_agent_output/
-agent/IT_agent_output/
-node_modules/
 .venv/
-.ConsoleTables-main/
+node_modules/
+
+# ignore everything related to packaging the backend
+build/
 # ignore everything in the packaged backend
 releases/main/
 # ignore anything related to electron packaging
