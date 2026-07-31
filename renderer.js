@@ -1088,8 +1088,27 @@ document.getElementById("viewDisplaySourcesBtn")
         renderTextPreview("Select a codebase first from the pipeline page.");
         return;
     }
-    const rootPath = `agent/directory_agent_output/${codebaseName}`;
-    resetInsightFolderNavigation(rootPath);
+    try {
+        const rootPath = `agent/directory_agent_output/${codebaseName}`;
+        resetInsightFolderNavigation(rootPath);
+
+        runPreviewCommand(
+            "files",
+            {
+                path: rootPath
+            }
+        );
+    } catch (error) {
+        const rootPath = `backend/agent/directory_agent_output/${codebaseName}`;
+        resetInsightFolderNavigation(rootPath);
+
+        runPreviewCommand(
+            "files",
+            {
+                path: rootPath
+            }
+        );
+    }
 
     runPreviewCommand(
         "files",
@@ -1120,14 +1139,23 @@ document.getElementById("viewDisplaySummariesBtn")
             renderTextPreview("Select a codebase first from the pipeline page.");
             return;
         }
-        const rootPath = `agent/file_summary_agent_output/${codebaseName}`;
+        try{
+            const rootPath = `agent/file_summary_agent_output/${codebaseName}`;
 
-        resetInsightFolderNavigation(rootPath);
+            resetInsightFolderNavigation(rootPath);
 
-        runPreviewCommand("files", {
-            path: rootPath
-        });
+            runPreviewCommand("files", {
+                path: rootPath
+            });
+        }catch(error){
+            const rootPath = `backend/agent/file_summary_agent_output/${codebaseName}`;
 
+            resetInsightFolderNavigation(rootPath);
+
+            runPreviewCommand("files", {
+                path: rootPath
+            });
+        }
     });
 
 document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
@@ -1135,14 +1163,25 @@ document.getElementById("viewDisplayFilesBtn").addEventListener("click", () => {
     showButtons("viewFilesBtns");
     setActiveFileListView({ includePdfs: true, onlyPdfs: false, recursivePdfs: false });
 
-    resetInsightFolderNavigation("agent");
+    try{
+        resetInsightFolderNavigation("agent");
 
-    runPreviewCommand(
-        "files",
-        {
-            path: "agent"
-        }
-    );
+        runPreviewCommand(
+            "files",
+            {
+                path: "agent"
+            }
+        );
+    } catch (error) {
+        resetInsightFolderNavigation("backend/agent");
+
+        runPreviewCommand(
+            "files",
+            {
+                path: "backend/agent"
+            }
+        );
+    }
 
 });
 
@@ -1166,13 +1205,24 @@ document.getElementById("viewUnitTestsBtn")
             renderTextPreview("Select a codebase first from the pipeline page.");
             return;
         }
-        const rootPath = `agent/UT_agent_output/${codebaseName}`;
 
-        resetInsightFolderNavigation(rootPath);
+        try{
+            const rootPath = `agent/UT_agent_output/${codebaseName}`;
 
-        runPreviewCommand("files", {
-            path: rootPath
-        });
+            resetInsightFolderNavigation(rootPath);
+
+            runPreviewCommand("files", {
+                path: rootPath
+            });
+        } catch (error) {
+            const rootPath = `backend/agent/UT_agent_output/${codebaseName}`;
+
+            resetInsightFolderNavigation(rootPath);
+
+            runPreviewCommand("files", {
+                path: rootPath
+            });
+        }
 
     });
 
@@ -1185,12 +1235,21 @@ document.getElementById("validatedBusinessRulesBtn").addEventListener("click", (
         return;
     }
 
-    runPreviewCommand(
-        "open_file",
-        {
-            path: `agent/BR_agent_output/${codebaseName}/validated_rules.json`
-        }
-    );
+    try{
+        runPreviewCommand(
+            "open_file",
+            {
+                path: `agent/BR_agent_output/${codebaseName}/validated_rules.json`
+            }
+        );
+    } catch (error) {
+        runPreviewCommand(
+            "open_file",
+            {
+                path: `backend/agent/BR_agent_output/${codebaseName}/validated_rules.json`
+            }
+        );
+    }
 
 
 });
@@ -1204,12 +1263,21 @@ document.getElementById("discardedBusinessRulesBtn").addEventListener("click", (
         return;
     }
 
-    runPreviewCommand(
-        "open_file",
-        {
-            path: `agent/BR_agent_output/${codebaseName}/discarded_rules.json`
-        }
-    );
+    try{
+        runPreviewCommand(
+            "open_file",
+            {
+                path: `agent/BR_agent_output/${codebaseName}/discarded_rules.json`
+            }
+        );
+    } catch (error) {
+        runPreviewCommand(
+            "open_file",
+            {
+                path: `backend/agent/BR_agent_output/${codebaseName}/discarded_rules.json`
+            }
+        );
+    }
 
 });
 
@@ -1233,14 +1301,26 @@ document.getElementById('viewUMLBtn')
             renderTextPreview("Select a codebase first from the pipeline page.");
             return;
         }
-        const rootPath = `agent/file_summary_agent_output/${codebaseName}`;
 
-        resetInsightFolderNavigation(rootPath);
+        try{
+            const rootPath = `agent/file_summary_agent_output/${codebaseName}`;
 
-        runPreviewCommand('files', {
-            path: rootPath,
-            recursivePdfs: true
-        });
+            resetInsightFolderNavigation(rootPath);
+
+            runPreviewCommand('files', {
+                path: rootPath,
+                recursivePdfs: true
+            });
+        } catch (error) {
+            const rootPath = `backend/agent/file_summary_agent_output/${codebaseName}`;
+
+            resetInsightFolderNavigation(rootPath);
+
+            runPreviewCommand('files', {
+                path: rootPath,
+                recursivePdfs: true
+            });
+        }
     });
 
 
