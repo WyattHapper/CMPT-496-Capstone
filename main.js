@@ -7,6 +7,8 @@ const dotenv = require("dotenv");
 
 let pythonProcess = null;
 let mainWindow = null;
+// Directory the backend actually writes its output to (userData when packaged).
+let backendOutputDir = __dirname;
 // ----------------------------------------------------
 // API KEY CHECK
 // ----------------------------------------------------
@@ -491,7 +493,7 @@ ipcMain.handle(
             const rawPath = canonicalizeRelativeOutputPath(args.path || "agent");
             const targetPath = path.isAbsolute(rawPath)
                 ? rawPath
-                : path.join(__dirname, rawPath);
+                : path.join(backendOutputDir, rawPath);
 
             if (!fs.existsSync(targetPath)) {
                 return {
@@ -590,7 +592,7 @@ ipcMain.handle(
 
             const targetPath = path.isAbsolute(rawPath)
                 ? rawPath
-                : path.join(__dirname, rawPath);
+                : path.join(backendOutputDir, rawPath);
 
             if (!fs.existsSync(targetPath)) {
                 const result = {
@@ -880,15 +882,17 @@ function startPythonBackend() {
 
     const executableName = isWindows ? "main.exe" : "main";
     const exePath = path.join(backendDir, executableName);
+    const exeExists = fs.existsSync(exePath);
 
-    const outputDir = app.isPackaged
-        ? app.getPath("userData")
-        : backendDir;
+    // Must match where the Python side (backend/commands.py) resolves
+    // APP_DIR to: the frozen exe's own directory, or the repo root
+    // (__dirname) when falling back to running main.py directly.
+    backendOutputDir = exeExists ? backendDir : __dirname;
 
     console.log("Backend directory:", backendDir);
-    console.log("Output directory:", outputDir);
+    console.log("Output directory:", backendOutputDir);
 
-    if (fs.existsSync(exePath)) {
+    if (exeExists) {
 
         console.log("Launching packaged executable:", exePath);
 
@@ -915,7 +919,7 @@ function startPythonBackend() {
             [
                 "-u",
                 scriptPath,
-                outputDir
+                backendOutputDir
             ],
             {
                 cwd: __dirname,
