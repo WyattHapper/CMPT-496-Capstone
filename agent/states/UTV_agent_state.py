@@ -1,12 +1,12 @@
 """
-@file UT_agent_state.py
-@brief Defines the shared state structure used by the UT Agent (G3) workflow.
-@details This module defines the UTGraphState TypedDict, which represents the
+@file UTV_agent_state.py
+@brief Defines the shared state structure used by the UTV Agent (G3) workflow.
+@details This module defines the UTVGraphState TypedDict, which represents the
 structured state passed between nodes in the LangGraph execution graph.
 """
 
 from typing import TypedDict, Annotated, Any
-from agent.structured_output.UTV_output import ValidatedRule, UnitTest
+from agent.structured_output.UTV_output import UnitTest, Report
 from operator import add
 
 
@@ -14,31 +14,29 @@ class UTVGraphState(TypedDict):
     """
     @brief Represents the shared state passed between nodes in the UT Agent workflow graph.
 
-    @var validated_rules
-        Accumulating list of rules that passed validation with supporting evidence.
-        Uses an additive reducer so each validator invocation appends without
-        overwriting previous results.
+    @var current_tests
+        The list of UnitTest candidates that are currently being validated.
+        These tests are passed from the runner node into the validator node.
 
-    @var unit_tests
-        Accumulating list of unit tests generated for validated rules.
-        Uses an additive reducer so each test generator invocation appends
-        without overwriting previous results.
+    @var validated_tests
+        Accumulating list of UnitTest objects that the validator has marked as successful.
+        These tests will be written to validated_tests.json.
 
-    @var rule_contexts
-        Per-rule retrieval context keyed by rule ID. Each value is a dict with
-        "code_context" (list[str]) and "summary_context" (list[str]).
-        Populated by the retriever node.
-        Accumulates across retrieval iterations for the same rule.
+    @var discarded_tests
+        Accumulating list of UnitTest objects that the validator has rejected.
+        These tests will be written to discarded_tests.json.
+
+    @var report
+        The most recent execution report returned by the runner node.
+        This includes return_code, output, and errors from dotnet test.
 
     @var codebase_k
-        Number of code snippets to retrieve from the code vector database per
-        query iteration. Increased by the validator on "need_more_context"
-        decisions. Reset when all rules are resolved.
+        Number of code snippets to retrieve from the code vector database per query iteration.
+        Used when validation requires additional context.
 
     @var file_summary_k
-        Number of summary entries to retrieve from the summary vector database
-        per query iteration. Increased by the validator on "need_more_context"
-        decisions. Reset when all rules are resolved.
+        Number of summary entries to retrieve from the summary vector database per query iteration.
+        Used when validation requires additional context.
 
     @var code_collection
         ChromaDB collection handle for embedded code snippets.
@@ -55,12 +53,13 @@ class UTVGraphState(TypedDict):
 
     @var output_directory
         Base directory for writing output JSON files. Defaults to
-        ./agent/UT_agent_output if not specified.
+        ./agent/UTV_agent_output if not specified.
     """
-    validated_rules: dict[str, list[ValidatedRule]]
-    unit_tests: list[UnitTest]
-    rule_contexts: dict[int, dict]
-    test_path: str
+    current_tests: list[UnitTest]
+    validated_tests: Annotated[list[UnitTest], add]
+    discarded_tests: Annotated[list[UnitTest], add]
+    imports: set
+    report: Report
     codebase_k: int
     file_summary_k: int
     code_collection: Any

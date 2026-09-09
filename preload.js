@@ -1,94 +1,136 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld("electronAPI", {
 
-    // API key check
-    hasAPIKey: () => {
-        return ipcRenderer.invoke("has-api-key");
-    },
+contextBridge.exposeInMainWorld(
+    "electronAPI",
+    {
 
 
-    // Send menu selections
-    sendMenuOption: (option) => {
-        ipcRenderer.send("menu-option", option);
-    },
+        // ==================================
+        // Backend Commands
+        // ==================================
+
+        executeCommand: (
+            command,
+            args = {}
+        ) => {
+
+            return ipcRenderer.invoke(
+                "execute-command",
+                {
+                    command,
+                    args
+                }
+            );
+
+        },
 
 
-    // Send codebase path
-    sendCodebasePath: (path) => {
-        ipcRenderer.send("codebase-path", path);
-    },
+
+        // ==================================
+        // Collection Preview Commands
+        // ==================================
+
+        previewCommand: (
+            action,
+            args = {}
+        ) => {
+
+            return ipcRenderer.invoke(
+                "preview-command",
+                {
+                    action,
+                    args
+                }
+            );
+
+        },
 
 
-    // Press enter in python CLI
-    sendEnter: () => {
-        ipcRenderer.send("send-enter");
-    },
+
+        // ==================================
+        // API Key
+        // ==================================
+
+        hasAPIKey: () => {
+
+            return ipcRenderer.invoke(
+                "has-api-key"
+            );
+
+        },
+
+        getValidatedRules: (
+            codebasePath
+        ) => {
+            return ipcRenderer.invoke(
+                "get-validated-rules",
+                {
+                    codebasePath
+                }
+            );
+        },
+
+        setAPIKey: (
+            key
+        ) => {
 
 
-    // Exit app
-    exitApp: () => {
-        ipcRenderer.send("exit-app");
-    },
+            return ipcRenderer.invoke(
+                "execute-command",
+                {
+                    command:"set_api_key",
+
+                    args:{
+                        api_key:key
+                    }
+                }
+            );
+
+        },
+
+        exitApp: () => {
+            return ipcRenderer.invoke("exit-app");
+        },
 
 
-    // API key submission
-    sendAPIKey: (key) => {
-        ipcRenderer.send("api-key", key);
-    },
+        // ==================================
+        // Backend Response Listener
+        // ==================================
+
+        onBackendResponse: (
+            callback
+        ) => {
 
 
-    // Listen for Python output
-    onAnalysisPythonOutput: (callback) => {
-        ipcRenderer.on("python-output", (event, text) => {
-            callback(text);
-        });
-    },
-
-    // Listen for Python output
-    onErrorOutput: (callback) => {
-        ipcRenderer.on("error-output", (event, text) => {
-            callback(text);
-        });
-    },
-
-    // Listen for Summary Python output (numbered list items into buttons)
-    onSummaryPythonOutput: (callback) => {
-        ipcRenderer.on("summary-output", (event, text) => {
-            callback(text);
-        });
-    },
-
-    onSummarySelectionOutput: (callback) => {
-        ipcRenderer.on("summary-selection-output", (event, text) => {
-            callback(text);
-        });
-    },
-
-    onSourcePythonOutput: (callback) => {
-        ipcRenderer.on("source-output", (event, text) => {
-            callback(text);
-        });
-    },
-
-    onSourceSelectionOutput: (callback) => {
-        ipcRenderer.on("source-selection-output", (event, text) => {
-            callback(text);
-        });
-    },
+            ipcRenderer.on(
+                "backend-response",
+                (
+                    event,
+                    response
+                )=>{
 
 
-    // onCollectionPreview: (callback) => {
-    //     ipcRenderer.on("collection-preview", (event, text) => {
-    //         callback(text);
-    //     });
-    // },
+                    callback(response);
 
 
-    // onCollectionsList: (callback) => {
-    //     ipcRenderer.on("collections-list", (event, collections) => {
-    //         callback(collections);
-    //     });
-    // }
+                }
+            );
 
-});
+        },
+
+
+        // Optional cleanup
+        removeBackendListener: () => {
+
+            ipcRenderer.removeAllListeners(
+                "backend-response"
+            );
+
+        },
+        
+        selectCodebase: () =>
+        ipcRenderer.invoke("select-codebase"),
+
+        }
+);

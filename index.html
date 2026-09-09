@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Codebase Analysis System</title>
+    <title>Checkpoint</title>
 
     <link rel="stylesheet" href="style.css">
 </head>
@@ -11,17 +11,17 @@
     <!-- HOME PAGE -->
     <div id="homePage" class="page active">
 
-        <h1>TBD2</h1>
+        <h1>Checkpoint</h1>
         <h2>Codebase Analysis System</h2>
 
-        <button class="btn-primary unusable-btn" id="analysisBtn">Run Analysis</button>
+        <button class="btn-primary unusable-btn" id="analysisBtn">Run Operations</button>
+        <button class="btn-primary" id="mainViewBtn">View Insights</button>
         <button class="btn-primary" id="apiBtn">Upload API Key</button>
-        <button class="btn-primary" id="summaryBtn">View Summaries</button>
-        <button class="btn-primary" id="sourceBtn">View Sources</button>
-        <button class="btn-primary" id="errorBtn">View Errors</button>
+        <button class="btn-primary" id="faqAndSupportBtn">FAQ & Support</button>
         <button class="btn-primary back-btn" id="exitBtn">Exit</button>
 
     </div>
+
 
     <!-- API PAGE -->
     <div id="apiPage" class="page hidden">
@@ -43,115 +43,493 @@
     <!-- ANALYSIS PAGE -->
     <div id="analysisPage" class="page hidden">
 
-        <h1>Analysis</h1>
+        <h1>Operations</h1>
 
         <div id="analysisOptions">
 
             <div id="pipelineOptions">
                
-             <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
-             <button class="btn-primary" id="individualStepsBtn">Choose Individual Step(s)</button>
-            </div>
-
-
-            <div id="individualStepsContainer" class="hidden">
-
-                <h2>Run Individual Steps</h2>
-
+                <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
                 <button class="btn-primary" id="createCodeDatabaseOnlyBtn">Create Code Database</button>
                 <button class="btn-primary" id="createJSONSummariesOnlyBtn">Create JSON Summaries</button>
                 <button class="btn-primary" id="createSummaryDatabasefromJSONOnlyBtn">Create Summary Database from JSON</button>
-                <button class="btn-primary" id="createDirectorySummariesOnlyBtn">Create Directory Summaries</button>
+                <button class="btn-primary" id="createDirectorySummariesOnlyBtn">Create Directory Summaries & Business Rules</button>
                 <button class="btn-primary" id="runBusinessRuleValidationOnlyBtn">Business Rule Validation</button>
-                <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Unit Test Generation</button>
                 <button class="btn-primary" id="runUMLGenerationOnly">UML Generation</button>
-                <button class="btn-primary back-btn hidden" id="backToFullPipelineBtn">Back</button>
+                <button class="btn-primary" id="runUnitTestGenerationOnlyBtn">Unit Test Generation</button>
+                <button class="btn-primary" id="runUnitTestValidationOnlyBtn">Unit Test Validation</button>
+                <button class="btn-primary" id="runIntegrationTestGenerationOnlyBtn">Integration Test Generation</button>
+                <button class="btn-primary unusable-btn" id="runIntegrationTestValidationOnlyBtn">Integration Test Validation</button>
+                
             </div>
 
             <button class="btn-primary back-btn" id="analysisBackBtn">Return to Main Menu</button>
+
         </div>
-
-        <!--<div id="analysisOutput" class="hidden">
-            <h3>Output</h3>
-            <pre id="outputBox"></pre>
-        </div>-->
-
     </div>
 
     <!--Codebase Analysis Pipeline input and output page-->
     <div id="codebasePipelinePage" class="page hidden">
         <h1>Codebase Analysis Pipeline</h1>
 
-        <a>Enter the path to the codebase: </a>
-        <input class="input-glass" id="codebasePath" type="text" />
+        <a>Click the file button and select a directory: </a>
+        <div id="pathInputContainer">
+            <input class="input-glass" id="codebasePath" type="text" readonly/>
+            <button id="browseCodebaseBtn" class="btn-primary">📂</button>
+        </div>
         <button class="btn-primary" id="submitPathBtn">Submit</button>
         <button class="btn-primary back-btn" id="codebaseBackBtn">Back</button>
 
-        <!--<div id="analysisOutput" class="hidden">
-            <h3>Output</h3>
-            <pre id="outputBox"></pre>
-        </div>-->
+       
 
     </div>
 
-    <!--Output page-->
-    <div id="outputPage" class="page hidden">
-        <h1>Output</h1>
+    <!--  -->
+    <!--ANALYSIS SUB PAGES -->
+    <!--  -->
 
-        <div id="analysisOutput" class="hidden">
-            <div class="loader"></div>
-            <pre id="analysisOutputBox"></pre>
+    <!-- BUSINESS RULE PAGE -->
+    <div id="businessRulePage" class="page hidden">
+
+        <h1>Business Rule Validation</h1>
+
+        <button class="btn-primary" id="allBusinessRuleBtn">Run All Business Rules</button>
+        <button class="btn-primary" id="individualBusinessRuleBtn">Select Invidividual Business Rules</button>
+        <button class="btn-primary back-btn" id="businessRuleBackBtn">Back</button>
+        
+    </div>
+
+    <!-- BUSINESS RULE SELECTION PAGE -->
+    <div id="chooseBusinessRulePage" class="page hidden">
+
+        <h1>Business Rule Validation</h1>
+        <h2>Select Business Rules to Validate</h2>
+
+        
+
+        <button class="btn-primary back-btn" id="chooseBusinessRuleBackBtn">Back</button>
+
+        
+    </div>
+
+    <!-- UNIT TEST PAGE -->
+    <div id="unitTestPage" class="page hidden">
+
+        <h1>Unit Test Generation</h1>
+
+        <button class="btn-primary" id="allValidatedRulesBtn">Run All Validated Business Rules</button>
+        <button class="btn-primary" id="individualValidatedRulesBtn">Select Individual Validated Business Rules</button>
+        <button class="btn-primary back-btn" id="unitTestPageBackBtn">Back</button>
+        
+    </div>
+
+    <!-- UNIT TEST SELECTION PAGE -->
+    <div id="chooseUnitTestPage" class="page hidden">
+
+        <h1>Unit Test Generation</h1>
+        <h2>Select Validated Rules to Generate Tests For</h2>
+        
+        <div id="validatedRuleSelectionStatus" class="selection-status">Loading validated rules...</div>
+        <div id="validatedRuleList" class="selection-list"></div>
+        <div id="selectedValidatedRuleDetails" class="selection-details hidden"></div>
+
+        <button class="btn-primary" id="chooseUnitTestPageSelectBtn">Enter</button>
+        <button class="btn-primary back-btn" id="chooseUnitTestPageBackBtn">Back</button>
+        
+    </div>
+
+
+    <!--  -->
+    <!--VIEW PAGES -->
+    <!--  -->
+
+    <!-- View Display? -->
+
+    <div id="mainViewPage" class="page hidden">
+
+        
+        <div id="viewDisplayBtnSideBar">
+
+            <div id="sideBarContent">
+                <h1 id="viewPageHeader">View Insights</h1>
+                <h3 id="viewPageSubHeader">Choose what you would like to view</h3>
+
+                <div id="mainViewBtns" class="viewBtnContainer"> 
+                    <button class="btn-primary" id="viewDisplaySummariesBtn">File Summaries</button>
+                    <button class="btn-primary" id="viewDisplaySourcesBtn">Directory Summaries</button>
+                    <button class="btn-primary" id="viewDisplayErrorsBtn">Errors</button>
+                    <button class="btn-primary" id="viewUMLBtn">UML</button>
+                    <button class="btn-primary" id="viewDisplayBusinessRulesBtn">Business Rules</button>
+                    <button class="btn-primary" id="viewUnitTestsBtn">Unit Tests</button>
+
+                    <button class="btn-primary" id="viewDisplayFilesBtn">Files</button>
+                </div>
+
+                <!-- These Divs will be used for button placement -->
+                <!-- We will have to interpret that data into buttons for each file choice -->
+                <div id="viewSummariesBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewSourcesBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewErrorsBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewFilesBtns" class="viewBtnContainer hidden"> </div>
+
+                <div id="viewBusinessRulesBtns" class="viewBtnContainer hidden"> 
+                    <button id="validatedBusinessRulesBtn" class="output-file-btn btn-secondary">Validated Business Rules</button>
+                    <button id="discardedBusinessRulesBtn" class="output-file-btn btn-secondary">Discarded Business Rules</button>
+
+                </div>
+            </div>
+            
+            
+
+            <button class="btn-primary back-btn" id="mainViewBackBtn">Main Menu</button>
         </div>
 
-        <button class="btn-primary back-btn" id="outputBackBtn">Back</button>
-    </div>
-
-    <!-- SUMMARY PAGE -->
-    <div id="summaryPage" class="page hidden">
-
-        <h1>Summaries</h1>
-
-        <h3 id="summariesSubheader">Collection Preview</h3>
-        <h3 class="hidden" id="noVectorStoresMsgSum">No vector stores found. Please generate summaries first.</h3>
-
-        <div id="summaryOutput">
-            <pre id="summaryOutputBox"></pre>
+        <!-- This box will be for the outputs -->
+        <div id="viewDisplayOutput">
+            <pre id="viewDisplayOutputBox"></pre>
         </div>
-        <button class="btn-primary back-btn" id="summaryBackBtn">Back</button>
+        
+        
 
     </div>
 
-    <!-- SOURCE PAGE -->
-    <div id="sourcePage" class="page hidden">
 
-        <h1>Source Collections</h1>
-
-        <!-- I don't think this is needed -->
-        <!-- <div id="collectionsContainer"></div> -->
+    <!-- FAQ/Support -->
+    <div id="faqAndSupportPage" class="page hidden">
 
 
-        <h3 class="hidden" id="noVectorStoresMsgSrc">No vector stores found. Please generate summaries first.</h3>
-        <h3 id="sourceCollectionSubheader">Collection Preview</h3>
-        <div id="sourceOutput">
-            <pre id="sourceOutputBox"></pre>
+        <h1 id="faqAndSupportPageHeader">Frequently Asked Questions</h1>
+
+        <div id="faqAndSupportBtnContainer">
+            <button id="faqBtn" class="btn-primary btn-inverted" >FAQ</button>
+            <button id="supportBtn" class="btn-primary">Support</button>
         </div>
-        <button class="btn-primary back-btn" id="sourceBackBtn">Back</button>
 
+        <div id="supportContainer" class="supportFAQTab hidden">
+
+            <h2>Click to learn more about app functionality:</h2>
+
+            <div id="supportContainer" class="supportFAQTab">
+
+                <details class="faq-box">
+                    <summary>
+                        Run Analysis
+                    </summary>
+
+                    <p>
+                        The Run Analysis section allows you to execute different
+                        analysis operations on a selected codebase.
+                        <br><br>
+
+                        The Full Codebase Analysis Pipeline runs all available
+                        analysis stages automatically. This includes:
+                        <br><br>
+
+                        • Creating a searchable source code database<br>
+                        • Generating file-level summaries<br>
+                        • Building a summary database<br>
+                        • Performing directory-level analysis<br>
+                        • Extracting business rules<br>
+                        • Validating discovered business rules<br>
+                        • Generating unit tests<br>
+                        • Creating UML diagrams<br>
+
+                        <br>
+
+                        Individual analysis steps can also be run separately if
+                        you only need a specific output. This is useful when
+                        updating an existing analysis or troubleshooting a
+                        particular stage.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Viewing Insights
+                    </summary>
+
+                    <p>
+                        The View Insights section allows you to explore the
+                        information generated during analysis.
+                        <br><br>
+
+                        Available insights may include:
+                        <br><br>
+
+                        • File summaries describing individual source files,
+                        classes, functions, and dependencies<br><br>
+
+                        • Directory summaries explaining the purpose and
+                        responsibilities of project folders<br><br>
+
+                        • Business rule reports containing discovered system
+                        logic and requirements<br><br>
+
+                        • Source files and generated artifacts created during
+                        analysis<br><br>
+
+                        • UML diagrams representing relationships between
+                        components
+                        <br><br>
+
+                        Use the sidebar navigation to select the type of insight
+                        you would like to view.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Setting / Changing API Key
+                    </summary>
+
+                    <p>
+                        The application requires an API key to communicate with
+                        the AI model used during analysis.
+                        <br><br>
+
+                        To set your API key:
+                        <br><br>
+
+                        1. Open the API Key page from the main menu.<br>
+                        2. Enter your API key into the input field.<br>
+                        3. Submit the key to connect it with the application.<br>
+
+                        <br>
+
+                        If an API key already exists, you can choose to keep the
+                        current key or replace it with a new one.
+                        <br><br>
+
+                        Make sure your API key is valid and has access to the
+                        required AI services before running an analysis.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Submitting File Path
+                    </summary>
+
+                    <p>
+                        Before running an analysis, you must select the codebase
+                        that you want the application to analyze.
+                        <br><br>
+
+                        Use the folder selection button to open your computer's
+                        file explorer and choose the root directory of your
+                        project.
+                        <br><br>
+
+                        The selected folder should contain the source code,
+                        configuration files, and other project files you want
+                        analyzed.
+                        <br><br>
+
+                        Selecting the project root folder is recommended because
+                        it allows the application to understand the complete
+                        structure and relationships within the codebase.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        What languages are supported?
+                    </summary>
+
+                    <p>
+                        Language support depends on the parsing tools and analysis
+                        agents currently configured in the application.
+                        <br><br>
+
+                        The system works best with commonly structured software
+                        projects containing recognizable source files,
+                        dependencies, and documentation.
+                        <br><br>
+
+                        If a file type is not supported, it may be skipped during
+                        analysis while the remaining supported files continue to
+                        be processed.
+                    </p>
+                </details>
+
+
+            </div>
+        </div>
+
+
+        <div id="faqContainer" class="supportFAQTab">
+
+            <details class="faq-box">
+                <summary>
+                    What is CheckPoint?
+                </summary>
+
+                <p>
+                    CheckPoint analyzes software codebases using AI agents
+                    to generate summaries, business rules, UML diagrams, and
+                    other insights about the project.
+                </p>
+            </details>
+
+            <details class="faq-box">
+                <summary>
+                    Why use CheckPoint?
+                </summary>
+
+                <p>
+                    Checkpoint is designed to make it easier for software
+                    engineers to learn about the components of their 
+                    desired codebases to create a faster, more convient workflow 
+                    when changes are needed to be implemented. Especially in cases 
+                    of sparsely documented legacy code.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    How do I analyze a codebase?
+                </summary>
+
+                <p>
+                    Select your codebase using the folder picker, then run the
+                    desired analysis operation. CheckPoint will process the
+                    project and display generated results.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    Why does analysis take a long time?
+                </summary>
+
+                <p>
+                    Processing time depends on the size of the codebase, number
+                    of files, and AI processing requirements.
+                </p>
+            </details>
+
+            <details class="faq-box">
+                <summary>
+                    What languages are supported?
+                </summary>
+
+                <p>
+                    In this current iteration we only support C# for the full 
+                    pipeline, however more work is being done to integrate and 
+                    accomodate different languages
+                </p>
+            </details>
+
+            <details class="faq-box">
+                    <summary>
+                        How long does analysis take?
+                    </summary>
+
+                    <p>
+                        Analysis time depends on the size and complexity of the
+                        selected codebase.
+                        <br><br>
+
+                        Larger projects may require more time because the system
+                        must process more files, generate more summaries, and
+                        perform additional AI-based reasoning steps.
+                        <br><br>
+
+                        Progress bars are displayed during execution to show both
+                        overall pipeline progress and progress within individual
+                        tasks.
+                    </p>
+                </details>
+
+
+                <details class="faq-box">
+                    <summary>
+                        Does the application modify my code?
+                    </summary>
+
+                    <p>
+                        No. The application analyzes your existing codebase and
+                        generates additional output files and reports.
+                        <br><br>
+
+                        Your original source files are not modified during the
+                        analysis process.
+                    </p>
+                </details>
+
+
+        </div>
+
+        <button id="faqAndSupportBackBtn" class="btn-primary back-btn">Main Menu</button>
     </div>
 
-    <!-- ERROR PAGE -->
-    <div id="errorPage" class="page hidden">
-
-        <h1>Errors</h1>
-        <!--<h3 class="hidden" id="noErrorsMsg">No vector stores found. Please generate summaries first.</h3>-->
-        <h3 id="errorSubheader">Error Log</h3>
-        <!--<div id="errorOutput"></div>-->
-        <pre id="errorOutput"></pre>
-
-        <button class="btn-primary back-btn" id="errorBackBtn">Back</button>
+    
 
 
+    <!-- LOADING OVERLAY -->
 
+    <div id="loadingOverlay" class="hidden">
+        <div class="loading-box">
+           
+
+            <h2 id="loadingTitle">
+                Running Analysis...
+            </h2>
+
+            <div id = "loadingSpinner" class="loader"></div>
+
+            <div id="pipelineProgressContainer">
+
+                <h3>Pipeline Progress</h3>
+
+                <p id="loadingPipelineMessage">
+                    Initializing...
+                </p>
+
+                <div id="loadingPipelineProgressContainer">
+                    <div id="loadingPipelineProgressBar"></div>
+                </div>
+
+                <p id="loadingPipelineProgressText">
+                    0%
+                </p>
+
+                
+            </div>
+
+            <div id="stepProgressContainer">
+
+                <h3 id="stepProgressTitle" class="hidden">Current Step Progress</h3>
+
+                <p id="loadingStepMessage">
+                    Initializing...
+                </p>
+
+                <div id="loadingStepProgressContainer">
+                    <div id="loadingStepProgressBar"></div>
+                </div>
+
+                <p id="loadingStepProgressText">
+                    0%
+                </p>
+
+                
+            </div>
+
+
+            
+
+            <button id="loadingOkBtn" class="btn-primary hidden">OK</button>
+        </div>
     </div>
 
     <script src="renderer.js"></script>

@@ -1,147 +1,911 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Menu } = require('electron');
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require("fs");
 const dotenv = require("dotenv");
 
 
-
-
-
-//require('electron-reloader')(module);
-
 let pythonProcess = null;
-let inPreview = false;
-let activeCollectionMode = null;
-let collectionOutputActive = false;
-let collectionBuffer = '';
-
-ipcMain.on('menu-option', (event, option) => {
-
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-
-    console.log("Sending option:", option);
-   
-    pythonProcess.stdin.write(option + '\n');
-
-});
-
-ipcMain.on('exit-app', () => {
-
-    console.log("Exit requested");
-
-    app.quit();
-
-});
-
-ipcMain.on('codebase-path', (event, path) => {
-
-    console.log("Path received:", path);
-
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-
-    console.log("Sending path to Python");
-
-    pythonProcess.stdin.write(path + '\n');
-
-});
-
-ipcMain.on('send-enter', () => {
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-
-    console.log("Sending Enter to Python");
-    pythonProcess.stdin.write('\n');
-});
-
-ipcMain.on("api-key", (event, apiKey) => {
-
-    if (!pythonProcess) {
-        console.log("Python process is null!");
-        return;
-    }
-    console.log("Received API key:", apiKey);
-    pythonProcess.stdin.write(apiKey + '\n');
-
-
-});
+let mainWindow = null;
+// Directory the backend actually writes its output to (userData when packaged).
+let backendOutputDir = __dirname;
+// ----------------------------------------------------
+// API KEY CHECK
+// ----------------------------------------------------
 
 function hasAPIKey() {
-    const envPaths = [
-        path.join(__dirname, ".env"),
-        path.join(__dirname, 'releases', 'main', ".env")
-    ];
-
-    for (const envPath of envPaths) {
-        if (!fs.existsSync(envPath)) continue;
-
-        const env = dotenv.parse(fs.readFileSync(envPath));
-
-        if (
-            typeof env.GOOGLE_API_KEY !== "undefined" &&
-            env.GOOGLE_API_KEY.trim() !== ""
-        ) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-ipcMain.handle("has-api-key", () => {
-    return hasAPIKey();
-});
-
-function createWindow() {
-
-    const win = new BrowserWindow({
-        width: 1200,
-        height: 800,
-        webPreferences: {
-            preload: path.join(__dirname, "preload.js"), //added for the preload.js file to work
-            nodeIntegration: false, 
-            contextIsolation: true
-        }
-    });
-
-    
-
-    win.loadFile('index.html');
-
-    
+    const isWindows = process.platform === "win32";
 
     const backendDir = app.isPackaged
         ? path.join(process.resourcesPath, "backend")
         : path.join(__dirname, "releases", "main");
 
-    const isWindows = process.platform === "win32";
     const executableName = isWindows ? "main.exe" : "main";
     const exePath = path.join(backendDir, executableName);
 
-    const outputDir = app.isPackaged
-        ? app.getPath("userData")
-        : backendDir;
+    // If exe exists, .env should be next to it
+    // If not, .env should be next to main.py
+    const envDir = fs.existsSync(exePath) ? backendDir : __dirname;
+    const envPath = path.join(envDir, ".env");
 
-    console.log("Backend directory:", backendDir);
-    console.log("Output directory:", outputDir);
+    if (!fs.existsSync(envPath))
+        return false;
 
+    const env = dotenv.parse(fs.readFileSync(envPath));
+    return env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "";
+}
+
+
+
+
+function detectFileType(json) {
+
+    // Business rules are an array of rule objects
+    if (
+        Array.isArray(json) &&
+        (
+            json.length === 0 || // Empty [] is still a business rules file
+            json[0].rule ||
+            json[0].source_directory ||
+            json[0].source_file_paths ||
+            json[0].explanation
+        )
+    ) {
+        return "business_rules";
+    }
+
+    // Summary files
+    if (
+        json.summary ||
+        json.functions ||
+        json.dependencies ||
+        json.types
+    ) {
+        return "summary";
+    }
+
+    // Source files
+    if (
+        json.directory_name ||
+        json.directory_path ||
+        json.purpose ||
+        json.responsibilities
+    ) {
+        return "source";
+    }
+
+    // Integration test workflow files
+    if (
+        Array.isArray(json) &&
+        json.length > 0 &&
+        json.every(item => (
+            item &&
+            typeof item === "object" &&
+            (item.workflow_name || item.integration_test)
+        ))
+    ) {
+        return "integration_tests";
+    }
+
+    return "unknown";
+}
+
+function formatIntegrationTestCode(code) {
+    if (!code) return "";
+
+    let formatted = String(code)
+        .replace(/\\n/g, "\n")
+        .trim();
+
+    // Some entries arrive as a single line; add line breaks for readability.
+    if (!formatted.includes("\n")) {
+        formatted = formatted
+            .replace(/\s*\{\s*/g, " {\n")
+            .replace(/;\s+/g, ";\n")
+            .replace(/\s*\}\s*/g, "\n}\n")
+            .trim();
+    }
+
+    return formatted;
+}
+
+function formatIntegrationTests(json) {
+    if (!Array.isArray(json) || json.length === 0) {
+        return [];
+    }
+
+    return json.map((workflow, index) => ({
+        index: index + 1,
+        workflow_name: workflow.workflow_name || `Workflow ${index + 1}`,
+        workflow_description: workflow.workflow_description || "",
+        rule_ids: Array.isArray(workflow.rule_ids) ? workflow.rule_ids : [],
+        imports: Array.isArray(workflow.imports) ? workflow.imports : [],
+        integration_test: formatIntegrationTestCode(workflow.integration_test || "")
+    }));
+}
+// ----------------------------------------------------
+// SUMMARY FORMATTING
+// ----------------------------------------------------
+
+function formatSummary(json) {
+
+    const lines = [];
+
+    // File
+    lines.push(`# ${path.basename(json.path)}`);
+    lines.push("");
+    lines.push(`File: ${json.path}`);
+    lines.push("");
+
+    // Summary
+    if (json.summary) {
+        lines.push("=== Summary ===");
+        lines.push(json.summary);
+        lines.push("");
+    }
+
+    // Dependencies
+    if (json.dependencies?.length) {
+        lines.push("=== Dependencies ===");
+
+        json.dependencies.forEach(dep => {
+            lines.push(`• ${dep}`);
+        });
+
+        lines.push("");
+    }
+
+    // Standalone functions
+    if (json.functions?.length) {
+        lines.push("=== Functions ===");
+
+        json.functions.forEach(func => {
+
+            lines.push(`${func.name}()`);
+
+            if (func.description)
+                lines.push(`   ${func.description}`);
+
+            if (func.return_type)
+                lines.push(`   Returns: ${func.return_type}`);
+
+            lines.push("");
+
+        });
+    }
+
+    // Classes / Types
+    if (json.types?.length) {
+
+        lines.push("=== Classes ===");
+
+        json.types.forEach(type => {
+
+            lines.push("");
+            lines.push(`${type.kind.toUpperCase()}: ${type.name}`);
+
+            if (type.description)
+                lines.push(type.description);
+
+            // Properties
+            if (type.properties?.length) {
+
+                lines.push("");
+                lines.push("Properties:");
+
+                type.properties.forEach(prop => {
+
+                    lines.push(
+                        `  • ${prop.name} : ${prop.type}`
+                    );
+
+                });
+            }
+
+            // Methods
+            if (type.methods?.length) {
+
+                lines.push("");
+                lines.push("Methods:");
+
+                type.methods.forEach(method => {
+
+                    lines.push(
+                        `  • ${method.name}()`
+                    );
+
+                    if (method.description)
+                        lines.push(
+                            `      ${method.description}`
+                        );
+
+                });
+            }
+
+            lines.push("");
+
+        });
+    }
+
+    // Business Rules
+    if (json.business_rules?.length) {
+
+        lines.push("=== Business Rules ===");
+
+        json.business_rules.forEach((rule, i) => {
+
+            lines.push(`${i + 1}. ${rule.rule}`);
+
+        });
+
+        lines.push("");
+
+    }
+
+    return lines.join("\n");
+
+}
+
+function formatSource(json) {
+
+    const lines = [];
+
+
+    lines.push(`# ${json.directory_name || "Unknown Directory"}`);
+    lines.push("");
+
+
+    if (json.directory_name) {
+
+        lines.push("=== Directory Name ===");
+        lines.push(json.directory_name);
+        lines.push("");
+
+    }
+
+
+    if (json.directory_path) {
+
+        lines.push("=== Directory Path ===");
+        lines.push(json.directory_path);
+        lines.push("");
+
+    }
+
+
+    if (json.purpose) {
+
+        lines.push("=== Purpose ===");
+        lines.push(json.purpose);
+        lines.push("");
+
+    }
+
+
+    if (json.responsibilities?.length) {
+
+        lines.push("=== Responsibilities ===");
+
+        json.responsibilities.forEach(item => {
+            lines.push(`• ${item}`);
+        });
+
+        lines.push("");
+
+    }
+
+
+    return lines.join("\n");
+
+}
+
+function canonicalizeRelativeOutputPath(rawPath) {
+    if (!rawPath || path.isAbsolute(rawPath)) {
+        return rawPath;
+    }
+
+    const normalized = String(rawPath).replace(/\\/g, "/");
+    const outputRoots = [
+        "agent/file_summary_agent_output/",
+        "agent/directory_agent_output/",
+        "agent/UT_agent_output/",
+        "agent/BR_agent_output/"
+    ];
+
+    for (const root of outputRoots) {
+        if (!normalized.toLowerCase().startsWith(root.toLowerCase())) {
+            continue;
+        }
+
+        const remainder = normalized.slice(root.length);
+
+        // Handle malformed paths like:
+        // agent/file_summary_agent_output/C:/.../Codebase
+        // agent/BR_agent_output/C:/.../Codebase/validated_rules.json
+        if (/^[a-zA-Z]:\//.test(remainder)) {
+            const segments = remainder.split("/").filter(Boolean);
+
+            if (segments.length === 0) {
+                return normalized;
+            }
+
+            const lastSegment = segments[segments.length - 1];
+            const hasExtension = /\.[^./\\]+$/.test(lastSegment);
+
+            if (hasExtension && segments.length >= 2) {
+                const codebaseName = segments[segments.length - 2];
+                return `${root}${codebaseName}/${lastSegment}`;
+            }
+
+            return `${root}${lastSegment}`;
+        }
+    }
+
+    return normalized;
+}
+
+function formatBusinessRules(json) {
+
+    // Handle empty JSON or []
+    if (!Array.isArray(json) || json.length === 0) {
+        return "No business rules were found.";
+    }
+
+    const lines = [];
+
+    json.forEach((ruleObj, index) => {
+
+        lines.push(`=== Business Rule ${index + 1} ===`);
+        lines.push(ruleObj.rule || "No rule provided.");
+        lines.push("");
+
+        if (ruleObj.source_directory) {
+            lines.push("Source Directory:");
+            lines.push(ruleObj.source_directory);
+            lines.push("");
+        }
+
+        if (ruleObj.source_file_paths?.length) {
+            lines.push("Source File(s):");
+
+            ruleObj.source_file_paths.forEach(file => {
+                lines.push(`• ${file}`);
+            });
+
+            lines.push("");
+        }
+
+        if (ruleObj.explanation?.reasoning) {
+            lines.push("Reasoning:");
+            lines.push(ruleObj.explanation.reasoning);
+            lines.push("");
+        }
+
+        if (ruleObj.explanation?.evidence) {
+
+            lines.push("Evidence:");
+
+            Object.entries(ruleObj.explanation.evidence).forEach(([file, snippets]) => {
+
+                lines.push(`• ${file}`);
+
+                snippets.forEach(snippet => {
+                    lines.push(`    - ${snippet}`);
+                });
+
+                lines.push("");
+            });
+        }
+
+        lines.push("");
+    });
+
+    return lines.join("\n");
+
+}
+
+// ----------------------------------------------------
+// ICP HANDLERS
+// ----------------------------------------------------
+
+ipcMain.handle(
+    "has-api-key",
+    () => {
+        return hasAPIKey();
+    }
+);
+
+ipcMain.handle(
+    "exit-app",
+    () => {
+        if (pythonProcess) {
+            pythonProcess.kill();
+        }
+
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.close();
+        }
+
+        app.quit();
+        return true;
+    }
+);
+
+
+// ----------------------------------------------------
+// SEND COMMAND TO PYTHON BACKEND
+// ----------------------------------------------------
+
+ipcMain.handle(
+    "execute-command",
+    async (event, request) => {
+
+
+        if (!pythonProcess) {
+
+            return {
+                success:false,
+                error:"Python backend is not running"
+            };
+
+        }
+
+
+        const payload =
+            JSON.stringify({
+
+                type:"command",
+
+                command:
+                    request.command,
+
+                args:
+                    request.args || {}
+
+            });
+
+
+
+        pythonProcess.stdin.write(
+            payload + "\n"
+        );
+
+
+        return {
+            success:true
+        };
+
+    }
+);
+
+// ----------------------------------------------------
+// SEND PREVIEW COMMANDS
+// ----------------------------------------------------
+
+ipcMain.handle(
+    "preview-command",
+    async (event, request) => {
+
+        const action = request?.action;
+        const args = request?.args || {};
+
+        if (action === "files") {
+            const rawPath = canonicalizeRelativeOutputPath(args.path || "agent");
+            const targetPath = path.isAbsolute(rawPath)
+                ? rawPath
+                : path.join(backendOutputDir, rawPath);
+
+            if (!fs.existsSync(targetPath)) {
+                return {
+                    success: false,
+                    error: `Path not found: ${targetPath}`
+                };
+            }
+
+            const stats = fs.statSync(targetPath);
+            if (!stats.isDirectory()) {
+                return {
+                    success: false,
+                    error: `Path is not a directory: ${targetPath}`
+                };
+            }
+
+            const collectEntries = (currentPath, recursivePdfs = false, collected = []) => {
+                const dirents = fs.readdirSync(currentPath, {
+                    withFileTypes: true
+                });
+
+                dirents.forEach((dirent) => {
+                    const entryPath = path.join(currentPath, dirent.name);
+
+                    if (dirent.isDirectory()) {
+                        if (recursivePdfs) {
+                            collectEntries(entryPath, true, collected);
+                        } else {
+                            collected.push({
+                                name: dirent.name,
+                                path: entryPath,
+                                isDirectory: true
+                            });
+                        }
+                        return;
+                    }
+
+                    if (recursivePdfs && path.extname(dirent.name).toLowerCase() === ".pdf") {
+                        collected.push({
+                            name: dirent.name,
+                            path: entryPath,
+                            isDirectory: false
+                        });
+                    } else if (!recursivePdfs) {
+                        collected.push({
+                            name: dirent.name,
+                            path: entryPath,
+                            isDirectory: false
+                        });
+                    }
+                });
+
+                return collected;
+            };
+
+            const recursivePdfs = Boolean(args.recursivePdfs);
+            const entries = collectEntries(targetPath, recursivePdfs)
+                .sort((a, b) => {
+                    if (a.isDirectory !== b.isDirectory) {
+                        return a.isDirectory ? -1 : 1;
+                    }
+                    return a.name.localeCompare(b.name, undefined, {
+                        sensitivity: 'base'
+                    });
+                });
+
+            const result = {
+                success: true,
+                type: "files",
+                path: targetPath,
+                files: entries
+            };
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("backend-response", result);
+            }
+
+            return result;
+        }
+
+
+        if (action === "open_file") {
+            const rawPath = canonicalizeRelativeOutputPath(args.path);
+            if (!rawPath) {
+                const result = {
+                    success: false,
+                    error: "No file path provided"
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const targetPath = path.isAbsolute(rawPath)
+                ? rawPath
+                : path.join(backendOutputDir, rawPath);
+
+            if (!fs.existsSync(targetPath)) {
+                const result = {
+                    success: false,
+                    error: `File not found: ${targetPath}`
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const stats = fs.statSync(targetPath);
+            if (!stats.isFile()) {
+                const result = {
+                    success: false,
+                    error: `Path is not a file: ${targetPath}`
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const extension = path.extname(targetPath).toLowerCase();
+
+            if (extension === ".pdf") {
+                const result = {
+                    success: true,
+                    type: "file-preview",
+                    path: targetPath,
+                    preview: {
+                        type: "pdf",
+                        content: targetPath
+                    }
+                };
+
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send("backend-response", result);
+                }
+
+                return result;
+            }
+
+            const content = fs.readFileSync(targetPath, "utf8");
+
+            let preview;
+
+            try {
+
+                const json = JSON.parse(content);
+                const type = detectFileType(json);
+
+                if (type === "summary") {
+
+                    preview = {
+                        type: "summary",
+                        content: formatSummary(json)
+                    };
+
+                } else if (type === "source") {
+
+                    preview = {
+                        type: "source",
+                        content: formatSource(json)
+                    };
+
+                } else if (type === "business_rules") {
+
+                    preview = {
+                        type: "business_rules",
+                        content: formatBusinessRules(json)
+                    };
+
+                } else if (type === "integration_tests") {
+
+                    preview = {
+                        type: "integration_tests",
+                        content: formatIntegrationTests(json)
+                    };
+
+                }else {
+
+                    preview = {
+                        type: "unknown",
+                        content: content
+                    };
+
+                }
+
+            } catch {
+
+                preview = {
+                    type: "text",
+                    content
+                };
+
+            }
+
+
+            const result = {
+                success:true,
+                type:"file-preview",
+                path:targetPath,
+                preview
+            };
+
+            if (mainWindow && !mainWindow.isDestroyed()) {
+                mainWindow.webContents.send("backend-response", result);
+            }
+
+            return result;
+        }
+
+        if (!pythonProcess) {
+            return {
+                success:false,
+                error:"Python backend is not running"
+            };
+        }
+
+
+        return {
+            success:true
+        };
+
+    }
+);
+
+ipcMain.handle(
+    "get-validated-rules",
+    async (event, request) => {
+
+        try {
+            const codebasePath = request?.codebasePath;
+
+            if (!codebasePath) {
+                return {
+                    success:false,
+                    error:"No codebase path provided"
+                };
+            }
+
+            const codebaseName = path.basename(codebasePath);
+            const rulesPath = path.join(__dirname, "agent", "BR_agent_output", codebaseName, "validated_rules.json");
+
+            let rulesFile = null;
+            if (fs.existsSync(rulesPath)) {
+                rulesFile = rulesPath;
+            }
+
+            if (!rulesFile) {
+                return {
+                    success:false,
+                    error:"No validated business rules file found for this codebase"
+                };
+            }
+
+            const rawContent = fs.readFileSync(rulesFile, "utf8");
+            const rawData = JSON.parse(rawContent);
+            const rules = [];
+
+            if (Array.isArray(rawData)) {
+                rawData.forEach((rule, index) => {
+                    const text = rule?.rule || "";
+                    if (text) {
+                        rules.push({
+                            id: String(rule?.id),
+                            text,
+                            source: rule?.source_directory || "Generated rule"
+                        });
+                    }
+                });
+            } else if (rawData && typeof rawData === "object") {
+                Object.entries(rawData).forEach(([sourcePath, entries]) => {
+                    if (!Array.isArray(entries)) return;
+                    entries.forEach((rule, index) => {
+                        const text = rule?.rule || "";
+                        if (text) {
+                            rules.push({
+                                id: String(rule?.id),
+                                text,
+                                source: sourcePath
+                            });
+                        }
+                    });
+                });
+            }
+
+            return {
+                success:true,
+                rules
+            };
+
+        } catch (error) {
+            return {
+                success:false,
+                error:error.message
+            };
+        }
+    }
+);
+
+
+
+
+// ----------------------------------------------------
+// CREATE WINDOW
+// ----------------------------------------------------
+
+function createWindow() {
+
+
+    mainWindow = new BrowserWindow({
+
+        width:1200,
+        height:800,
+        icon: path.join(__dirname, "assets", "checkpoint.ico"),
+        autoHideMenuBar: true,
+
+        webPreferences: {
+
+            preload:
+                path.join(
+                    __dirname,
+                    "preload.js"
+                ),
+
+            nodeIntegration:false,
+
+            contextIsolation:true
+
+        }
+
+    });
+
+    mainWindow.loadFile(
+        "index.html"
+    );
+
+    // This just gets rid of the top bar
+    Menu.setApplicationMenu(null);
+
+    // This is for using f12 to see the dev tools since you can't toggle menu with alt
+    mainWindow.webContents.on("before-input-event", (event, input) => {
+        if (input.key === "F12") {
+            mainWindow.webContents.toggleDevTools();
+        }
+    });
+
+    startPythonBackend();
+
+}
+
+// ----------------------------------------------------
+// Open file directory
+// ----------------------------------------------------
+
+ipcMain.handle("select-codebase", async () => {
+
+    const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ["openDirectory"]
+    });
+
+    if (result.canceled) {
+        return null;
+    }
+
+    return result.filePaths[0];
+});
+
+// ----------------------------------------------------
+// START PYTHON BACKEND
+// ----------------------------------------------------
+
+function startPythonBackend() {
+
+    const isWindows = process.platform === "win32";
+
+    const backendDir = app.isPackaged
+        ? path.join(process.resourcesPath, "backend")
+        : path.join(__dirname, "releases", "main");
+
+    const executableName = isWindows ? "main.exe" : "main";
+    const exePath = path.join(backendDir, executableName);
     const exeExists = fs.existsSync(exePath);
 
+    // Must match where the Python side (backend/commands.py) resolves
+    // APP_DIR to: the frozen exe's own directory, or the repo root
+    // (__dirname) when falling back to running main.py directly.
+    backendOutputDir = exeExists ? backendDir : __dirname;
+
+    console.log("Backend directory:", backendDir);
+    console.log("Output directory:", backendOutputDir);
+
     if (exeExists) {
+
         console.log("Launching packaged executable:", exePath);
 
-        pythonProcess = spawn(exePath, [outputDir], {
-            cwd: backendDir
-        });
+        pythonProcess = spawn(
+            exePath,
+            [],
+            {
+                cwd: backendDir
+            }
+        );
+
     } else {
+
         console.log("Executable not found, falling back to Python script");
 
         const pythonPath = isWindows
@@ -152,7 +916,11 @@ function createWindow() {
 
         pythonProcess = spawn(
             pythonPath,
-            ["-u", scriptPath, outputDir],
+            [
+                "-u",
+                scriptPath,
+                backendOutputDir
+            ],
             {
                 cwd: __dirname,
                 env: {
@@ -161,164 +929,136 @@ function createWindow() {
                 }
             }
         );
+
     }
 
-    pythonProcess.on("error", (err) => {
-        console.error("Failed to start backend:", err);
-    });
+    let pythonBuffer = "";
 
-    pythonProcess.on("close", (code) => {
-        console.log("Backend exited with code:", code);
-    });
-
-    // Debug logging
     pythonProcess.stdout.on("data", (data) => {
-        console.log("STDOUT:");
-        console.log(data.toString());
+
+        pythonBuffer += data.toString();
+
+
+        let lines = pythonBuffer.split("\n");
+
+        pythonBuffer = lines.pop();
+
+
+        for (const line of lines) {
+
+            if (!line.trim())
+                continue;
+
+
+            try {
+
+                const parsed = JSON.parse(line);
+
+                mainWindow.webContents.send(
+                    "backend-response",
+                    parsed
+                );
+
+
+            }
+            catch(error) {
+
+                console.log(
+                    "Backend parse error:",
+                    error.message
+                );
+
+                console.log(line);
+
+            }
+
+        }
+
     });
 
     pythonProcess.stderr.on("data", (data) => {
-        console.error("STDERR:");
+
+        console.error("Backend stderr:");
         console.error(data.toString());
+
     });
 
     pythonProcess.on("error", (err) => {
-        console.error("Failed to start Python:");
+
+        console.error("Failed to start backend:");
         console.error(err);
+
     });
 
     pythonProcess.on("close", (code) => {
-        console.log("Python exited with code:", code);
+
+        console.log("Backend exited:", code);
+
+        if (code !== 0 && mainWindow && !mainWindow.isDestroyed()) {
+
+            mainWindow.webContents.send(
+                "backend-response",
+                {
+                    success: false,
+                    error: `Backend exited unexpectedly (code ${code}).`
+                }
+            );
+
+        }
+
+        pythonProcess = null;
+
     });
 
-
-    //this code below is used to point to main.js
-    /*const os = require("os");
-
-    const pythonPath =
-        os.platform() === "win32"
-            ? path.join(__dirname, ".venv", "Scripts", "python.exe")
-            : path.join(__dirname, ".venv", "bin", "python");
-
-    const scriptPath = path.join(__dirname, "main.py");
-
-    pythonProcess = spawn(
-        pythonPath,
-        [scriptPath],
-        {
-            cwd: __dirname,
-            env: {
-                ...process.env,
-                PYTHONUNBUFFERED: "1"
-            }
-        }
-    );*/
-
-   
-
-
-    pythonProcess.stdout.on('data', (data) => {
-
-        let output = data.toString();
-
-        output = output.replace(
-            /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g,
-            ''
-        );
-        output = output.replace(/\x00|\u0000/g, '');
-
-        // Error page
-        if (
-            output.includes("--- ERROR LOG ---") ||
-            output.includes("[ERROR")
-        ) {
-            console.log("Sending error-output:");
-            console.log(output);
-
-            win.webContents.send("error-output", output);
-            return;
-        }
-
-        if (output.includes('PREVIEWING:')) {
-            inPreview = true;
-        }
-
-        if (inPreview) {
-            const channel = activeCollectionMode === 'source'
-                ? 'source-selection-output'
-                : 'summary-selection-output';
-
-            win.webContents.send(channel, output);
-
-            if (
-                output.includes('Press Enter') ||
-                output.includes('Select an option') ||
-                output.includes('Select a number to preview')
-            ) {
-                inPreview = false;
-                activeCollectionMode = null;
-            }
-
-            return;
-        }
-
-        if (collectionOutputActive) {
-            collectionBuffer += output;
-
-            const hasListItems = /^\s*\d+\.\s+/m.test(collectionBuffer);
-            const hasSelectionPrompt = /Select a number to preview|Select an option|Press Enter/i.test(collectionBuffer);
-
-            if (hasListItems || hasSelectionPrompt) {
-                const channel = activeCollectionMode === 'source'
-                    ? 'source-output'
-                    : 'summary-output';
-
-                win.webContents.send(channel, collectionBuffer);
-                collectionBuffer = '';
-                collectionOutputActive = false;
-            }
-
-            return;
-        }
-
-        if (output.includes('Available Summary Collections')) {
-            activeCollectionMode = 'summary';
-            collectionOutputActive = true;
-            collectionBuffer = output;
-            return;
-        }
-
-        if (output.includes('Available Code Collections')) {
-            activeCollectionMode = 'source';
-            collectionOutputActive = true;
-            collectionBuffer = output;
-            return;
-        }
-
-        if (
-            output.includes('CODEBASE ANALYSIS SYSTEM') ||
-            output.includes('Run Analysis Tools') ||
-            output.includes('View Summary Collections') ||
-            output.includes('View Source Code Collections') ||
-            output.includes('View Errors') ||
-            output.includes('Select an option')
-        ) {
-            return;
-        }
-
-        win.webContents.send('python-output', output);
-    });
 }
 
-app.whenReady().then(createWindow);
 
-app.on('window-all-closed', () => {
 
-    if (pythonProcess) {
-        pythonProcess.kill();
+// ----------------------------------------------------
+// APP EVENTS
+// ----------------------------------------------------
+
+app.whenReady()
+.then(
+    createWindow
+);
+
+
+
+app.on(
+    "window-all-closed",
+    ()=>{
+
+
+        if(pythonProcess && !pythonProcess.killed && !pythonProcess.exitCode && !pythonProcess.signalCode){
+            try {
+                pythonProcess.kill();
+            } catch (error) {
+                console.warn("Failed to stop Python process:", error);
+            }
+        }
+
+
+        if(process.platform !== "darwin"){
+
+            app.quit();
+
+        }
+
     }
+);
 
-    if (process.platform !== 'darwin') {
-        app.quit();
+app.on(
+    "before-quit",
+    ()=>{
+
+        if(pythonProcess && !pythonProcess.killed && !pythonProcess.exitCode && !pythonProcess.signalCode){
+            try {
+                pythonProcess.kill();
+            } catch (error) {
+                console.warn("Failed to stop Python process:", error);
+            }
+        }
+
     }
-});
+);

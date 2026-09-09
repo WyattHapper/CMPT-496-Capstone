@@ -1,13 +1,18 @@
 """
-@file UT_agent.py
-@brief Defines the UTAgent, a LangGraph-based agent for generating Unit Tests based of business rules.
-@details Implements a retriever-generator-writer workflow that takes validated business rules from BR_agent output,
-generates unit tests and writes the results to JSON.
+@file UTV_agent.py
+@brief Defines the UTVAgent, a LangGraph-based agent for validating generated unit tests from business rules.
+@details Implements a runner-validator-writer workflow that:
+- Writes candidate xUnit tests into the Test folder in the selected codebase project
+- Executes them with `dotnet test`
+- Validates the execution report using a structured LLM
+- Separates validated tests from discarded tests and writes both to JSON output
+- Generates html report based off new and improved tests
 """
-
+import logging
+logger = logging.getLogger(__name__)
 from agent.states.UTV_agent_state import UTVGraphState
 from agent.structured_output.UTV_output import (
-    ValidatedRule, UnitTest
+    UnitTest, ValidatorOutput, Report
 )
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -20,14 +25,16 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import defaultdict
+import subprocess
+from backend.progress_logging import progress
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
 DEFAULT_FILE_SUMMARY_K = 5
 MAX_CODEBASE_K = 30
 MAX_FILE_SUMMARY_K = 10
-MAX_RETRIES = 3
-DELAY = 1  # seconds
+MAX_LLM_RETRIES = 4
+LLM_RETRY_BACKOFF_SECONDS = 2
 
 
 class UTVAgent:
@@ -35,10 +42,11 @@ class UTVAgent:
     @brief LangGraph-based agent for generating unit tests based on business rules.
 
     @details
-    The UTAgent constructs and executes a LangGraph workflow that:
-    - Retrieves file and summary context for validated business rules from BR_agent output.
-    - Generates unit tests for each validated rule.
-    - Writes the generated unit tests to JSON output files.
+    The UTVAgent constructs and executes a LangGraph workflow that:
+    - Writes candidate xUnit tests into the selected codebase test project
+    - Executes those tests with `dotnet test`
+    - Validates the execution report using a structured LLM
+    - Writes validated and discarded test metadata to JSON output files
     """
 
     def __init__(self, model=None):
@@ -46,6 +54,7 @@ class UTVAgent:
         @brief Initializes the UTAgent with a specified language model.
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
+        progress("Intializing unit test validation agent...", 5)
         if model is None:
             load_dotenv()
             api_key = os.getenv("GOOGLE_API_KEY")
@@ -65,36 +74,46 @@ class UTVAgent:
 
         @details
         Graph structure:
-            retriever → test_generator → writer → END
+            runner → validator → writer → END
 
-        Conditional routing from condenser and validator:
-            - If current_rules is non-empty → retriever
-            - If current_rules is empty (all rules processed) → writer
+        Conditional routing:
+            - If the latest test execution report indicates failure → validator
+            - If no further current tests remain after validation → writer
         """
 
         builder = StateGraph(UTVGraphState)
 
         # Set nodes
-        builder.add_node("retriever", self.retriever_node)
-        builder.add_node("test_generator", self.test_generator_node)
+        builder.add_node("runner", self.runner_node)
+        builder.add_node("validator", self.validator_node)
         builder.add_node("writer", self.writer_node)
-
+        
         # Set edges
-        builder.set_entry_point("retriever")
-        builder.add_edge("retriever", "test_generator")
-        builder.add_edge("test_generator", "writer")
+        builder.set_entry_point("runner")
+        builder.add_conditional_edges(
+            "runner",
+            lambda state: "validator" if (state["report"].return_code != 0) else "writer"
+        )
+        builder.add_conditional_edges(
+            "validator",
+            lambda state: "runner" if state.get("current_tests") else "writer"
+        )
         builder.add_edge("writer", END)
-
         return builder.compile()
 
-    def run(self, validated_rules: dict[str, list[ValidatedRule]], codebase_name: str, codebase_path: str):
+    def run(self, input_tests: dict[str, list[UnitTest]], codebase_name: str, codebase_path: str):
         """
         @brief Executes the UTAgent workflow.
-        @param input_rules Dictionary of validated business rules from BR_agent output. Keys are file or directory paths,
-               values are lists of ValidatedRule objects.
+        @param input_tests Dictionary of unit test candidates keyed by source path.
+               values are lists of UnitTest objects.
         @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
+        @param codebase_path Filesystem path of the target codebase.
         @return Final state of the graph after execution.
         """
+        progress(
+            "Running unit test validation pipeline...",
+            5
+        )
         if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
         else:
@@ -115,17 +134,28 @@ class UTVAgent:
             embedding_function=embedding_fn
         )
 
+        imports = set()
+        for test in input_tests:
+            imports.update(test.imports)
+
+        progress(
+            "Loaded code and summary databases.",
+            10
+        )
+
         initial_state = {
-            "validated_rules": validated_rules,
-            "unit_tests": [],
-            "rule_contexts": {},
+            "current_tests": input_tests,
+            "validated_tests": [],
+            "discarded_tests": [],
+            "imports": imports,
+            "report": Report,
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
             "codebase_path": codebase_path,
-            "output_directory": "./agent/UT_agent_output",
+            "output_directory": "./agent/UTV_agent_output",
         }
 
         self._loop = asyncio.new_event_loop()
@@ -134,143 +164,167 @@ class UTVAgent:
         finally:
             self._loop.close()
             self._loop = None
-    
-    def retriever_node(self, state: UTVGraphState) -> UTVGraphState:
+
+    def runner_node(self, state: UTVGraphState) -> UTVGraphState:
         """
-        @brief Retrieves relevant code snippets and file summaries for all current validated business rules.
+        @brief Creates test framework in target codebase and runs it
 
-        @details
-        Iterates over every rule in validated_rules and queries two ChromaDB vector
-        collections (code and summary) for each. Results are prioritized in three tiers:
-            1. Results from the rule's source files (highest priority)
-            2. Results from the rule's source directory
-            3. All other results (fallback)
+        @details Takes the generated unit tests and applies them with a testing framework and generates a report based on its results
 
-        Per-rule context is stored in rule_contexts[rule.id] and accumulates across
-        retrieval iterations for the same rule (deduplication against prior results).
-        Retrieval depth is controlled by codebase_k and file_summary_k, which may be
-        increased by the validator on "need_more_context" decisions.
-
-        @param state Current workflow state containing validated_rules and retrieval parameters.
-        @return Updated state with rule_contexts populated/extended.
-        @raises ValueError If current_rules is empty.
+        @param state Current workflow state contain unit_tests
+        @return Empty dict
         """
-        validated_rules = state.get("validated_rules", [])
-        if not validated_rules:
-            raise ValueError("No validated rules to retrieve context for.")
+        codebase_path = state["codebase_path"]
+        codebase_name  = state["codebase_name"]
+        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
 
-        code_collection = state["code_collection"]
-        summary_collection = state["summary_collection"]
-        code_k = state["codebase_k"]
-        summary_k = state["file_summary_k"]
+        # Generate Xunit framework
+        if not Path(test_subdir).is_dir():
+            progress("Creating test framework...", 35)
+            try:
+                progress("Initializing xUnit project...", 35)
+                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
+                progress("Configuring project references...", 35)
+                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
+                    lines = file.readlines()
+                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
+                    file.seek(0)
+                    file.writelines(lines)
+            except Exception as e:
+                progress(f"Error setting up test framework: {e}", 35, True)
 
-        existing_contexts = state.get("rule_contexts", {})
-        updated_contexts = dict(existing_contexts)
-
-        for rule in validated_rules:
-            source_directory = rule.source_directory
-            source_file_paths = rule.source_file_paths
-            query_text = f"{rule.rule} {source_directory}"
-
-            safe_code_k = min(code_k, code_collection.count()) or 1
-            safe_summary_k = min(summary_k, summary_collection.count()) or 1
-
-            code_results = code_collection.query(
-                query_texts=[query_text],
-                n_results=safe_code_k
+        # Write generated tests to Xunit .cs file
+        progress("Writing and running generated tests for validation...", 40)
+        imports = state["imports"]
+        current_tests = state["current_tests"]
+        self._write_tests(test_subdir, codebase_name, imports, current_tests)
+        
+        # Run generated tests and produce report
+        try:
+            result = subprocess.run(["dotnet", "test", f"{test_subdir}"], capture_output=True, text=True)
+            report = Report(
+                return_code=result.returncode,
+                output=result.stdout.strip(),
+                errors=result.stderr.strip()
             )
-            summary_results = summary_collection.query(
-                query_texts=[query_text],
-                n_results=safe_summary_k
-            )
-
-            # Get existing per-rule context for deduplication (str key for JSON serialization safety)
-            rule_key = str(rule.id)
-            rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": []})
-            existing_code = set(rule_ctx["code_context"])
-            existing_summary = set(rule_ctx["summary_context"])
-
-            # Process code results with three-tier prioritization
-            code_docs = code_results.get("documents", [[]])[0]
-            code_metas = code_results.get("metadatas", [[]])[0]
-
-            source_file_code, directory_code, fallback_code = [], [], []
-            for doc, meta in zip(code_docs, code_metas):
-                file_path = self._normalize_path(meta.get("file", ""))
-                formatted = self._format_code_result(doc, meta, source_directory)
-                if self._is_from_source_file(file_path, source_file_paths):
-                    source_file_code.append(formatted)
-                elif self._is_in_directory(file_path, source_directory):
-                    directory_code.append(formatted)
-                else:
-                    fallback_code.append(formatted)
-
-            # Process summary results with three-tier prioritization
-            summary_docs = summary_results.get("documents", [[]])[0]
-            summary_metas = summary_results.get("metadatas", [[]])[0]
-
-            source_file_summary, directory_summary, fallback_summary = [], [], []
-            for doc, meta in zip(summary_docs, summary_metas):
-                summary_path = self._normalize_path(meta.get("path", ""))
-                formatted = self._format_summary_result(doc, meta, source_directory)
-                if self._is_from_source_file(summary_path, source_file_paths):
-                    source_file_summary.append(formatted)
-                elif self._is_in_directory(summary_path, source_directory):
-                    directory_summary.append(formatted)
-                else:
-                    fallback_summary.append(formatted)
-
-            # Append new results (prioritized order, no duplicates)
-            new_code = list(rule_ctx["code_context"])
-            for item in source_file_code + directory_code + fallback_code:
-                if item not in existing_code:
-                    new_code.append(item)
-
-            new_summary = list(rule_ctx["summary_context"])
-            for item in source_file_summary + directory_summary + fallback_summary:
-                if item not in existing_summary:
-                    new_summary.append(item)
-
-            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
+            progress("Generating report...", 40)
+        except Exception as e:
+            report = Report(return_code=1, output="", errors=f"ERROR: {e}")
+            progress(f"Error running tests: {e}", 40, True)
 
         return {
-            "rule_contexts": updated_contexts,
+            "report": report,
         }
-
-    def test_generator_node(self, state: UTVGraphState) -> UTVGraphState:
+    
+    def validator_node(self, state: UTVGraphState) -> UTVGraphState:
         """
-        @brief Generates unit tests for validated business rules.
+        @brief Validates unit tests for generated tests.
 
         @details
-        Uses the same language model but structured output to produce a unit test string
-        for each rule that passed validation. The results are written to `unit_tests`
+        Uses the same language model but structured output to validate a unit test string
+        for each inputted test. The results are written to `validated_tests`
         in the workflow state for the final writer node.
         """
-        validated_rules = state.get("validated_rules", [])
-        if not validated_rules:
-            return {"unit_tests": []}
 
-        rule_contexts = state.get("rule_contexts", {})
-        structured_llm = self.llm.with_structured_output(UnitTest)
+        progress(
+            "Validating unit tests...",
+            50
+        )
+        current_tests = state["current_tests"]
+        if not current_tests:
+            return {"validated_tests": []}
+        codebase_k = state["codebase_k"]
+        is_final_pass = codebase_k >= MAX_CODEBASE_K
+
+        # rule_contexts = state.get("rule_contexts", {})
+        structured_llm = self.llm.with_structured_output(ValidatorOutput)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
-            async def guarded(rule: ValidatedRule):
+            async def guarded(test: UnitTest):
                 async with sem:
-                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
-                    return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
-            return await asyncio.gather(*(guarded(r) for r in validated_rules))
+                    report = state["report"]
+                    return await _validate_single_test(
+                        structured_llm,
+                        test,
+                        report,
+                    )
+            return await asyncio.gather(*(guarded(r) for r in current_tests))
 
         results = self._loop.run_until_complete(run_batch())
 
-        unit_tests = []
-        for rule, output, err in results:
+        progress(
+            f"Validated {len(results)} unit test candidates.",
+            50
+        )
+               
+        validated_tests = []
+        discarded_tests = []
+        current_tests = []
+        imports = state["imports"]
+        for test, output, err in results:
             if err is not None:
-                print(f"Unit test generation error for rule {rule.id}: {err}")
+                progress(f"Unit test validation error for unit test {test.id}: {err}", 50)
+                discarded_tests.append(UnitTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=test.imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=test.unit_test,
+                ))
                 continue
-            unit_tests.append(UnitTest(unit_test=output.unit_test, id=rule.id, rule=rule.rule))
+            if output.decision == "success":
+                validated_tests.append(UnitTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=test.imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=test.unit_test,
+                ))
+                imports.update(test.imports)
+            elif output.decision == "failure":
+                if is_final_pass:
+                    discarded_tests.append(UnitTest(
+                        id=test.id,
+                        rule=test.rule,
+                        imports=output.imports,
+                        source_directory=test.source_directory,
+                        source_file_paths=test.source_file_paths,
+                        unit_test=output.unit_test,
+                    ))
+                else:
+                    current_tests.append(UnitTest(
+                        id=test.id,
+                        rule=test.rule,
+                        imports=output.imports,
+                        source_directory=test.source_directory,
+                        source_file_paths=test.source_file_paths,
+                        unit_test=output.unit_test,
+                    ))
 
-        return {"unit_tests": unit_tests}
+        progress(
+            f"Validation pass complete: {len(validated_tests)} valid, {len(discarded_tests)} discarded",
+            60
+        )
+
+        update: dict = {
+            "validated_tests": validated_tests,
+            "discarded_tests": discarded_tests,
+            "imports": imports,
+        }
+
+        if current_tests:
+            update["current_tests"] = current_tests
+            update["codebase_k"] = MAX_CODEBASE_K
+            update["file_summary_k"] = MAX_FILE_SUMMARY_K
+        else:
+            update["current_tests"] = []
+            update["codebase_k"] = DEFAULT_CODEBASE_K
+            update["file_summary_k"] = DEFAULT_FILE_SUMMARY_K
+
+        return update
 
     def writer_node(self, state: UTVGraphState) -> UTVGraphState:
         """
@@ -284,22 +338,46 @@ class UTVAgent:
         @param state Current workflow state containing validated_rules.
         @return Empty dict (terminal node).
         """
-        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
-        codebase_subdir = os.path.join(base_output_dir, state["codebase_name"])
+        progress(
+            "Writing validated and discarded unit tests...",
+            70
+        )
+
+        codebase_name = state["codebase_name"]
+        codebase_path = state["codebase_path"]
+
+        base_output_dir = state.get("output_directory", "./agent/UTV_agent_output")
+        codebase_subdir = os.path.join(base_output_dir, codebase_name)
+        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
         os.makedirs(codebase_subdir, exist_ok=True)
 
-        unit_tests = state.get("unit_tests", [])
-        if unit_tests:
-            unit_tests_path_json = os.path.join(codebase_subdir, "unit_tests.json")
-            unit_tests_path_txt = os.path.join(codebase_subdir, "unit_tests.txt")
-            with open(unit_tests_path_json, "w", encoding="utf-8") as f:
-                json.dump([u.model_dump() for u in unit_tests], f, indent=2)
-            with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
-                for test in unit_tests:
-                    file.write(test.unit_test + "\n\n")
-            print(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}")
+        validated_tests = state["validated_tests"]
+        validated_tests.sort(key=lambda item: item.id)
+        discarded_tests = state["discarded_tests"]
+        discarded_tests.sort(key=lambda item: item.id)
+        imports = state["imports"]
+        
+        self._write_tests(test_subdir, codebase_name, imports, validated_tests)
+        validated_tests_path = os.path.join(codebase_subdir, "validated_tests.json")
+        discarded_tests_path = os.path.join(codebase_subdir, "discarded_tests.json")
+        with open(validated_tests_path, "w", encoding="utf-8") as file:
+            json.dump([test.model_dump() for test in validated_tests], file, indent=2)
+        with open(discarded_tests_path, "w", encoding="utf-8") as file:
+            json.dump([test.model_dump() for test in discarded_tests], file, indent=2)
+        try:
+            for html_file in Path(codebase_subdir).glob("*.html"):
+                try:
+                    html_file.unlink()
+                except OSError as e:
+                    progress(f"Error deleting html file: {e}", 100)
+            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_subdir}"])
+            progress("Tests completed. Generating html report...", 100)
+        except Exception as e:
+            progress(f"Error running tests: {e}", 100, True)
+            return {}
+        progress(f"Wrote {len(validated_tests)} validated unit tests to {validated_tests_path} and wrote {len(discarded_tests)} discarded unit tests to {discarded_tests_path}", 100, True)
         return {}
-
+    
     # Helper methods
 
     def _normalize_path(self, path_value: str) -> str:
@@ -387,85 +465,87 @@ class UTVAgent:
             f"Content:\n{doc}"
         )
 
-async def _generate_single_test(
+    def _write_tests(self, test_subdir: str,  codebase_name: str, imports: set, current_tests: list[UnitTest]):
+        with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
+            for import_statement in imports:
+                file.write(import_statement + "\n")
+            file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
+            file.write("\npublic class Tests {\n")
+            for test in current_tests:
+                file.write(test.unit_test + "\n\n")
+            file.write("}")
+        return
+
+
+async def _validate_single_test(
     structured_llm,
-    rule: ValidatedRule,
-    code_context: list[str],
-    summary_context: list[str],
+    test: UnitTest,
+    report: Report,
 ) -> tuple:
     try:
-        code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
-        summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"
-
         system_message = (
-            "You are a Senior Software Architect and expert Automated Test Engineer. "
-            "Your sole objective is to output a syntactically flawless, concrete unit test method based "
-            "strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
+            "You are a Senior Software Architect acting as an automated C# unit test auditor. "
+            "Your job is to strictly evaluate test output logs and decide if a test method succeeded or failed. "
+            "If the test failed in execution, you MUST mark it as 'failure' and fix it."
         )
 
         prompt = f"""
-#### BUSINESS RULE TO TEST:
-- ID: {rule.id}
-- RULE STATEMENT: {rule.rule}
-- TARGET DIRECTORY: {rule.source_directory}
+#### UNIT TEST TO VALIDATE:
+- ID: {test.id}
+- UNIT TEST: {test.unit_test}
+- IMPORTS: {test.imports}
 
-#### RETRIEVED SOURCE CODE CONTEXT:
-{code_text}
+#### UNIT TEST OUTPUT
+{report.output}
 
-#### RETRIEVED FILE SUMMARY CONTEXT:
-{summary_text}
+#### REPORT ERRORS:
+{report.errors}
 
-### [YOUR OBJECTIVE & WORKFLOW]
-You must bridge the gap between the abstract Business Rule and the concrete Source Code provided. Follow this mental workflow:
-1. **Identify the SUT:** Scan the context to find the exact class, constructor, and method responsible for handling or enforcing this business rule.
-2. **Determine Dependencies:** Identify what objects/inputs must be passed to that class to invoke the target method.
-3. **Structure the Test:** Draft a single, concrete test method using the Arrange-Act-Assert (AAA) pattern matching the project's framework (e.g., xUnit, pytest).
+#### TASK:
+Determine whether the unit test shown above has succeeded or failed based off of the given report generated. If the case of a failure rework the unit test and imports to solve the issue.
 
-### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
----
-- **NO IMPORTS:** Do not emit any `import`, `using`, or package references. Output *only* the test method block.
-- **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
-- **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
+1. **success** — The unit test succeeded when executed and resulted in ZERO errors or failures. Select this option only when:
+   - The unit tests method name does not appear anywhere in a failure context or stack trace.
+
+2. **failure** — The unit test is NOT supported and failed during execution. Choose this only when:
+   - The test contains syntax errors or invalid structure that would cause it to fail or crash when run.
+   - The test is not a complete, concrete unit test method block that can be run directly.
+   - The method name of the unit test appears under a `[FAIL]` section, stack trace, error message, or `Assert` failure in the report
+
+#### IMPORTANT
+- If the unit test is specifically stated in the error report as a failure. The decision MUST be 'failure'.
+
+#### RESPONSE INSTRUCTIONS:
+- If "success": select 'success' as your decision.
+- If "failure": select 'failure' as your decision and populate the unit_test and imports with your updated test and imports that fix the failure.
+
+#### TASK IN CASE OF FAILURE:
+- If the test decision results in a failure then update the original unit test and/or imports in order to solve the error that is currently present
+- The new test must be a realistic, structurally sound, executable unit test method.
+- Match the exact programming language, naming conventions, and recommended testing framework for that language (Example: Xunit for C#).
+- Use the context from the unit test report because it will tell you exactly what problems arise from the test and what needs to be fixed.
+
+#### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]:
+- **IMPORT SYNTAX:** Do not add or remove any import statements. Only alter the preexisting statements in order to make it full, complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
+- **NO REINVENTING:** Do not generate a completely new test and imports completely from scratch. Simply reuse the old one and ONLY change whats needs to be changed in order to fix the error.
+- **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the report.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
-- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. 
-- **SCARCITY FALLBACK:** If the provided context does not contain enough code to write a fully functioning test, DO NOT INVENT functions or methods. Instead, generate the correct method skeleton, name it perfectly according to the rule, map out the Arrange/Act/Assert comments, and place clear `// TODO` or `# TODO` placeholders inside where the missing logic should go.
+- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
+- **NO DECISION CHANGING:** Once you have selected your decision and attempted to rewrite the prompt in a case of failure. DO NOT change your decision to success no matter what
 """
+
         messages = [("system", system_message), ("user", prompt)]
-        delay = 1  # seconds
-        for attempt in range(MAX_RETRIES):
+        for attempt in range(MAX_LLM_RETRIES):
             try:
                 output = await structured_llm.ainvoke(messages)
-                break
+                return test, output, None
             except Exception as e:
-                if attempt < MAX_RETRIES - 1:
-                    print(f"Attempt {attempt + 1} failed for rule {rule.id}. Retrying after delay...")
-                    await asyncio.sleep(delay)
-                    delay *= 2  # Exponential backoff
-                else:
-                    raise e
-        return rule, output, None
+                if "503" in e and attempt < MAX_LLM_RETRIES - 1:
+                    wait_seconds = LLM_RETRY_BACKOFF_SECONDS * (2 ** attempt)
+                    await asyncio.sleep(wait_seconds)
+                    continue
+                return test, None, e
     except Exception as e:
-        return rule, None, e
+        return test, None, e
+    
 
-if __name__ == "__main__":
-    """
-    @brief Script entry point for running BRAgent.
-    @details Loads business rules from a JSON file and runs the validation pipeline.
-    """
-    if len(sys.argv) != 3:
-        print("Usage: python -m agent.UTV_agent <codebase_path> <rules_json_path>")
-        sys.exit(1)
-
-    codebase = sys.argv[1]
-    codebase_name = os.path.basename(codebase)
-    rules_path = sys.argv[2]
-
-    with open(rules_path, "r", encoding="utf-8") as f:
-        raw_rules = json.load(f)
-
-    # Convert raw JSON dicts back to BusinessRule objects
-    input_rules = [ValidatedRule.model_validate(rule) for rule in raw_rules]   
-
-    agent = UTVAgent()
-    agent.run(input_rules, codebase_name, codebase)
-    print("UTVAgent has completed its task!")
