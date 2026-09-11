@@ -26,3 +26,4 @@ build/
 releases/main/
 # ignore anything related to electron packaging
 dist/
+.DS_Store
