@@ -53,7 +53,7 @@ class ITAgent:
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY environment variable not set.")
             self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
+                model="gemini-2.5-flash",
                 api_key=api_key)
         else:
             self.llm = model
