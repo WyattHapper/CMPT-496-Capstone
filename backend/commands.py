@@ -560,7 +560,12 @@ class Commands:
         )
 
 
-    def generate_all_uml(self, summary_dir: str, individualStep = True):
+    def generate_all_uml(
+        self,
+        summary_dir: str = None,
+        codebase: str = None,
+        individualStep = True
+    ):
         """
         Generate UML PDFs for every JSON summary
         in a directory.
@@ -568,6 +573,18 @@ class Commands:
         Refactor of old:
             uml_generation()
         """
+
+        if summary_dir is None:
+            if codebase is None:
+                raise ValueError("Either summary_dir or codebase is required.")
+
+            codebase_name = Path(codebase).name
+            summary_dir = (
+                self.app_dir
+                / "agent"
+                / "file_summary_agent_output"
+                / codebase_name
+            )
 
         summary_dir = Path(summary_dir)
 
