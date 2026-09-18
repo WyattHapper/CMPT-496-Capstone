@@ -1611,7 +1611,7 @@ document.getElementById('runUMLGenerationOnly')
         );
 
         runBackendCommand(
-            "generate_uml",
+            "generate_all_uml",
             {
                 codebase:selectedCodebasePath
             }
