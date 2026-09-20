@@ -59,7 +59,7 @@ class FileSummaryAgent:
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
         else:
-            load_dotenv()
+            load_dotenv(override=True)
             self.llm = ChatGoogleGenerativeAI(
                 model="gemini-3-flash-preview",
                 api_key=os.getenv("GOOGLE_API_KEY"))

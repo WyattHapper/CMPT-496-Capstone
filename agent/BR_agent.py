@@ -53,7 +53,7 @@ class BRAgent:
         """
         progress("Initializing business rule agent...", 0)
         if model is None:
-            load_dotenv()
+            load_dotenv(override=True)
             api_key = os.getenv("GOOGLE_API_KEY")
             if not api_key:
                 raise ValueError("GOOGLE_API_KEY environment variable not set.")
