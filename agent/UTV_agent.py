@@ -148,7 +148,7 @@ class UTVAgent:
             "validated_tests": [],
             "discarded_tests": [],
             "imports": imports,
-            "report": Report,
+            "report": Report(return_code=0, output="", errors=""),
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,

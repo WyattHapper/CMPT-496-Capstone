@@ -1565,7 +1565,7 @@ document.getElementById('runUnitTestValidationOnlyBtn')
 
 
 document.getElementById('runIntegrationTestGenerationOnlyBtn')
-    .addEventListener('click', () => {
+    .addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         showLoading(
