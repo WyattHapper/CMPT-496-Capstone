@@ -15,13 +15,17 @@ class FrontendProgressHandler(logging.Handler):
 
 
 def configure_progress_logging():
-    root = logging.getLogger()
+    # Attach the forwarder to this module's own logger, never the root
+    # logger: root also carries INFO records from chromadb, httpx,
+    # langchain and friends, and those would be emitted on stdout as
+    # bogus progress messages for the frontend to display.
+    logger.propagate = False
 
     # Avoid adding the handler twice
-    if any(isinstance(h, FrontendProgressHandler) for h in root.handlers):
+    if any(isinstance(h, FrontendProgressHandler) for h in logger.handlers):
         return
 
-    root.addHandler(FrontendProgressHandler())
+    logger.addHandler(FrontendProgressHandler())
 
 def progress(message, percent=None, step_complete=False):
 
@@ -41,8 +45,6 @@ def progress(message, percent=None, step_complete=False):
         json.dumps(data),
         flush=True
     )
-
-    logger.info(message)
 
 def pipeline_progress(stage, percent):
 
