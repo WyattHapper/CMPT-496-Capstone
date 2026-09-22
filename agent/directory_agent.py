@@ -154,7 +154,7 @@ class DirectoryAgent:
 
         # Walk directory tree
         for root, dirs, _ in os.walk(root_path):
-            prune(dirs)  # removes directories that are in IGNORED_DIRS
+            prune(root, dirs)  # removes IGNORED_DIRS and Checkpoint-generated folders
             for d in dirs:
                 full_path = os.path.join(root, d)
                 discovered_directories.append(full_path)
