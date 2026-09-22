@@ -19,6 +19,7 @@ from xml.parsers.expat import errors
 import chromadb
 import json
 import time
+import requests
 from pathlib import Path
 from backend.progress_logging import progress, pipeline_progress
 
@@ -56,6 +57,14 @@ from src.build_database_JSON import build_database as build_summary_database
 
 from utils.uml_json_to_pdf import main as uml_main
 
+from backend.token_estimate import estimate_pipeline
+from backend.token_usage import (
+    record_usage,
+    record_to_log,
+    suggest_constants,
+    emit_stage_total,
+)
+
 
 # ---------------------------------------------------------
 # Application directory
@@ -76,6 +85,9 @@ class Commands:
     def __init__(self):
         self.app_dir = APP_DIR
 
+        # Set by the dispatcher so measured usage can be filed per codebase.
+        self.current_codebase_name = "unknown"
+
     # -----------------------------------------------------
     # Internal helper
     # -----------------------------------------------------
@@ -93,7 +105,23 @@ class Commands:
         start = time.perf_counter()
 
         try:
-            result = func(*args, **kwargs)
+            # Records real token usage for any LLM call made inside func,
+            # streaming a running total to the frontend as it goes. Scopes
+            # nest, so full_pipeline totals its stages as well as itself.
+            # Stages that call no model record nothing.
+            with record_usage(command_name, live=True) as usage:
+                result = func(*args, **kwargs)
+
+            summary = usage.summary()
+
+            if summary["calls"]:
+                emit_stage_total(summary)
+
+            record_to_log(
+                self.app_dir,
+                self.current_codebase_name,
+                summary,
+            )
 
             elapsed = time.perf_counter() - start
 
@@ -131,6 +159,64 @@ class Commands:
             )
 
         return result
+
+    # -----------------------------------------------------
+    # Calibration Commands
+    # -----------------------------------------------------
+
+    def token_calibration(self, codebase: str = None, individualStep = True):
+        """
+        Report measured token usage and the constants it suggests.
+        """
+
+        def task():
+            progress("Reading recorded token usage...")
+
+            name = Path(codebase).name if codebase else None
+
+            result = suggest_constants(self.app_dir, name)
+
+            if not result.get("success", False):
+                raise RuntimeError(
+                    result.get("error", "Calibration failed")
+                )
+
+            return result
+
+        return self._run_command(
+            "token_calibration",
+            task,
+            individualStep=individualStep,
+        )
+
+    # -----------------------------------------------------
+    # Estimation Commands
+    # -----------------------------------------------------
+
+    def estimate_tokens(self, codebase: str, individualStep = True):
+        """
+        Estimate token usage for a full pipeline run without calling any LLM.
+        """
+
+        def task():
+            progress("Estimating token usage...")
+
+            result = estimate_pipeline(codebase, app_dir=self.app_dir)
+
+            # _run_command only marks a command failed when it raises, so a
+            # returned failure dict would surface as success to the frontend.
+            if not result.get("success", False):
+                raise RuntimeError(
+                    result.get("error", "Token estimate failed")
+                )
+
+            return result
+
+        return self._run_command(
+            "estimate_tokens",
+            task,
+            individualStep=individualStep,
+        )
 
     # -----------------------------------------------------
     # Database Commands
@@ -633,6 +719,85 @@ class Commands:
     # Configuration Commands
     # -----------------------------------------------------
 
+    # Model the pipeline actually uses. Verifying against this one rather
+    # than just checking the key also catches a key that is real but has
+    # no access to this model -- a failure that would otherwise only show
+    # up part-way through a run.
+    VALIDATION_MODEL = "gemini-3-flash-preview"
+    VALIDATION_TIMEOUT_SECONDS = 15
+
+    def verify_api_key(self, api_key: str):
+        """
+        Check a key by making the smallest real generation call possible.
+
+        Returns a dict with:
+            ok      True accepted, False rejected, None could not ask.
+                    A failure to ask is not a rejection, so it does not
+                    block a key that may be perfectly good.
+            detail  human-readable reason, Google's own wording when it
+                    rejected the key.
+            model   the model version Google answered with.
+            tokens  what this check cost, from Google's own accounting.
+        """
+
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.VALIDATION_MODEL}:generateContent"
+        )
+
+        try:
+            response = requests.post(
+                url,
+                params={"key": api_key},
+                json={
+                    # One token in, one token out: enough to prove the key
+                    # works without a meaningful cost.
+                    "contents": [{"parts": [{"text": "hi"}]}],
+                    "generationConfig": {"maxOutputTokens": 1},
+                },
+                timeout=self.VALIDATION_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            return {
+                "ok": None,
+                "detail": f"Could not reach Google to verify the key ({exc}).",
+                "model": None,
+                "tokens": None,
+            }
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+
+        if response.status_code == 200:
+
+            # Google reports the exact model that answered and what the
+            # call cost. Both are worth surfacing: the model confirms the
+            # key can reach the one the pipeline needs, and the token
+            # count is the honest price of checking.
+            usage = body.get("usageMetadata") or {}
+
+            return {
+                "ok": True,
+                "detail": "Key accepted by Google.",
+                "model": body.get("modelVersion") or self.VALIDATION_MODEL,
+                "tokens": usage.get("totalTokenCount"),
+            }
+
+        # Google puts a readable reason in the body; prefer it to the code.
+        try:
+            detail = body["error"]["message"]
+        except (KeyError, TypeError):
+            detail = response.text[:200] or f"HTTP {response.status_code}"
+
+        return {
+            "ok": False,
+            "detail": detail,
+            "model": None,
+            "tokens": None,
+        }
+
     def set_api_key(self, api_key: str):
         """
         Save the LLM API key.
@@ -645,6 +810,22 @@ class Commands:
         """
 
         def task():
+
+            # Guarded in the frontend too, but an empty key must never
+            # reach the file: a bare "GOOGLE_API_KEY=" reads back as
+            # "no key" on the next launch while the running app believes
+            # one is set.
+            if not api_key or not api_key.strip():
+                raise ValueError("No API key provided.")
+
+            progress("Verifying API key...")
+
+            check = self.verify_api_key(api_key.strip())
+
+            if check["ok"] is False:
+                raise ValueError(
+                    "Google rejected this API key: " + str(check["detail"])
+                )
 
             progress("Saving API key...")
 
@@ -661,8 +842,28 @@ class Commands:
                 )
 
 
+            if check["ok"] is None:
+                return {
+                    "message": (
+                        "API key saved, but not verified. "
+                        + str(check["detail"])
+                    ),
+                    "verified": False,
+                    "model": None,
+                    "tokens": None,
+                }
+
+            tokens = check["tokens"]
+            unit = "token" if tokens == 1 else "tokens"
+            cost = f" - {tokens} {unit} used" if tokens else ""
+
             return {
-                "message": "API key saved"
+                "message": (
+                    f"Key verified against {check['model']}{cost}. Saved."
+                ),
+                "verified": True,
+                "model": check["model"],
+                "tokens": tokens,
             }
 
 

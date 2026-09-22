@@ -19,6 +19,7 @@ import asyncio
 from pathlib import Path
 from collections import deque
 from backend.progress_logging import progress
+from agent.crawl_config import ACCEPTABLE_EXTENSIONS, prune
 
 BATCH_SIZE = 10
 MAX_CONCURRENCY = 10
@@ -156,16 +157,19 @@ class FileSummaryAgent:
             15
         )
         files = deque()
-        acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css"]
 
         codebase_name = Path(state["directory_path"]).name
 
         # recursively loop through all files in the directory path
-        for root, _, filenames in os.walk(state["directory_path"]):
+        for root, dirs, filenames in os.walk(state["directory_path"]):
+            # Skip generated and vendored folders. Without this the crawler
+            # descends into bin/, obj/, node_modules/ and .venv/ and spends
+            # one LLM call per file it finds there.
+            prune(dirs)
             filenames.sort()
             for f in filenames:
                 file_ext = Path(f).suffix.lower()
-                if file_ext in acceptable_extensions:
+                if file_ext in ACCEPTABLE_EXTENSIONS:
                     # add file to queue
                     files.append(os.path.join(root, f))
 

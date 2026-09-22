@@ -66,8 +66,7 @@ window.electronAPI.hasAPIKey()
 
         if (hasAPI) {
 
-            const apiBtnEl = document.getElementById("apiBtn");
-            if (apiBtnEl) apiBtnEl.classList.add("unusable-btn");
+            showApiKeyPresent();
 
             const analysisBtnEl = document.getElementById("analysisBtn");
             if (analysisBtnEl) analysisBtnEl.classList.remove("unusable-btn");
@@ -121,6 +120,17 @@ function showLoading(title, message) {
     //hide ok button
     document.getElementById("loadingOkBtn").classList.add("hidden");
 
+    // hide any report left over from a previous estimate
+    const previousEstimate =
+        document.getElementById("estimateOutput");
+
+    if (previousEstimate) {
+        previousEstimate.classList.add("hidden");
+        previousEstimate.textContent = "";
+    }
+
+    resetTokenMeter();
+
    
 }
 
@@ -157,6 +167,88 @@ function updatePipelineLoading(message) {
 
 
 
+
+
+// ============================================
+// Live token meter
+// ============================================
+
+function resetTokenMeter() {
+
+    const meter =
+        document.getElementById("tokenMeter");
+
+    if (!meter) return;
+
+    meter.classList.add("hidden");
+
+    document.getElementById("tokenMeterValue")
+        .textContent = "0";
+
+    document.getElementById("tokenMeterStages")
+        .textContent = "";
+
+}
+
+
+function updateTokenMeter(response) {
+
+    const meter =
+        document.getElementById("tokenMeter");
+
+    if (!meter) return;
+
+    meter.classList.remove("hidden");
+
+    const total = response.total_tokens ?? 0;
+
+    document.getElementById("tokenMeterValue")
+        .textContent = total.toLocaleString();
+
+}
+
+
+function addTokenMeterStage(response) {
+
+    const meter =
+        document.getElementById("tokenMeter");
+
+    const list =
+        document.getElementById("tokenMeterStages");
+
+    if (!meter || !list) return;
+
+    meter.classList.remove("hidden");
+
+    const used =
+        (response.input_tokens ?? 0) + (response.output_tokens ?? 0);
+
+    // The pipeline records itself as well as its stages, so showing its row
+    // alongside them would look like double counting. Its figure is already
+    // the running total above.
+    if (response.stage === "full_pipeline") {
+
+        document.getElementById("tokenMeterValue")
+            .textContent = used.toLocaleString();
+
+        return;
+    }
+
+    const row = document.createElement("div");
+    row.className = "stage-row";
+
+    const name = document.createElement("span");
+    name.textContent = response.stage;
+
+    const amount = document.createElement("span");
+    amount.textContent =
+        `${used.toLocaleString()} (${response.calls} calls)`;
+
+    row.appendChild(name);
+    row.appendChild(amount);
+    list.appendChild(row);
+
+}
 
 
 function finishLoading(message = "Process completed successfully!") {
@@ -1359,6 +1451,36 @@ document.getElementById('codebaseAnalysisPipelineBtn')
 
 });
 
+document.getElementById('estimateTokensBtn')
+    .addEventListener('click', () => {
+
+        showLoading(
+            "Token Usage Estimate",
+            "Scanning codebase..."
+        );
+
+        runBackendCommand(
+            "estimate_tokens",
+        {
+            codebase:selectedCodebasePath
+        });
+    });
+
+document.getElementById('tokenCalibrationBtn')
+    .addEventListener('click', () => {
+
+        showLoading(
+            "Token Calibration",
+            "Reading recorded usage..."
+        );
+
+        runBackendCommand(
+            "token_calibration",
+        {
+            codebase:selectedCodebasePath
+        });
+    });
+
 document.getElementById('createCodeDatabaseOnlyBtn')
     .addEventListener('click', () => {
 
@@ -1640,18 +1762,27 @@ document.getElementById('apiBackBtn')
 document.getElementById('submitApiKeyBtn')
     .addEventListener('click', async () => {
 
-        showPage('homePage');
+        const apiKeyInputEl = document.getElementById('apiKeyInput');
+        const apiKey = apiKeyInputEl.value.trim();
 
-        document.getElementById('apiBtn').classList.add('unusable-btn');
-        document.getElementById('analysisBtn').classList.remove('unusable-btn');
-
-        const apiKey = document.getElementById('apiKeyInput').value;
-
-        const response = await runBackendCommand("set_api_key", { api_key: apiKey });
-
-        if (response?.success) {
-            hasAPI = true;
+        // Nothing typed: saving would write a bare "GOOGLE_API_KEY=" and
+        // still report success, so the app would behave as though a key
+        // were set until the next launch read it back as missing. trim()
+        // so a box holding only spaces counts as empty too.
+        if (!apiKey) {
+            showApiKeyError("Please enter an API key.");
+            return;
         }
+
+        hideApiKeyError();
+
+        // executeCommand resolves as soon as the command has been written
+        // to the backend's stdin -- its {success:true} means "sent", not
+        // "worked". The real verdict arrives later on the response stream,
+        // so everything that depends on it lives in onBackendResponse.
+        setApiKeyPending(true);
+
+        await runBackendCommand("set_api_key", { api_key: apiKey });
 
     });
 
@@ -1659,10 +1790,12 @@ document.getElementById('replaceApiKeyBtn')
     .addEventListener('click', () => {
 
         console.log("Replace API Key button clicked");
-        
 
+        // newApiUi() reveals the Back button, and it is left revealed on
+        // purpose. Hiding it here stranded anyone who opened this page to
+        // change a key and then thought better of it -- the only way out
+        // was to enter a key that Google would accept.
         newApiUi();
-        document.getElementById('apiBackBtn').classList.add('hidden');
 
     });
     
@@ -1780,6 +1913,54 @@ window.electronAPI.onBackendResponse((response) => {
     }
 
 
+    // ----------------------------------------
+    // API key save / verification result
+    // ----------------------------------------
+    // Handled here rather than at the Submit button because that only ever
+    // sees the "command sent" acknowledgement. Taken before the generic
+    // error path below so a rejected key stays on the API page with an
+    // explanation instead of being dumped into the error box.
+    if (response.command === "set_api_key") {
+
+        setApiKeyPending(false);
+        activeCommand = null;
+
+        if (!response.success) {
+            showApiKeyError(
+                response.error || "Could not save the API key. Please try again."
+            );
+            return;
+        }
+
+        hasAPI = true;
+
+        // Saved now, so there is no reason to keep it on screen.
+        document.getElementById('apiKeyInput').value = "";
+
+        showApiKeyPresent();
+        document.getElementById('analysisBtn').classList.remove('unusable-btn');
+
+        // Show what the check found -- which model answered and what it
+        // cost -- before leaving the page. Navigating straight home threw
+        // that away, so a verified key looked no different from no check
+        // at all.
+        const verdict = response.result?.message || "API key saved.";
+
+        if (response.result?.verified === false) {
+            showApiKeyError(verdict);
+        } else {
+            showApiKeySuccess(verdict);
+        }
+
+        setTimeout(() => {
+            hideApiKeyError();
+            showPage('homePage');
+        }, 2500);
+
+        return;
+    }
+
+
     // The command acknowledgement does not contain the error list.
     if (activeCommand === "get_errors" && response.errors !== undefined) {
 
@@ -1859,6 +2040,20 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+    // ----------------------------------------
+    // Live token usage
+    // ----------------------------------------
+    if (response.type === "token_usage") {
+        updateTokenMeter(response);
+        return;
+    }
+
+    if (response.type === "token_usage_stage") {
+        addTokenMeterStage(response);
+        return;
+    }
+
+
     if (response.type === "pipeline_progress") {
 
         console.log(response);
@@ -1907,6 +2102,54 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+
+
+    // ----------------------------------------
+    // Token estimate report
+    // ----------------------------------------
+    // Handled ahead of the generic path because the report is multi-line and
+    // loadingStepMessage collapses whitespace.
+    const reportCommands = ["estimate_tokens", "token_calibration"];
+
+    if (
+        reportCommands.includes(activeCommand) &&
+        reportCommands.includes(response.command) &&
+        response.result
+    ) {
+
+        const report =
+            document.getElementById("estimateOutput");
+
+        if (report && response.result.message) {
+
+            report.textContent = response.result.message;
+            report.classList.remove("hidden");
+
+        }
+
+        const low  = response.result.total_input_low;
+        const high = response.result.total_input_high;
+
+        let summary =
+            response.command === "token_calibration"
+                ? "Calibration complete"
+                : "Estimate complete";
+
+        if (typeof low === "number" && typeof high === "number") {
+
+            summary =
+                low === high
+                    ? `~${low.toLocaleString()} input tokens`
+                    : `~${low.toLocaleString()} - ${high.toLocaleString()} input tokens`;
+
+        }
+
+        finishLoading(summary);
+
+        activeCommand = null;
+
+        return;
+    }
 
 
     // ----------------------------------------
@@ -2098,7 +2341,74 @@ function toggleTheme() {
   localStorage.setItem("theme", newTheme);
 }
 
+function setApiKeyPending(pending) {
+
+    const btn = document.getElementById('submitApiKeyBtn');
+
+    if (!btn) return;
+
+    btn.disabled = pending;
+    btn.textContent = pending ? "Verifying..." : "Submit";
+
+}
+
+
+function showApiKeySuccess(text) {
+
+    const el = document.getElementById('apiKeyErrorMsg');
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.classList.remove("api-key-error");
+    el.classList.add("api-key-ok");
+    el.classList.remove("hidden");
+
+}
+
+
+function showApiKeyError(text) {
+
+    const el = document.getElementById('apiKeyErrorMsg');
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.classList.remove("api-key-ok");
+    el.classList.add("api-key-error");
+    el.classList.remove("hidden");
+
+}
+
+
+function hideApiKeyError() {
+
+    const el = document.getElementById('apiKeyErrorMsg');
+
+    if (el) el.classList.add("hidden");
+
+}
+
+
+function showApiKeyPresent() {
+
+    const apiBtnEl = document.getElementById("apiBtn");
+
+    if (!apiBtnEl) return;
+
+    // Deliberately NOT .unusable-btn. That class is cosmetic -- it only
+    // fades the button and shows a not-allowed cursor -- but this button
+    // is the only route to the Replace / Keep page, so looking disabled
+    // made a stale key appear unchangeable. Relabel instead of greying.
+    apiBtnEl.classList.remove("unusable-btn");
+    apiBtnEl.textContent = "Change API Key";
+
+}
+
+
 function overwriteApiUi() {
+    hideApiKeyError();
+
     document.getElementById('apiKeyMsg').classList.remove("hidden");
     document.getElementById('apiKeyInput').classList.add("hidden");
     document.getElementById('submitApiKeyBtn').classList.add("hidden");
@@ -2109,6 +2419,14 @@ function overwriteApiUi() {
 
 function newApiUi() {
     document.getElementById('apiKeyMsg').classList.add("hidden");
+
+    // Start empty every time. Pages here are shown/hidden rather than
+    // reloaded, so whatever the last person typed would otherwise still
+    // be sitting in the box when someone opens it to change the key.
+    document.getElementById('apiKeyInput').value = "";
+
+    hideApiKeyError();
+
     document.getElementById('apiKeyInput').classList.remove("hidden");
     document.getElementById('submitApiKeyBtn').classList.remove("hidden");
     document.getElementById('replaceApiKeyBtn').classList.add("hidden");

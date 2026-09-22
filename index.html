@@ -32,7 +32,8 @@
         <button class="btn-primary hidden" id="replaceApiKeyBtn">Replace API Key</button>
         <button class="btn-primary hidden" id="keepApiKeyBtn">Keep Current API Key</button>
 
-        <input class="input-glass" id="apiKeyInput" type="text" placeholder="Enter API Key" />
+        <input class="input-glass" id="apiKeyInput" type="password" placeholder="Enter API Key" autocomplete="off" />
+        <h3 id="apiKeyErrorMsg" class="api-key-error hidden"></h3>
         <button class="btn-primary" id="submitApiKeyBtn">Submit</button>
         <button class="btn-primary back-btn" id="apiBackBtn">Back</button>
 
@@ -49,6 +50,8 @@
 
             <div id="pipelineOptions">
                
+                <button class="btn-primary" id="estimateTokensBtn">Estimate Token Usage</button>
+                <button class="btn-primary" id="tokenCalibrationBtn">Show Token Calibration</button>
                 <button class="btn-primary" id="codebaseAnalysisPipelineBtn">Full Codebase Analysis Pipeline</button>
                 <button class="btn-primary" id="createCodeDatabaseOnlyBtn">Create Code Database</button>
                 <button class="btn-primary" id="createJSONSummariesOnlyBtn">Create JSON Summaries</button>
@@ -527,6 +530,16 @@
 
 
             
+
+            <div id="tokenMeter" class="hidden">
+                <div id="tokenMeterTotal">
+                    <span id="tokenMeterValue">0</span>
+                    <span id="tokenMeterUnit">tokens used</span>
+                </div>
+                <div id="tokenMeterStages"></div>
+            </div>
+
+            <pre id="estimateOutput" class="hidden"></pre>
 
             <button id="loadingOkBtn" class="btn-primary hidden">OK</button>
         </div>
