@@ -1757,6 +1757,25 @@ h2{
     display: none;
 }
 
+/* Completion warning, e.g. UML diagrams skipped. Same footprint as the
+   token meter above it so the Complete screen stays aligned. */
+#loadingWarning {
+    margin: 10px auto 4px;
+    padding: 10px 14px;
+    max-width: 420px;
+
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-left-width: 4px;
+    border-radius: 6px;
+
+    color: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+    text-align: left;
+    word-wrap: break-word;
+}
+
 #tokenMeterTotal {
     display: flex;
     align-items: baseline;

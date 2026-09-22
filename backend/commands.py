@@ -55,7 +55,23 @@ from agent.structured_output.UTV_output import UnitTest
 from src.build_database import build_database
 from src.build_database_JSON import build_database as build_summary_database
 
-from utils.uml_json_to_pdf import main as uml_main
+from utils.uml_json_to_pdf import (
+    build_report as uml_build_report,
+    parse_args as uml_parse_args,
+)
+
+
+def skipped_diagrams_message(skipped):
+    """
+    Warning for the Complete screen naming the diagrams the UML step
+    skipped, so a missing picture in the PDF doesn't look like a bug.
+    """
+    noun = "diagram was" if len(skipped) == 1 else "diagrams were"
+    return (
+        f"{len(skipped)} UML {noun} skipped because the AI wrote invalid "
+        f"diagram text: {', '.join(skipped)}. Everything else was created, "
+        "and the PDF marks where each skipped diagram would be."
+    )
 
 from backend.token_estimate import estimate_pipeline
 from backend.token_usage import (
@@ -633,10 +649,17 @@ class Commands:
 
 
             try:
-                uml_main()
+                skipped = uml_build_report(uml_parse_args())
 
             finally:
                 sys.argv = old_argv
+
+            result = {"skipped_diagrams": skipped}
+
+            if skipped:
+                result["warning"] = skipped_diagrams_message(skipped)
+
+            return result
 
 
         return self._run_command(
@@ -704,9 +727,21 @@ class Commands:
                     )
 
 
-            return {
-                "generated_files": generated
+            skipped = [
+                label
+                for result in generated
+                for label in result["result"]["skipped_diagrams"]
+            ]
+
+            summary = {
+                "generated_files": generated,
+                "skipped_diagrams": skipped,
             }
+
+            if skipped:
+                summary["warning"] = skipped_diagrams_message(skipped)
+
+            return summary
 
 
         return self._run_command(
@@ -978,13 +1013,20 @@ class Commands:
                     failed
                 )
 
-            pipeline_progress("Pipeline Complete", 100)
-            return {
+            summary = {
                 "steps": steps,
-                "message": (
-                    "Full pipeline completed"
-                ),
+                "message": "Full pipeline completed",
             }
+
+            # The UML step is last; pass on its warning if it skipped any
+            # diagrams, so the Complete screen can show it.
+            warning = steps[-1]["result"].get("warning")
+
+            if warning:
+                summary["warning"] = warning
+
+            pipeline_progress("Pipeline Complete", 100)
+            return summary
 
 
         return self._run_command(

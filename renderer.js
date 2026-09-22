@@ -188,6 +188,24 @@ function resetTokenMeter() {
     document.getElementById("tokenMeterStages")
         .textContent = "";
 
+    showLoadingWarning(null);
+
+}
+
+
+// Shown on the Complete screen when a command finished but had to leave
+// something out, e.g. UML diagrams skipped because the AI's diagram text was
+// invalid. Without it a missing diagram looks like a program mistake.
+function showLoadingWarning(text) {
+
+    const warning =
+        document.getElementById("loadingWarning");
+
+    if (!warning) return;
+
+    warning.textContent = text || "";
+    warning.classList.toggle("hidden", !text);
+
 }
 
 
@@ -2189,6 +2207,8 @@ window.electronAPI.onBackendResponse((response) => {
                 response.message ||
                 `${activeCommand} completed`
             );
+
+            showLoadingWarning(response.result?.warning);
 
             activeCommand = null;
         }
