@@ -55,6 +55,10 @@ class CommandDispatcher:
             # Pipeline
             "full_pipeline": self.commands.full_pipeline,
 
+            # Estimation
+            "estimate_tokens": self.commands.estimate_tokens,
+            "token_calibration": self.commands.token_calibration,
+
             # Error log
             "get_errors": self.get_errors,
 
@@ -100,6 +104,13 @@ class CommandDispatcher:
         # Optional: clear old errors when running the full pipeline
         if command == "full_pipeline":
             self.clear_errors()
+
+        # Tell Commands which codebase measured usage belongs to.
+        if "codebase" in kwargs and kwargs["codebase"]:
+            from pathlib import Path
+            self.commands.current_codebase_name = Path(
+                kwargs["codebase"]
+            ).name
 
         handler = self.routes[command]
 

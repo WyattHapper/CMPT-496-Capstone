@@ -26,3 +26,6 @@ build/
 releases/main/
 # ignore anything related to electron packaging
 dist/
+
+# Measured token usage, written per pipeline run
+token_usage_log.json
