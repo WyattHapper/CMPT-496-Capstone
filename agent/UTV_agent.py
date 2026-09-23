@@ -15,8 +15,7 @@ from agent.structured_output.UTV_output import (
     UnitTest, ValidatorOutput, Report
 )
 from langgraph.graph import StateGraph, START, END
-from langchain_google_genai import ChatGoogleGenerativeAI
-from dotenv import load_dotenv
+from agent.llm import make_llm
 import os
 import sys
 import json
@@ -57,13 +56,7 @@ class UTVAgent:
         """
         progress("Intializing unit test validation agent...", 5)
         if model is None:
-            load_dotenv(override=True)
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable not set.")
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
-                api_key=api_key)
+            self.llm = make_llm()
         else:
             self.llm = model
         self.graph = self.build_graph()

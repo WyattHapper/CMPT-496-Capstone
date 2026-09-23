@@ -349,6 +349,28 @@ def _stamp(moment=None):
     return (moment or datetime.now()).isoformat(timespec="seconds")
 
 
+def status_code(exc):
+    """
+    The HTTP status behind an error (429, 503, ...), or None.
+
+    Google's SDK errors carry it as .code; LangChain wraps a 429 in its own
+    error, and our retry errors wrap Google's, so walk the cause chain until
+    one turns up.
+    """
+    seen = set()
+
+    while exc is not None and id(exc) not in seen:
+        seen.add(id(exc))
+
+        code = getattr(exc, "code", None)
+        if isinstance(code, int):
+            return code
+
+        exc = exc.__cause__ or exc.__context__
+
+    return None
+
+
 class RunLog:
     """
     Everything one run did, saved to last_run_log.json as it goes.
@@ -366,9 +388,11 @@ class RunLog:
         self.elapsed_seconds = None
         self.status = "running"
         self.error = None
+        self.error_code = None
 
         self.stages = []
         self.calls = []
+        self.waits = []
 
         self._t0 = time.perf_counter()
         self._stage_t0 = {}
@@ -382,6 +406,7 @@ class RunLog:
             "stage": name,
             "status": "running",
             "error": None,
+            "error_code": None,
             "started_at": _stamp(),
             "elapsed_seconds": None,
         }
@@ -392,17 +417,19 @@ class RunLog:
 
         return entry
 
-    def finish_stage(self, entry, status, error):
+    def finish_stage(self, entry, status, error, error_code=None):
         with self._lock:
             t0 = self._stage_t0.pop(id(entry), self._t0)
             entry["status"] = status
             entry["error"] = error
+            entry["error_code"] = error_code
             entry["elapsed_seconds"] = round(time.perf_counter() - t0, 2)
 
-    def finish(self, status, error):
+    def finish(self, status, error, error_code=None):
         with self._lock:
             self.status = status
             self.error = error
+            self.error_code = error_code
             self.finished_at = _stamp()
             self.elapsed_seconds = round(time.perf_counter() - self._t0, 2)
 
@@ -430,6 +457,7 @@ class RunLog:
 
         if error is not None:
             record["error"] = str(error)
+            record["error_code"] = status_code(error)
         else:
             read = _read_usage(response)
 
@@ -444,6 +472,16 @@ class RunLog:
         with self._lock:
             self.calls.append(record)
 
+    def add_wait(self, stage, reason, seconds):
+        """A pause before retrying a call Google refused (429, 503, ...)."""
+        with self._lock:
+            self.waits.append({
+                "stage": stage or self.command,
+                "reason": reason,
+                "seconds": round(seconds, 1),
+                "at": _stamp(),
+            })
+
     # --- output -------------------------------------------
 
     def _worth_saving(self):
@@ -456,36 +494,45 @@ class RunLog:
         with self._lock:
             calls = [dict(c) for c in self.calls]
             stages = [dict(s) for s in self.stages]
+            waits = [dict(w) for w in self.waits]
             header = {
                 "run_id": self.run_id,
                 "codebase": self.codebase,
                 "command": self.command,
                 "status": self.status,
                 "error": self.error,
+                "error_code": self.error_code,
                 "started_at": self.started_at,
                 "finished_at": self.finished_at,
                 "elapsed_seconds": self.elapsed_seconds,
             }
 
-        def totals(subset):
-            input_tokens = sum(c["input_tokens"] or 0 for c in subset)
-            output_tokens = sum(c["output_tokens"] or 0 for c in subset)
+        def totals(call_subset, wait_subset):
+            input_tokens = sum(c["input_tokens"] or 0 for c in call_subset)
+            output_tokens = sum(c["output_tokens"] or 0 for c in call_subset)
             return {
-                "calls": len(subset),
-                "failed_calls": sum(c["status"] == "failed" for c in subset),
+                "calls": len(call_subset),
+                "failed_calls": sum(c["status"] == "failed" for c in call_subset),
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
+                "waits": len(wait_subset),
+                "waited_seconds": round(sum(w["seconds"] for w in wait_subset), 1),
             }
 
         for stage in stages:
-            stage.update(totals([c for c in calls if c["stage"] == stage["stage"]]))
+            name = stage["stage"]
+            stage.update(totals(
+                [c for c in calls if c["stage"] == name],
+                [w for w in waits if w["stage"] == name],
+            ))
 
         return {
             **header,
-            "totals": totals(calls),
+            "totals": totals(calls, waits),
             "stages": stages,
             "calls": calls,
+            "waits": waits,
         }
 
     def save(self):
@@ -501,16 +548,33 @@ class RunLog:
             pass
 
 
+def record_wait(reason, seconds):
+    """
+    Note in the current run's log that a call is waiting to retry.
+
+    Called by agent/llm.py; does nothing outside a tracked command.
+    """
+    try:
+        run = _run_var.get()
+
+        if run is not None:
+            run.add_wait(_stage_var.get(), reason, seconds)
+    except Exception:
+        pass
+
+
 class _Outcome:
     """How a tracked command ended; _run_command marks failures on it."""
 
     def __init__(self):
         self.status = "success"
         self.error = None
+        self.error_code = None
 
     def fail(self, exc):
         self.status = "failed"
         self.error = str(exc)
+        self.error_code = status_code(exc)
 
 
 @contextmanager
@@ -536,7 +600,7 @@ def track_command(app_dir, codebase_name, command):
             raise
         finally:
             _run_var.reset(token)
-            run.finish(outcome.status, outcome.error)
+            run.finish(outcome.status, outcome.error, outcome.error_code)
             run.save()
 
     elif _stage_var.get() is None:
@@ -549,7 +613,9 @@ def track_command(app_dir, codebase_name, command):
             raise
         finally:
             _stage_var.reset(token)
-            run.finish_stage(entry, outcome.status, outcome.error)
+            run.finish_stage(
+                entry, outcome.status, outcome.error, outcome.error_code
+            )
             # Saved per stage so a run that dies mid-way still leaves a
             # record of how far it got.
             run.save()

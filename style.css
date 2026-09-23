@@ -1933,6 +1933,26 @@ h2{
 [data-theme="dark"] .usage-error { color: #f87171; }
 [data-theme="dark"] .usage-status.running { color: #fbbf24; }
 
+/* Error lists (Insights "Errors", failed AI calls): text, so left-aligned
+   and wrapping, unlike the number tables. */
+.error-table th,
+.error-table td {
+    text-align: left;
+    vertical-align: top;
+}
+
+/* Short columns stay on one line; only the message (last) wraps. */
+.error-table th,
+.error-table td {
+    white-space: nowrap;
+}
+
+.error-table td:last-child {
+    width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
 .usage-note {
     margin: 1.25rem 0 0;
     font-size: 0.85rem;

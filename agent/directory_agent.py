@@ -3,10 +3,9 @@ logger = logging.getLogger(__name__)
 from agent.states.directory_agent_state import DirectoryGraphState
 from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput, BusinessRulesOutput
 from langgraph.graph import StateGraph, START, END
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agent.llm import make_llm
 from agent.crawl_config import prune
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from dotenv import load_dotenv
 import os
 import sys
 import chromadb
@@ -24,13 +23,7 @@ class DirectoryAgent:
         """
         progress("Initializing directory agent...", 5)
         if model is None:
-            load_dotenv(override=True)
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable not set.")
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
-                api_key=api_key)
+            self.llm = make_llm()
         else:
             self.llm = model
         self.graph = self.build_graph()

@@ -33,3 +33,6 @@ token_usage_log.json
 # Full record of the most recent run (stages, AI calls, timings)
 last_run_log.json
 last_run_log.json.tmp
+# Backend errors, kept for the Insights "Errors" view across restarts
+error_log.json
+error_log.json.tmp

@@ -9,9 +9,8 @@ logger = logging.getLogger(__name__)
 from agent.states.file_summary_agent_state import FileGraphState
 from langgraph.graph import StateGraph, START, END
 from agent.structured_output.file_summary_output import FileSummaryOutput
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agent.llm import make_llm
 from langchain_core.messages import AIMessage
-from dotenv import load_dotenv
 import os
 import sys
 import json
@@ -60,10 +59,7 @@ class FileSummaryAgent:
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
         else:
-            load_dotenv(override=True)
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
-                api_key=os.getenv("GOOGLE_API_KEY"))
+            self.llm = make_llm()
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
 
