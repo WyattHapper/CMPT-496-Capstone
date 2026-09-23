@@ -79,6 +79,7 @@ from backend.token_usage import (
     record_to_log,
     suggest_constants,
     emit_stage_total,
+    track_command,
 )
 
 
@@ -120,46 +121,56 @@ class Commands:
 
         start = time.perf_counter()
 
-        try:
-            # Records real token usage for any LLM call made inside func,
-            # streaming a running total to the frontend as it goes. Scopes
-            # nest, so full_pipeline totals its stages as well as itself.
-            # Stages that call no model record nothing.
-            with record_usage(command_name, live=True) as usage:
-                result = func(*args, **kwargs)
+        # Times this command into last_run_log.json: the outermost command is
+        # the run, the commands it calls are its stages.
+        with track_command(
+            self.app_dir,
+            self.current_codebase_name,
+            command_name,
+        ) as outcome:
 
-            summary = usage.summary()
+            try:
+                # Records real token usage for any LLM call made inside func,
+                # streaming a running total to the frontend as it goes. Scopes
+                # nest, so full_pipeline totals its stages as well as itself.
+                # Stages that call no model record nothing.
+                with record_usage(command_name, live=True) as usage:
+                    result = func(*args, **kwargs)
 
-            if summary["calls"]:
-                emit_stage_total(summary)
+                summary = usage.summary()
 
-            record_to_log(
-                self.app_dir,
-                self.current_codebase_name,
-                summary,
-            )
+                if summary["calls"]:
+                    emit_stage_total(summary)
 
-            elapsed = time.perf_counter() - start
+                record_to_log(
+                    self.app_dir,
+                    self.current_codebase_name,
+                    summary,
+                )
 
-            return {
-                "success": True,
-                "command": command_name,
-                "elapsed": round(elapsed, 2),
-                "individualStep": individualStep,
-                "result": result,
-            }
+                elapsed = time.perf_counter() - start
 
-        except Exception as exc:
+                return {
+                    "success": True,
+                    "command": command_name,
+                    "elapsed": round(elapsed, 2),
+                    "individualStep": individualStep,
+                    "result": result,
+                }
 
-            elapsed = time.perf_counter() - start
+            except Exception as exc:
 
-            return {
-                "success": False,
-                "command": command_name,
-                "elapsed": round(elapsed, 2),
-                "individualStep": individualStep,
-                "error": str(exc),
-            }
+                outcome.fail(exc)
+
+                elapsed = time.perf_counter() - start
+
+                return {
+                    "success": False,
+                    "command": command_name,
+                    "elapsed": round(elapsed, 2),
+                    "individualStep": individualStep,
+                    "error": str(exc),
+                }
         
     def _require_success(self, result):
         """

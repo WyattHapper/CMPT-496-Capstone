@@ -29,3 +29,7 @@ dist/
 
 # Measured token usage, written per pipeline run
 token_usage_log.json
+
+# Full record of the most recent run (stages, AI calls, timings)
+last_run_log.json
+last_run_log.json.tmp

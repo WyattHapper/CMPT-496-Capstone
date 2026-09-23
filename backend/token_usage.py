@@ -21,8 +21,10 @@ undercount, so this records usage whether or not a model name is present.
 """
 
 import json
+import os
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -35,6 +37,43 @@ from langchain_core.tracers.context import register_configure_hook
 
 
 USAGE_LOG_NAME = "token_usage_log.json"
+
+# The most recent run in full: its stages, every AI call, timings and
+# outcome. Rewritten each run; token_usage_log.json keeps the per-stage
+# totals the calibration reads.
+RUN_LOG_NAME = "last_run_log.json"
+
+
+def _read_usage(response):
+    """
+    Pull (usage_metadata, model_name) out of a chat model response.
+
+    Returns None when the response is not a chat generation. Either value in
+    the pair can be None: some providers omit the model name or the usage.
+    """
+
+    try:
+        generation = response.generations[0][0]
+    except (IndexError, AttributeError):
+        return None
+
+    if not isinstance(generation, ChatGeneration):
+        return None
+
+    message = getattr(generation, "message", None)
+
+    if not isinstance(message, AIMessage):
+        return None
+
+    usage = getattr(message, "usage_metadata", None)
+
+    model_name = None
+    try:
+        model_name = message.response_metadata.get("model_name")
+    except AttributeError:
+        pass
+
+    return usage, model_name
 
 
 class UsageRecorder(BaseCallbackHandler):
@@ -60,26 +99,12 @@ class UsageRecorder(BaseCallbackHandler):
 
     def on_llm_end(self, response, **kwargs):
 
-        try:
-            generation = response.generations[0][0]
-        except (IndexError, AttributeError):
+        read = _read_usage(response)
+
+        if read is None:
             return
 
-        if not isinstance(generation, ChatGeneration):
-            return
-
-        message = getattr(generation, "message", None)
-
-        if not isinstance(message, AIMessage):
-            return
-
-        usage = getattr(message, "usage_metadata", None)
-
-        model_name = None
-        try:
-            model_name = message.response_metadata.get("model_name")
-        except AttributeError:
-            pass
+        usage, model_name = read
 
         with self._lock:
 
@@ -142,13 +167,37 @@ class _Fanout(BaseCallbackHandler):
     pipeline around it both count the same call.
     """
 
-    def __init__(self, recorders):
+    def __init__(self, recorders, run_log=None, stage=None):
         super().__init__()
         self.recorders = recorders
+
+        # Captured when the scope opens rather than looked up per call: the
+        # agents' batches can finish calls on other threads or tasks.
+        self.run_log = run_log
+        self.stage = stage
+
+    def on_chat_model_start(self, serialized, messages, *, run_id, **kwargs):
+        if self.run_log:
+            self.run_log.call_started(run_id)
+
+    def on_llm_start(self, serialized, prompts, *, run_id, **kwargs):
+        if self.run_log:
+            self.run_log.call_started(run_id)
 
     def on_llm_end(self, response, **kwargs):
         for recorder in self.recorders:
             recorder.on_llm_end(response, **kwargs)
+
+        if self.run_log:
+            self.run_log.call_ended(
+                kwargs.get("run_id"), self.stage, response=response
+            )
+
+    def on_llm_error(self, error, *, run_id, **kwargs):
+        # A rejected call (e.g. 429 Too Many Requests) never reaches
+        # on_llm_end, so without this a failed run would show no trace of it.
+        if self.run_log:
+            self.run_log.call_ended(run_id, self.stage, error=error)
 
 
 # ContextVar + configure hook is how langchain-core wires its own usage
@@ -159,6 +208,11 @@ register_configure_hook(_usage_var, inheritable=True)
 
 # The recorders currently open, outermost first.
 _stack_var: ContextVar = ContextVar("checkpoint_usage_stack", default=())
+
+# The run being logged, and which of its stages is running. Set by
+# track_command; None outside a command.
+_run_var: ContextVar = ContextVar("checkpoint_run_log", default=None)
+_stage_var: ContextVar = ContextVar("checkpoint_run_stage", default=None)
 
 
 @contextmanager
@@ -187,7 +241,9 @@ def record_usage(stage: str = "unknown", live: bool = False):
     stack = outer + (recorder,)
 
     stack_token = _stack_var.set(stack)
-    usage_token = _usage_var.set(_Fanout(stack))
+    usage_token = _usage_var.set(
+        _Fanout(stack, _run_var.get(), _stage_var.get())
+    )
 
     try:
         yield recorder
@@ -278,6 +334,228 @@ def record_to_log(app_dir: Path, codebase_name: str, summary: dict):
         )
     except OSError:
         pass
+
+
+# ---------------------------------------------------------
+# Run log
+# ---------------------------------------------------------
+# token_usage_log.json keeps one total per stage and overwrites stage by
+# stage, so after a failed run it silently mixes two runs. This records one
+# whole run under a run ID -- stages, every AI call, timings, outcome.
+#
+# Logging must never cost a run: every write is best-effort.
+
+def _stamp(moment=None):
+    return (moment or datetime.now()).isoformat(timespec="seconds")
+
+
+class RunLog:
+    """
+    Everything one run did, saved to last_run_log.json as it goes.
+    """
+
+    def __init__(self, app_dir, codebase_name, command):
+        now = datetime.now()
+
+        self.path = Path(app_dir) / RUN_LOG_NAME
+        self.run_id = f"{now:%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+        self.codebase = codebase_name
+        self.command = command
+        self.started_at = _stamp(now)
+        self.finished_at = None
+        self.elapsed_seconds = None
+        self.status = "running"
+        self.error = None
+
+        self.stages = []
+        self.calls = []
+
+        self._t0 = time.perf_counter()
+        self._stage_t0 = {}
+        self._open_calls = {}
+        self._lock = threading.Lock()
+
+    # --- stages -------------------------------------------
+
+    def start_stage(self, name):
+        entry = {
+            "stage": name,
+            "status": "running",
+            "error": None,
+            "started_at": _stamp(),
+            "elapsed_seconds": None,
+        }
+
+        with self._lock:
+            self.stages.append(entry)
+            self._stage_t0[id(entry)] = time.perf_counter()
+
+        return entry
+
+    def finish_stage(self, entry, status, error):
+        with self._lock:
+            t0 = self._stage_t0.pop(id(entry), self._t0)
+            entry["status"] = status
+            entry["error"] = error
+            entry["elapsed_seconds"] = round(time.perf_counter() - t0, 2)
+
+    def finish(self, status, error):
+        with self._lock:
+            self.status = status
+            self.error = error
+            self.finished_at = _stamp()
+            self.elapsed_seconds = round(time.perf_counter() - self._t0, 2)
+
+    # --- AI calls -----------------------------------------
+
+    def call_started(self, call_id):
+        with self._lock:
+            self._open_calls[call_id] = (datetime.now(), time.perf_counter())
+
+    def call_ended(self, call_id, stage, response=None, error=None):
+        with self._lock:
+            started = self._open_calls.pop(call_id, None)
+
+        record = {
+            "stage": stage or self.command,
+            "started_at": _stamp(started[0]) if started else None,
+            "duration_seconds": (
+                round(time.perf_counter() - started[1], 2) if started else None
+            ),
+            "status": "failed" if error is not None else "success",
+            "model": None,
+            "input_tokens": None,
+            "output_tokens": None,
+        }
+
+        if error is not None:
+            record["error"] = str(error)
+        else:
+            read = _read_usage(response)
+
+            if read is not None:
+                usage, model_name = read
+                record["model"] = model_name
+
+                if usage:
+                    record["input_tokens"] = usage.get("input_tokens", 0) or 0
+                    record["output_tokens"] = usage.get("output_tokens", 0) or 0
+
+        with self._lock:
+            self.calls.append(record)
+
+    # --- output -------------------------------------------
+
+    def _worth_saving(self):
+        # Only runs that used the AI, plus the full pipeline even if it
+        # failed before its first call. Otherwise a token estimate or a UML
+        # export afterwards would overwrite the run you want to look at.
+        return bool(self.calls) or self.command == "full_pipeline"
+
+    def to_dict(self):
+        with self._lock:
+            calls = [dict(c) for c in self.calls]
+            stages = [dict(s) for s in self.stages]
+            header = {
+                "run_id": self.run_id,
+                "codebase": self.codebase,
+                "command": self.command,
+                "status": self.status,
+                "error": self.error,
+                "started_at": self.started_at,
+                "finished_at": self.finished_at,
+                "elapsed_seconds": self.elapsed_seconds,
+            }
+
+        def totals(subset):
+            input_tokens = sum(c["input_tokens"] or 0 for c in subset)
+            output_tokens = sum(c["output_tokens"] or 0 for c in subset)
+            return {
+                "calls": len(subset),
+                "failed_calls": sum(c["status"] == "failed" for c in subset),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+
+        for stage in stages:
+            stage.update(totals([c for c in calls if c["stage"] == stage["stage"]]))
+
+        return {
+            **header,
+            "totals": totals(calls),
+            "stages": stages,
+            "calls": calls,
+        }
+
+    def save(self):
+        try:
+            if not self._worth_saving():
+                return
+
+            # Write then swap, so a crash mid-write never leaves half a file.
+            tmp = self.path.with_name(self.path.name + ".tmp")
+            tmp.write_text(json.dumps(self.to_dict(), indent=2), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except Exception:
+            pass
+
+
+class _Outcome:
+    """How a tracked command ended; _run_command marks failures on it."""
+
+    def __init__(self):
+        self.status = "success"
+        self.error = None
+
+    def fail(self, exc):
+        self.status = "failed"
+        self.error = str(exc)
+
+
+@contextmanager
+def track_command(app_dir, codebase_name, command):
+    """
+    Time a command for last_run_log.json.
+
+    The outermost command is the run. Commands it calls directly are its
+    stages -- for the full pipeline, the steps shown on the Complete screen.
+    Anything nested deeper counts toward the stage it runs in.
+    """
+
+    outcome = _Outcome()
+    run = _run_var.get()
+
+    if run is None:
+        run = RunLog(app_dir, codebase_name, command)
+        token = _run_var.set(run)
+        try:
+            yield outcome
+        except BaseException as exc:
+            outcome.fail(exc)
+            raise
+        finally:
+            _run_var.reset(token)
+            run.finish(outcome.status, outcome.error)
+            run.save()
+
+    elif _stage_var.get() is None:
+        entry = run.start_stage(command)
+        token = _stage_var.set(command)
+        try:
+            yield outcome
+        except BaseException as exc:
+            outcome.fail(exc)
+            raise
+        finally:
+            _stage_var.reset(token)
+            run.finish_stage(entry, outcome.status, outcome.error)
+            # Saved per stage so a run that dies mid-way still leaves a
+            # record of how far it got.
+            run.save()
+
+    else:
+        yield outcome
 
 
 # ---------------------------------------------------------
