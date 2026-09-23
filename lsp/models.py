@@ -6,7 +6,8 @@
 
 from pydantic import BaseModel, Field
 
-class position(BaseModel):
+
+class Position(BaseModel):
     """
     Represents a position in a text document.
 
@@ -17,7 +18,7 @@ class position(BaseModel):
     line: int = Field(..., ge=0, description="The line number (0-based).")
     character: int = Field(..., ge=0, description="The character offset on the line (0-based).")
 
-class range(BaseModel):
+class Range(BaseModel):
     """
     Represents a range in a text document.
 
@@ -25,10 +26,10 @@ class range(BaseModel):
         start (position): The start position of the range.
         end (position): The end position of the range.
     """
-    start: position
-    end: position
+    start: Position
+    end: Position
 
-class location(BaseModel):
+class Location(BaseModel):
     """
     Represents a location in a text document.
 
@@ -37,21 +38,7 @@ class location(BaseModel):
         range (range): The range within the file.
     """
     file_path: str
-    range: range
-
-class Symbol(BaseModel):
-    """
-    Represents a symbol in a text document.
-
-    Attributes:
-        name (str): The name of the symbol.
-        kind (int): The kind of the symbol (e.g., function, variable).
-        location (location): The location of the symbol in the document.
-    """
-    name: str
-    kind: str
-    location: location
-
+    range: Range
 
 
 class Definition(BaseModel):
@@ -61,16 +48,14 @@ class Definition(BaseModel):
     Attributes:
         location (location): The location of the definition in the document.
     """
-    symbol_name: str
-    location: location
+    location: Location
 
 
-class reference(BaseModel):
+class Reference(BaseModel):
     """
     Represents a reference to a symbol in a text document.
 
     Attributes:
         location (location): The location of the reference in the document.
     """
-    symbol_name: str
-    location: location
+    location: Location

@@ -5,6 +5,13 @@
 from contextlib import AsyncExitStack
 from pathlib import Path
 from lsp_client import PyrightClient, Position
+from lsp.models import (
+    Position as ModelPosition,
+    Range,
+    Location,
+    Definition,
+    Reference,
+)
 
 
 class LSPClient:
@@ -17,10 +24,11 @@ class LSPClient:
     def __init__(
         self,
         workspace_path: str | Path,
+        client_class=PyrightClient
     ):
        
         self.workspace_path = Path(workspace_path).resolve()
-        self._client = PyrightClient(workspace=self.workspace_path)
+        self._client = client_class(self.workspace_path)
 
         self._exit_stack = AsyncExitStack()
 
@@ -74,7 +82,12 @@ class LSPClient:
         file_path = Path(file_path).resolve()
         position = Position(line=line, character=character)
 
-        return await self._client.request_definition(file_path, position)
+        results = await self._client.request_definition(file_path, position)
+        
+        if results is None:
+            return []  
+        
+        return [Definition(location=self._convert_location(location)) for location in results]
     
 
 
@@ -95,10 +108,28 @@ class LSPClient:
 
         position = Position(line=line, character=character)
 
-        return await self._client.request_references(
+        results =  await self._client.request_references(
                     file_path,
                     position,
-                    include_declaration=include_declaration
         )
 
-   
+        if results is None:
+            return []
+        
+        return [Reference(location=self._convert_location(location)) for location in results]
+
+    def _convert_location(self, location: Location) -> Location:
+            """
+            Convert a location from the LSP client to the internal Location model.
+            Args:
+                location: The location object from the LSP client.
+            Returns:
+                Location: The converted Location object.
+            """
+            return Location(
+                file_path=location.uri,
+                range=Range(
+                    start=ModelPosition(line=location.range.start.line, character=location.range.start.character),
+                    end=ModelPosition(line=location.range.end.line, character=location.range.end.character)
+                )
+            )
