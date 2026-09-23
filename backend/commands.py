@@ -55,7 +55,23 @@ from agent.structured_output.UTV_output import UnitTest
 from src.build_database import build_database
 from src.build_database_JSON import build_database as build_summary_database
 
-from utils.uml_json_to_pdf import main as uml_main
+from utils.uml_json_to_pdf import (
+    build_report as uml_build_report,
+    parse_args as uml_parse_args,
+)
+
+
+def skipped_diagrams_message(skipped):
+    """
+    Warning for the Complete screen naming the diagrams the UML step
+    skipped, so a missing picture in the PDF doesn't look like a bug.
+    """
+    noun = "diagram was" if len(skipped) == 1 else "diagrams were"
+    return (
+        f"{len(skipped)} UML {noun} skipped because the AI wrote invalid "
+        f"diagram text: {', '.join(skipped)}. Everything else was created, "
+        "and the PDF marks where each skipped diagram would be."
+    )
 
 from backend.token_estimate import estimate_pipeline
 from backend.token_usage import (
@@ -63,6 +79,8 @@ from backend.token_usage import (
     record_to_log,
     suggest_constants,
     emit_stage_total,
+    track_command,
+    RUN_LOG_NAME,
 )
 
 
@@ -104,46 +122,56 @@ class Commands:
 
         start = time.perf_counter()
 
-        try:
-            # Records real token usage for any LLM call made inside func,
-            # streaming a running total to the frontend as it goes. Scopes
-            # nest, so full_pipeline totals its stages as well as itself.
-            # Stages that call no model record nothing.
-            with record_usage(command_name, live=True) as usage:
-                result = func(*args, **kwargs)
+        # Times this command into last_run_log.json: the outermost command is
+        # the run, the commands it calls are its stages.
+        with track_command(
+            self.app_dir,
+            self.current_codebase_name,
+            command_name,
+        ) as outcome:
 
-            summary = usage.summary()
+            try:
+                # Records real token usage for any LLM call made inside func,
+                # streaming a running total to the frontend as it goes. Scopes
+                # nest, so full_pipeline totals its stages as well as itself.
+                # Stages that call no model record nothing.
+                with record_usage(command_name, live=True) as usage:
+                    result = func(*args, **kwargs)
 
-            if summary["calls"]:
-                emit_stage_total(summary)
+                summary = usage.summary()
 
-            record_to_log(
-                self.app_dir,
-                self.current_codebase_name,
-                summary,
-            )
+                if summary["calls"]:
+                    emit_stage_total(summary)
 
-            elapsed = time.perf_counter() - start
+                record_to_log(
+                    self.app_dir,
+                    self.current_codebase_name,
+                    summary,
+                )
 
-            return {
-                "success": True,
-                "command": command_name,
-                "elapsed": round(elapsed, 2),
-                "individualStep": individualStep,
-                "result": result,
-            }
+                elapsed = time.perf_counter() - start
 
-        except Exception as exc:
+                return {
+                    "success": True,
+                    "command": command_name,
+                    "elapsed": round(elapsed, 2),
+                    "individualStep": individualStep,
+                    "result": result,
+                }
 
-            elapsed = time.perf_counter() - start
+            except Exception as exc:
 
-            return {
-                "success": False,
-                "command": command_name,
-                "elapsed": round(elapsed, 2),
-                "individualStep": individualStep,
-                "error": str(exc),
-            }
+                outcome.fail(exc)
+
+                elapsed = time.perf_counter() - start
+
+                return {
+                    "success": False,
+                    "command": command_name,
+                    "elapsed": round(elapsed, 2),
+                    "individualStep": individualStep,
+                    "error": str(exc),
+                }
         
     def _require_success(self, result):
         """
@@ -159,6 +187,33 @@ class Commands:
             )
 
         return result
+
+    # -----------------------------------------------------
+    # Usage Commands
+    # -----------------------------------------------------
+
+    def get_run_usage(self):
+        """
+        Return the last run's record for the Insights "AI Usage" view.
+
+        Read-only and deliberately outside _run_command: looking at the log
+        must not be logged as a run of its own.
+        """
+
+        path = self.app_dir / RUN_LOG_NAME
+
+        if not path.exists():
+            return {"success": True, "run_usage": None}
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "success": False,
+                "error": f"Could not read {RUN_LOG_NAME}: {exc}",
+            }
+
+        return {"success": True, "run_usage": data}
 
     # -----------------------------------------------------
     # Calibration Commands
@@ -633,10 +688,17 @@ class Commands:
 
 
             try:
-                uml_main()
+                skipped = uml_build_report(uml_parse_args())
 
             finally:
                 sys.argv = old_argv
+
+            result = {"skipped_diagrams": skipped}
+
+            if skipped:
+                result["warning"] = skipped_diagrams_message(skipped)
+
+            return result
 
 
         return self._run_command(
@@ -704,9 +766,21 @@ class Commands:
                     )
 
 
-            return {
-                "generated_files": generated
+            skipped = [
+                label
+                for result in generated
+                for label in result["result"]["skipped_diagrams"]
+            ]
+
+            summary = {
+                "generated_files": generated,
+                "skipped_diagrams": skipped,
             }
+
+            if skipped:
+                summary["warning"] = skipped_diagrams_message(skipped)
+
+            return summary
 
 
         return self._run_command(
@@ -978,13 +1052,20 @@ class Commands:
                     failed
                 )
 
-            pipeline_progress("Pipeline Complete", 100)
-            return {
+            summary = {
                 "steps": steps,
-                "message": (
-                    "Full pipeline completed"
-                ),
+                "message": "Full pipeline completed",
             }
+
+            # The UML step is last; pass on its warning if it skipped any
+            # diagrams, so the Complete screen can show it.
+            warning = steps[-1]["result"].get("warning")
+
+            if warning:
+                summary["warning"] = warning
+
+            pipeline_progress("Pipeline Complete", 100)
+            return summary
 
 
         return self._run_command(

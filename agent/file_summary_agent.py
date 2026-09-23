@@ -165,7 +165,7 @@ class FileSummaryAgent:
             # Skip generated and vendored folders. Without this the crawler
             # descends into bin/, obj/, node_modules/ and .venv/ and spends
             # one LLM call per file it finds there.
-            prune(dirs)
+            prune(root, dirs)
             filenames.sort()
             for f in filenames:
                 file_ext = Path(f).suffix.lower()

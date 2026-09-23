@@ -1757,6 +1757,25 @@ h2{
     display: none;
 }
 
+/* Completion warning, e.g. UML diagrams skipped. Same footprint as the
+   token meter above it so the Complete screen stays aligned. */
+#loadingWarning {
+    margin: 10px auto 4px;
+    padding: 10px 14px;
+    max-width: 420px;
+
+    background: rgba(245, 158, 11, 0.14);
+    border: 1px solid rgba(245, 158, 11, 0.55);
+    border-left-width: 4px;
+    border-radius: 6px;
+
+    color: inherit;
+    font-size: 13px;
+    line-height: 1.45;
+    text-align: left;
+    word-wrap: break-word;
+}
+
 #tokenMeterTotal {
     display: flex;
     align-items: baseline;
@@ -1819,3 +1838,104 @@ h2{
 .api-key-ok.hidden {
     display: none;
 }
+
+
+
+/* ============================================
+   AI Usage (Insights)
+============================================ */
+
+.usage-card {
+    font-family: "Inter", sans-serif;
+    white-space: normal;
+}
+
+.usage-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.25rem 0 0.5rem;
+
+    font-size: 0.92rem;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+}
+
+.usage-table th,
+.usage-table td {
+    padding: 0.45rem 0.6rem;
+    text-align: right;
+    border-bottom: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+.usage-table th {
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom-color: rgba(99, 102, 241, 0.3);
+}
+
+.usage-table th:first-child,
+.usage-table td:first-child {
+    text-align: left;
+}
+
+.usage-table tfoot td {
+    font-weight: 700;
+    border-top: 1px solid rgba(99, 102, 241, 0.3);
+    border-bottom: none;
+}
+
+/* Label / value list at the top */
+.usage-overview {
+    max-width: 480px;
+}
+
+.usage-overview td {
+    text-align: left;
+}
+
+.usage-overview td:first-child {
+    width: 40%;
+    color: var(--text-secondary);
+}
+
+.usage-status {
+    display: inline-block;
+    padding: 0.1rem 0.55rem;
+    border-radius: 999px;
+
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.usage-status.success {
+    background: rgba(22, 163, 74, 0.14);
+    color: #15803d;
+}
+
+.usage-status.failed {
+    background: rgba(220, 38, 38, 0.14);
+    color: #b91c1c;
+}
+
+.usage-status.running {
+    background: rgba(245, 158, 11, 0.16);
+    color: #b45309;
+}
+
+.usage-error {
+    margin: 0.5rem 0;
+    color: #b91c1c;
+}
+
+[data-theme="dark"] .usage-status.success { color: #4ade80; }
+[data-theme="dark"] .usage-status.failed,
+[data-theme="dark"] .usage-error { color: #f87171; }
+[data-theme="dark"] .usage-status.running { color: #fbbf24; }
+
+.usage-note {
+    margin: 1.25rem 0 0;
+    font-size: 0.85rem;
+    text-align: left;
+    color: var(--text-secondary);
+}

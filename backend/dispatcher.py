@@ -59,6 +59,9 @@ class CommandDispatcher:
             "estimate_tokens": self.commands.estimate_tokens,
             "token_calibration": self.commands.token_calibration,
 
+            # Usage
+            "get_run_usage": self.commands.get_run_usage,
+
             # Error log
             "get_errors": self.get_errors,
 

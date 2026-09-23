@@ -27,6 +27,7 @@ from pathlib import Path
 from collections import defaultdict
 import subprocess
 from backend.progress_logging import progress
+from agent.crawl_config import mark_generated
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -192,6 +193,7 @@ class UTVAgent:
                     file.writelines(lines)
             except Exception as e:
                 progress(f"Error setting up test framework: {e}", 35, True)
+        mark_generated(test_subdir)  # keep the crawlers out of our own tests
 
         # Write generated tests to Xunit .cs file
         progress("Writing and running generated tests for validation...", 40)

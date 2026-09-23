@@ -34,7 +34,7 @@ import tiktoken
 # Imported, not copied: the estimate has to use exactly the rules the
 # crawlers use or it quietly predicts the wrong thing.
 
-from agent.crawl_config import ACCEPTABLE_EXTENSIONS, IGNORED_DIRS  # noqa: E402
+from agent.crawl_config import ACCEPTABLE_EXTENSIONS, prune  # noqa: E402
 
 
 # ---------------------------------------------------------
@@ -136,7 +136,7 @@ def scan_files(codebase: str, apply_exclusions: bool):
     for root, dirs, filenames in os.walk(codebase):
 
         if apply_exclusions:
-            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+            prune(root, dirs)
 
         for name in filenames:
 
@@ -162,8 +162,8 @@ def count_directories(codebase: str) -> int:
 
     total = 1
 
-    for _, dirs, _files in os.walk(codebase):
-        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+    for root, dirs, _files in os.walk(codebase):
+        prune(root, dirs)
         total += len(dirs)
 
     return total
