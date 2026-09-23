@@ -80,6 +80,7 @@ from backend.token_usage import (
     suggest_constants,
     emit_stage_total,
     track_command,
+    RUN_LOG_NAME,
 )
 
 
@@ -186,6 +187,33 @@ class Commands:
             )
 
         return result
+
+    # -----------------------------------------------------
+    # Usage Commands
+    # -----------------------------------------------------
+
+    def get_run_usage(self):
+        """
+        Return the last run's record for the Insights "AI Usage" view.
+
+        Read-only and deliberately outside _run_command: looking at the log
+        must not be logged as a run of its own.
+        """
+
+        path = self.app_dir / RUN_LOG_NAME
+
+        if not path.exists():
+            return {"success": True, "run_usage": None}
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "success": False,
+                "error": f"Could not read {RUN_LOG_NAME}: {exc}",
+            }
+
+        return {"success": True, "run_usage": data}
 
     # -----------------------------------------------------
     # Calibration Commands

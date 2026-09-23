@@ -980,6 +980,206 @@ function renderErrorPreview(errors) {
     output.appendChild(pre);
 }
 
+// ============================================
+// AI Usage (last_run_log.json)
+// ============================================
+
+function formatSeconds(seconds) {
+
+    if (seconds === null || seconds === undefined) return "—";
+
+    if (seconds < 60) return `${seconds.toFixed(1)} s`;
+
+    const minutes = Math.floor(seconds / 60);
+    const rest = Math.round(seconds % 60);
+
+    return `${minutes} min ${rest} s`;
+}
+
+function formatCount(value) {
+
+    return (value ?? 0).toLocaleString();
+}
+
+function formatStamp(stamp) {
+
+    return stamp ? new Date(stamp).toLocaleString() : "—";
+}
+
+function usageStatus(status) {
+
+    const badge = document.createElement("span");
+    badge.className = `usage-status ${status}`;
+    badge.textContent = status;
+
+    return badge;
+}
+
+// rows: array of arrays of cells; a cell is text or a DOM node.
+// headers may be null for a plain label/value table.
+function usageTable(headers, rows, footer) {
+
+    const table = document.createElement("table");
+    table.className = "usage-table";
+
+    if (headers) {
+
+        const head = table.createTHead().insertRow();
+
+        headers.forEach(text => {
+            const th = document.createElement("th");
+            th.textContent = text;
+            head.appendChild(th);
+        });
+    }
+
+    const body = table.createTBody();
+
+    const addRow = (cells, target) => {
+        const row = target.insertRow();
+        cells.forEach(cell => {
+            const td = row.insertCell();
+            if (cell instanceof Node) td.appendChild(cell);
+            else td.textContent = cell;
+        });
+    };
+
+    rows.forEach(cells => addRow(cells, body));
+
+    if (footer) addRow(footer, table.createTFoot());
+
+    return table;
+}
+
+function usageHeader(text) {
+
+    const header = document.createElement("h2");
+    header.className = "summary-header";
+    header.textContent = text;
+
+    return header;
+}
+
+function renderRunUsage(run) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    if (!run) {
+        renderTextPreview(
+            "No run recorded yet.\n\n" +
+            "Run the full pipeline, or any step that uses the AI, " +
+            "and its token usage and timings will show here."
+        );
+        return;
+    }
+
+    const card = document.createElement("div");
+    card.className = "summary-card usage-card";
+
+    card.appendChild(usageHeader("AI Usage — Last Run"));
+
+    const totals = run.totals || {};
+
+    const failedNote = totals.failed_calls
+        ? ` (${totals.failed_calls} failed)`
+        : "";
+
+    card.appendChild(usageTable(
+        null,
+        [
+            ["Codebase", run.codebase || "—"],
+            ["Status", usageStatus(run.status)],
+            ["Started", formatStamp(run.started_at)],
+            ["Duration", formatSeconds(run.elapsed_seconds)],
+            ["AI calls", formatCount(totals.calls) + failedNote],
+            ["Input tokens", formatCount(totals.input_tokens)],
+            ["Output tokens", formatCount(totals.output_tokens)],
+            ["Total tokens", formatCount(totals.total_tokens)],
+            ["Run ID", run.run_id || "—"],
+        ]
+    )).classList.add("usage-overview");
+
+    if (run.error) {
+        const error = document.createElement("pre");
+        error.className = "summary-section-body usage-error";
+        error.textContent = run.error;
+        card.appendChild(error);
+    }
+
+    const stages = run.stages || [];
+
+    if (stages.length) {
+
+        card.appendChild(usageHeader("By Step"));
+
+        card.appendChild(usageTable(
+            ["Step", "Status", "Time", "Calls", "Input", "Output", "Total"],
+            stages.map(stage => [
+                stage.stage,
+                usageStatus(stage.status),
+                formatSeconds(stage.elapsed_seconds),
+                formatCount(stage.calls),
+                formatCount(stage.input_tokens),
+                formatCount(stage.output_tokens),
+                formatCount(stage.total_tokens),
+            ]),
+            [
+                "Total", "", formatSeconds(run.elapsed_seconds),
+                formatCount(totals.calls),
+                formatCount(totals.input_tokens),
+                formatCount(totals.output_tokens),
+                formatCount(totals.total_tokens),
+            ]
+        ));
+    }
+
+    const calls = run.calls || [];
+
+    if (calls.length) {
+
+        card.appendChild(usageHeader("Slowest AI Calls"));
+
+        const slowest = [...calls]
+            .sort((a, b) => (b.duration_seconds ?? 0) - (a.duration_seconds ?? 0))
+            .slice(0, 5);
+
+        card.appendChild(usageTable(
+            ["Step", "Time", "Input", "Output", "Status"],
+            slowest.map(call => [
+                call.stage,
+                formatSeconds(call.duration_seconds),
+                formatCount(call.input_tokens),
+                formatCount(call.output_tokens),
+                usageStatus(call.status),
+            ])
+        ));
+    }
+
+    const failed = calls.filter(call => call.status === "failed");
+
+    if (failed.length) {
+
+        card.appendChild(usageHeader("Failed AI Calls"));
+
+        card.appendChild(usageTable(
+            ["Step", "Error"],
+            failed.map(call => [call.stage, call.error || "—"])
+        ));
+    }
+
+    const note = document.createElement("p");
+    note.className = "usage-note";
+    note.textContent =
+        "Shows the most recent run that used the AI. " +
+        "Output tokens include the model's thinking tokens.";
+    card.appendChild(note);
+
+    output.appendChild(card);
+}
+
 function renderTextPreview(text) {
 
     const output =
@@ -1235,6 +1435,15 @@ document.getElementById("viewDisplayErrorsBtn")
     showButtons("viewErrorsBtns");
 
     await runBackendCommand("get_errors");
+
+});
+
+document.getElementById("viewUsageBtn")
+.addEventListener("click", async () => {
+
+    showButtons("viewUsageBtns");
+
+    await runBackendCommand("get_run_usage");
 
 });
 
@@ -1983,6 +2192,21 @@ window.electronAPI.onBackendResponse((response) => {
     if (activeCommand === "get_errors" && response.errors !== undefined) {
 
         renderErrorPreview(response.errors);
+        activeCommand = null;
+
+        return;
+    }
+
+    // Handled here, ahead of the generic error path, so a missing or
+    // unreadable log shows in the Insights panel instead of leaving the page.
+    if (activeCommand === "get_run_usage" && !response.type) {
+
+        if (response.success) {
+            renderRunUsage(response.run_usage);
+        } else {
+            renderTextPreview(response.error || "Could not load AI usage.");
+        }
+
         activeCommand = null;
 
         return;
