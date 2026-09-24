@@ -1,8 +1,8 @@
 """
 @file IT_agent.py
 @brief Defines the ITAgent, a LangGraph-based agent for generating Integration Tests based of business rules.
-@details Implements a retriever-generator-writer workflow that takes validated business rules from BR_agent output,
-generates integration tests and writes the results to JSON.
+@details Implements a retriever-generator-writer-runner workflow that takes validated business rules from BR_agent output,
+generates integration tests, writes the results to JSON, then builds, repairs and runs them (agent/test_harness.py).
 """
 import logging
 logger = logging.getLogger(__name__)
@@ -20,9 +20,10 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import defaultdict
-import subprocess
 from backend.progress_logging import progress
-from agent.crawl_config import mark_generated
+from agent.test_harness import (
+    MAX_TEST_OUTPUT_TOKENS, check_tests, make_cases, make_fixer, write_results
+)
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 30
@@ -39,6 +40,8 @@ class ITAgent:
     - Retrieves file and summary context for validated business rules from BR_agent output.
     - Generates integration tests for each validated rule.
     - Writes the generated integration tests to JSON output files.
+    - Writes each test to its own file, has the AI repair the ones that do not compile,
+      and runs the rest.
     """
 
     def __init__(self, model=None):
@@ -48,7 +51,7 @@ class ITAgent:
         """
         progress("Intializing integration test agent...", 5)
         if model is None:
-            self.llm = make_llm()
+            self.llm = make_llm(max_output_tokens=MAX_TEST_OUTPUT_TOKENS)
         else:
             self.llm = model
         self.graph = self.build_graph()
@@ -702,74 +705,57 @@ class ITAgent:
 
     def runner_node(self, state: ITGraphState) -> ITGraphState:
         """
-        @brief Creates test framework in target codebase and runs it
+        @brief Writes each integration test to its own file, repairs the ones that do not compile, and runs the rest.
 
-        @details Takes the generated integration tests and applies them with a testing framework and generates a report based on its results
+        @details
+        One file per test (IT_<n>.cs) so a compiler error names the test that caused it;
+        one broken test used to stop every test from running. Broken tests get their own errors
+        and their workflow's code context back to the AI, then are dropped if still broken.
+        See agent/test_harness.py.
 
-        @param state Current workflow state contain integration_tests
-        @return Empty dict
+        Writes validated_tests.json, discarded_tests.json, test_report.json and
+        integration_test_report.html under {output_directory}/{codebase_name}/.
+
+        @param state Current workflow state containing integration_tests and workflow_contexts.
+        @return Updated state with test_run (a TestRun).
         """
         codebase_path = state["codebase_path"]
         codebase_name  = state["codebase_name"]
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-
-        # Generate Xunit framework
-        if not Path(test_subdir).is_dir():
-            try:
-                progress("Generating test framework", 98)
-                subprocess.run(
-                    ["dotnet", "new", "xunit", "-o", f"{test_subdir}"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
-                    lines = file.readlines()
-                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
-                    file.seek(0)
-                    file.writelines(lines)
-            except Exception as e:
-                logger.error(f"Error: {e}")
-                progress("Error generating framework", 98)
-        mark_generated(test_subdir)  # keep the crawlers out of our own tests
-
-        # Write generated tests to Xunit .cs file
-        test_imports = state["test_imports"]
-        integration_tests = state["integration_tests"]
-        with open(f"{test_subdir}/IntegrationTest1.cs", "w", encoding="utf-8") as file:
-            for import_statement in test_imports:
-                file.write(import_statement + "\n")
-            file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
-            file.write("\npublic class Tests {\n")
-            for test in integration_tests:
-                file.write(test.integration_test + "\n\n")
-            file.write("}")
-        
-        # Run generated tests and produce report
         base_output_dir = state.get("output_directory", "./agent/IT_agent_output")
         codebase_dir = os.path.join(base_output_dir, codebase_name)
-        try:
-            progress("Running generated tests", 99)
-            subprocess.run(
-                [
-                    "dotnet",
-                    "test",
-                    f"{test_subdir}",
-                    "--logger",
-                    "html",
-                    "--results-directory",
-                    f"{codebase_dir}"
-                ],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
-            logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
-            progress(f"Successfully ran tests and report generated to {codebase_dir}", 100, True)
-        except Exception as e:
-            logger.error(e)
-            progress("Error running tests!", 100, True)
-        return {}
+        workflow_contexts = state.get("workflow_contexts", {})
+
+        cases, rejected = make_cases(
+            "IT",
+            list(enumerate(state.get("integration_tests", []), 1)),
+            body_of=lambda test: test.integration_test,
+            imports_of=lambda test: test.imports,
+        )
+
+        def context_for(case):
+            ctx = workflow_contexts.get(case.source.workflow_name, {})
+            return "\n\n".join(ctx.get("code_context", []))
+
+        test_run = check_tests(
+            "Integration",
+            "IT",
+            cases,
+            rejected,
+            codebase_path,
+            codebase_name,
+            codebase_dir,
+            fix=make_fixer(self.llm, context_for),
+            loop=self._loop,
+        )
+
+        write_results(
+            test_run,
+            codebase_dir,
+            lambda case: dict(case.source.model_dump(), imports=case.imports, integration_test=case.body),
+        )
+
+        progress(test_run.message(), 100, True)
+        return {"test_run": test_run}
     
     # Helper methods
 
@@ -983,6 +969,11 @@ async def _generate_single_test(
         - Before instantiating any custom class, verify that the class definition exists in the provided context.
         - Do not create fake domain objects that are not present in the source code.
         - Do not assume properties, constructors, or methods exist.
+        - Use only public types and members. The test lives in a separate test
+          project, so anything internal or private will not compile.
+        - Only xUnit is installed in the test project. Use [Fact]/[Theory] and
+          Assert.*; do not use Moq, FluentAssertions, Xunit.SkippableFact or any
+          other test package, even if the codebase's own tests do.
         - If a required type cannot be found, use the simplest valid input supported by the existing API.
         - Framework types such as List<T>, Dictionary<TKey,TValue>, DataTable, StringWriter, etc. may be used normally.
 

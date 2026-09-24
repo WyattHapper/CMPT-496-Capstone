@@ -1,8 +1,8 @@
 """
 @file UT_agent.py
 @brief Defines the UTAgent, a LangGraph-based agent for generating Unit Tests based of business rules.
-@details Implements a retriever-generator-writer workflow that takes validated business rules from BR_agent output,
-generates unit tests and writes the results to JSON.
+@details Implements a retriever-generator-writer-runner workflow that takes validated business rules from BR_agent output,
+generates unit tests, writes the results to JSON, then builds, repairs and runs them (agent/test_harness.py).
 """
 import logging
 logger = logging.getLogger(__name__)
@@ -20,9 +20,10 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import defaultdict
-import subprocess
 from backend.progress_logging import progress
-from agent.crawl_config import mark_generated
+from agent.test_harness import (
+    MAX_TEST_OUTPUT_TOKENS, check_tests, make_cases, make_fixer, write_results
+)
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -40,6 +41,8 @@ class UTAgent:
     - Retrieves file and summary context for validated business rules from BR_agent output.
     - Generates unit tests for each validated rule.
     - Writes the generated unit tests to JSON output files.
+    - Writes each test to its own file, has the AI repair the ones that do not compile,
+      and runs the rest.
     """
 
     def __init__(self, model=None):
@@ -49,7 +52,7 @@ class UTAgent:
         """
         progress("Intializing unit test agent...", 5)
         if model is None:
-            self.llm = make_llm()
+            self.llm = make_llm(max_output_tokens=MAX_TEST_OUTPUT_TOKENS)
         else:
             self.llm = model
         self.graph = self.build_graph()
@@ -346,56 +349,57 @@ class UTAgent:
 
     def runner_node(self, state: UTGraphState) -> UTGraphState:
         """
-        @brief Creates test framework in target codebase and runs it
+        @brief Writes each unit test to its own file, repairs the ones that do not compile, and runs the rest.
 
-        @details Takes the generated unit tests and applies them with a testing framework and generates a report based on its results
+        @details
+        One file per test (UT_<rule id>.cs) so a compiler error names the test that caused it;
+        one broken test used to stop every test from running. Broken tests get their own errors
+        and their rule's code context back to the AI (MAX_REPAIR_ROUNDS), then are dropped.
+        See agent/test_harness.py.
 
-        @param state Current workflow state contain unit_tests
-        @return Empty dict
+        Writes validated_tests.json, discarded_tests.json, test_report.json and
+        unit_test_report.html under {output_directory}/{codebase_name}/.
+
+        @param state Current workflow state containing unit_tests and rule_contexts.
+        @return Updated state with test_run (a TestRun).
         """
         codebase_path = state["codebase_path"]
         codebase_name  = state["codebase_name"]
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-
-        # Generate Xunit framework
-        if not Path(test_subdir).is_dir():
-            try:
-                progress("Generating test framework", 98)
-                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
-                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
-                    lines = file.readlines()
-                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
-                    file.seek(0)
-                    file.writelines(lines)
-            except Exception as e:
-                logger.error(f"Error: {e}")
-                progress("Error generating framework", 98)
-        mark_generated(test_subdir)  # keep the crawlers out of our own tests
-
-        # Write generated tests to Xunit .cs file
-        test_imports = state["test_imports"]
-        unit_tests = state["unit_tests"]
-        with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
-            for import_statement in test_imports:
-                file.write(import_statement + "\n")
-            file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
-            file.write("\npublic class Tests {\n")
-            for test in unit_tests:
-                file.write(test.unit_test + "\n\n")
-            file.write("}")
-        
-        # Run generated tests and produce report
         base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
         codebase_dir = os.path.join(base_output_dir, codebase_name)
-        try:
-            progress("Running generated tests", 99)
-            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_dir}"])
-            logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
-            progress(f"Successfully ran tests and report generated to {codebase_dir}", 100, True)
-        except Exception as e:
-            logger.error(e)
-            progress("Error running tests!", 100, True)
-        return {}
+        rule_contexts = state.get("rule_contexts", {})
+
+        cases, rejected = make_cases(
+            "UT",
+            [(test.id, test) for test in state.get("unit_tests", [])],
+            body_of=lambda test: test.unit_test,
+            imports_of=lambda test: test.imports,
+        )
+
+        def context_for(case):
+            ctx = rule_contexts.get(str(case.source.id), {})
+            return "\n\n".join(ctx.get("code_context", []))
+
+        test_run = check_tests(
+            "Unit",
+            "UT",
+            cases,
+            rejected,
+            codebase_path,
+            codebase_name,
+            codebase_dir,
+            fix=make_fixer(self.llm, context_for),
+            loop=self._loop,
+        )
+
+        write_results(
+            test_run,
+            codebase_dir,
+            lambda case: dict(case.source.model_dump(), imports=case.imports, unit_test=case.body),
+        )
+
+        progress(test_run.message(), 100, True)
+        return {"test_run": test_run}
     
     # Helper methods
 
@@ -526,6 +530,8 @@ async def _generate_single_test(
 - **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `unit_test` field; `unit_test` must contain only the method block.
 - **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
 - **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
+- **PUBLIC API ONLY:** The test lives in a separate test project, so it can only use public types and members. Anything internal or private will not compile, even if it appears in the context.
+- **XUNIT ONLY:** Only xUnit is installed in the test project. Use [Fact]/[Theory] and Assert.*; do not use Moq, FluentAssertions, Xunit.SkippableFact or any other test package, even if the codebase's own tests do.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
 - **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
 

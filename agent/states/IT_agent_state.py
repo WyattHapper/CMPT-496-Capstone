@@ -56,6 +56,9 @@ class ITGraphState(TypedDict):
     @var output_directory
         Base directory for writing output JSON files. Defaults to
         ./agent/IT_agent_output if not specified.
+    @var test_run
+        TestRun from agent/test_harness.py: which integration tests were kept, repaired,
+        dropped, passed and failed. Set by the runner node.
     """
     validated_rules: list[ValidatedRule]
     integration_tests: list[IntegrationTest]
@@ -70,3 +73,4 @@ class ITGraphState(TypedDict):
     codebase_name: str
     codebase_path: str
     output_directory: str
+    test_run: Any

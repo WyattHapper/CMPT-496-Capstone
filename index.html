@@ -429,9 +429,22 @@
                 </summary>
 
                 <p>
-                    In this current iteration we only support C# for the full 
-                    pipeline, however more work is being done to integrate and 
+                    In this current iteration we only support C# for the full
+                    pipeline, however more work is being done to integrate and
                     accomodate different languages
+                    <br><br>
+
+                    • The code database (Create Code Database) reads C# and
+                    JavaScript only.<br>
+                    • File, directory and business rule summaries also work for
+                    other languages, such as Python, C and C++.<br>
+                    • Unit and integration tests are generated for C# only.
+                    <br><br>
+
+                    For a codebase in another language, the full pipeline stops
+                    at its first step because there is nothing to put in the
+                    code database. Run the steps individually instead, skipping
+                    Create Code Database.
                 </p>
             </details>
 
@@ -469,8 +482,144 @@
 
                         Your original source files are not modified during the
                         analysis process.
+                        <br><br>
+
+                        Test generation does add one folder to your codebase,
+                        named after it (for example stateless.Tests), which
+                        holds the generated tests. You can delete it at any
+                        time; it is recreated on the next test run.
                     </p>
                 </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    Where do I find the generated tests and their results?
+                </summary>
+
+                <p>
+                    Each generated test is saved as its own file in the tests
+                    folder inside your codebase: UT_12.cs is the unit test for
+                    business rule 12, and IT_3.cs is integration test 3.
+                    <br><br>
+
+                    Under View Unit Tests you will find:
+                    <br><br>
+
+                    • unit_test_report.html: which tests passed and failed<br>
+                    • test_report.json: counts, plus the reason each dropped
+                    test was dropped<br>
+                    • validated_tests.json: the tests that were kept<br>
+                    • discarded_tests.json: the tests that were dropped
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    Why were some generated tests dropped?
+                </summary>
+
+                <p>
+                    Every generated test is built before it is run. A test that
+                    does not compile is sent back to the AI with its errors, up
+                    to two times. If it still does not compile, it is dropped
+                    so that it cannot stop the other tests from running.
+                    <br><br>
+
+                    Common reasons:
+                    <br><br>
+
+                    • The test uses private or internal parts of the code,
+                    which a test is not allowed to reach.<br>
+                    • The test calls a method or constructor that does not
+                    exist.<br>
+                    • The AI kept writing instead of stopping at one test, so
+                    its answer was far too long.
+                    <br><br>
+
+                    The exact reason for each dropped test is in
+                    test_report.json.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    Why do some generated tests fail?
+                </summary>
+
+                <p>
+                    A failed test compiled and ran, but one of its checks did
+                    not hold. Either the AI misunderstood the rule, or the code
+                    does not do what the rule says, which can be a real bug.
+                    <br><br>
+
+                    Failed tests are reported, not changed until they pass,
+                    because rewriting a test to match the code would hide a
+                    real bug. Look at the failed tests in
+                    unit_test_report.html to decide which it is.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    What does "the test project itself did not build" mean?
+                </summary>
+
+                <p>
+                    It means no tests could run, because the problem is not in
+                    any one test. Common causes:
+                    <br><br>
+
+                    • The codebase itself does not compile.<br>
+                    • The .NET SDK the codebase needs is not installed (the
+                    tests need .NET 10 or later).<br>
+                    • A package could not be downloaded.
+                    <br><br>
+
+                    The message shows the first build error. Fix that, then
+                    run the test step again.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    Why does it say "Google's AI is busy" and wait?
+                </summary>
+
+                <p>
+                    Google sometimes turns requests away when its AI is busy
+                    (503) or when your API key has made too many requests in a
+                    short time (429). CheckPoint waits and tries again
+                    automatically, so you do not need to do anything.
+                    <br><br>
+
+                    If Google keeps refusing for more than 10 minutes, or your
+                    key's daily limit is used up, the step stops with a message
+                    saying so.
+                </p>
+            </details>
+
+
+            <details class="faq-box">
+                <summary>
+                    What happens if my API key runs out of credit?
+                </summary>
+
+                <p>
+                    AI calls fail with a "402 RESOURCE_EXHAUSTED" error. Steps
+                    that were already finished keep their results, but files
+                    or tests that were being processed at the time will be
+                    missing.
+                    <br><br>
+
+                    Top up your credit, then run the affected steps again. The
+                    failed calls are listed in last_run_log.json.
+                </p>
+            </details>
 
 
         </div>
