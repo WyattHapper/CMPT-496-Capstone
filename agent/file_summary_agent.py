@@ -19,6 +19,7 @@ import asyncio
 from pathlib import Path
 from collections import deque
 from backend.progress_logging import progress
+from lsp.context import CodeContext
 
 BATCH_SIZE = 10
 MAX_CONCURRENCY = 10
@@ -294,7 +295,7 @@ class FileSummaryAgent:
         )
         return {}
 
-async def _summarize_one(structured_llm, file_path: str):
+async def _summarize_one(structured_llm, file_path: str, code_context: CodeContext):
     progress(f'Summarizing: {file_path}')
     try:
         contents = Path(file_path).read_text(encoding="utf-8", errors="replace")
@@ -418,6 +419,7 @@ File path:
 
 Code:
 {contents}
+
 """
             )
         ]
