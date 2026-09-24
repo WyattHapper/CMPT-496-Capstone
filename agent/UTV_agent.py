@@ -1,57 +1,50 @@
 """
 @file UTV_agent.py
 @brief Defines the UTVAgent, a LangGraph-based agent for validating generated unit tests from business rules.
-@details Implements a runner-validator-writer workflow that:
-- Writes candidate xUnit tests into the Test folder in the selected codebase project
-- Executes them with `dotnet test`
-- Validates the execution report using a structured LLM
-- Separates validated tests from discarded tests and writes both to JSON output
-- Generates html report based off new and improved tests
+@details Implements a validator-writer workflow that re-checks tests already saved in unit_tests.json:
+- Writes each candidate xUnit test to its own file in the codebase's test project
+- Builds them; a test that does not compile gets its own compiler errors and matching code from the
+  codebase back to the AI for repair, and is dropped if it still fails (agent/test_harness.py)
+- Runs the tests that compile and writes an html report
+- Writes validated tests, discarded tests (with the reason) and a summary to JSON
+
+The same checks run automatically at the end of unit test generation (UTAgent.runner_node).
+This agent is for re-checking afterwards, e.g. from the "validate only" button.
 """
 import logging
 logger = logging.getLogger(__name__)
 from agent.states.UTV_agent_state import UTVGraphState
-from agent.structured_output.UTV_output import (
-    UnitTest, ValidatorOutput, Report
-)
+from agent.structured_output.UTV_output import UnitTest
 from langgraph.graph import StateGraph, START, END
 from agent.llm import make_llm
+from agent.test_harness import check_tests, make_cases, make_fixer, write_results
 import os
 import sys
-import json
 import asyncio
 import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
-from collections import defaultdict
-import subprocess
 from backend.progress_logging import progress
-from agent.crawl_config import mark_generated
 
-MAX_CONCURRENCY = 10
-DEFAULT_CODEBASE_K = 15
-DEFAULT_FILE_SUMMARY_K = 5
-MAX_CODEBASE_K = 30
-MAX_FILE_SUMMARY_K = 10
-MAX_LLM_RETRIES = 4
-LLM_RETRY_BACKOFF_SECONDS = 2
+# Code chunks retrieved per broken test for the repair prompt.
+REPAIR_CODEBASE_K = 15
 
 
 class UTVAgent:
     """
-    @brief LangGraph-based agent for generating unit tests based on business rules.
+    @brief LangGraph-based agent for validating generated unit tests.
 
     @details
     The UTVAgent constructs and executes a LangGraph workflow that:
-    - Writes candidate xUnit tests into the selected codebase test project
-    - Executes those tests with `dotnet test`
-    - Validates the execution report using a structured LLM
+    - Writes candidate xUnit tests into the selected codebase test project, one file per test
+    - Builds them, has the AI repair the ones that do not compile, and drops what it cannot fix
+    - Runs the rest with `dotnet test`
     - Writes validated and discarded test metadata to JSON output files
     """
 
     def __init__(self, model=None):
         """
-        @brief Initializes the UTAgent with a specified language model.
+        @brief Initializes the UTVAgent with a specified language model.
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
         progress("Intializing unit test validation agent...", 5)
@@ -63,44 +56,31 @@ class UTVAgent:
 
     def build_graph(self) -> StateGraph:
         """
-        @brief Constructs the StateGraph that defines the UTAgent workflow.
+        @brief Constructs the StateGraph that defines the UTVAgent workflow.
         @return A compiled StateGraph object.
 
         @details
         Graph structure:
-            runner → validator → writer → END
-
-        Conditional routing:
-            - If the latest test execution report indicates failure → validator
-            - If no further current tests remain after validation → writer
+            validator → writer → END
         """
 
         builder = StateGraph(UTVGraphState)
 
         # Set nodes
-        builder.add_node("runner", self.runner_node)
         builder.add_node("validator", self.validator_node)
         builder.add_node("writer", self.writer_node)
-        
+
         # Set edges
-        builder.set_entry_point("runner")
-        builder.add_conditional_edges(
-            "runner",
-            lambda state: "validator" if (state["report"].return_code != 0) else "writer"
-        )
-        builder.add_conditional_edges(
-            "validator",
-            lambda state: "runner" if state.get("current_tests") else "writer"
-        )
+        builder.set_entry_point("validator")
+        builder.add_edge("validator", "writer")
         builder.add_edge("writer", END)
         return builder.compile()
 
-    def run(self, input_tests: dict[str, list[UnitTest]], codebase_name: str, codebase_path: str):
+    def run(self, input_tests: list[UnitTest], codebase_name: str, codebase_path: str):
         """
-        @brief Executes the UTAgent workflow.
-        @param input_tests Dictionary of unit test candidates keyed by source path.
-               values are lists of UnitTest objects.
-        @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
+        @brief Executes the UTVAgent workflow.
+        @param input_tests List of UnitTest candidates, as saved in unit_tests.json.
+        @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collection.
         @param codebase_path Filesystem path of the target codebase.
         @return Final state of the graph after execution.
         """
@@ -115,43 +95,28 @@ class UTVAgent:
 
         db_dir = (base_dir / "vectorStores").resolve()
 
-        embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
-        client = chromadb.PersistentClient(path=str(db_dir)) 
-
-        code_collection = client.get_collection(
-            name=f"{codebase_name}_code_db",
-            embedding_function=embedding_fn
-        )
-
-        summary_collection = client.get_collection(
-            name=f"{codebase_name}_summary_db",
-            embedding_function=embedding_fn
-        )
-
-        imports = set()
-        for test in input_tests:
-            # `or []` because unit_tests.json is written by another agent and
-            # may carry a null imports field.
-            imports.update(test.imports or [])
-
-        progress(
-            "Loaded code and summary databases.",
-            10
-        )
+        # Code context only improves repairs; a codebase without a code
+        # database (e.g. one in a language the parser does not support) is
+        # still validated, just with less help for the AI.
+        try:
+            embedding_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            client = chromadb.PersistentClient(path=str(db_dir))
+            code_collection = client.get_collection(
+                name=f"{codebase_name}_code_db",
+                embedding_function=embedding_fn
+            )
+            progress("Loaded code database.", 10)
+        except Exception as e:
+            code_collection = None
+            progress(f"No code database for {codebase_name}; repairing without code context. ({e})", 10)
 
         initial_state = {
             "current_tests": input_tests,
-            "validated_tests": [],
-            "discarded_tests": [],
-            "imports": imports,
-            "report": Report(return_code=0, output="", errors=""),
-            "codebase_k": DEFAULT_CODEBASE_K,
-            "file_summary_k": DEFAULT_FILE_SUMMARY_K,
+            "test_run": None,
             "code_collection": code_collection,
-            "summary_collection": summary_collection,
             "codebase_name": codebase_name,
             "codebase_path": codebase_path,
-            "output_directory": "./agent/UTV_agent_output",
+            "output_directory": "./agent/UT_agent_output",
         }
 
         self._loop = asyncio.new_event_loop()
@@ -161,251 +126,95 @@ class UTVAgent:
             self._loop.close()
             self._loop = None
 
-    def runner_node(self, state: UTVGraphState) -> UTVGraphState:
-        """
-        @brief Creates test framework in target codebase and runs it
-
-        @details Takes the generated unit tests and applies them with a testing framework and generates a report based on its results
-
-        @param state Current workflow state contain unit_tests
-        @return Empty dict
-        """
-        codebase_path = state["codebase_path"]
-        codebase_name  = state["codebase_name"]
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-
-        # Generate Xunit framework
-        if not Path(test_subdir).is_dir():
-            progress("Creating test framework...", 35)
-            try:
-                progress("Initializing xUnit project...", 35)
-                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
-                progress("Configuring project references...", 35)
-                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
-                    lines = file.readlines()
-                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
-                    file.seek(0)
-                    file.writelines(lines)
-            except Exception as e:
-                progress(f"Error setting up test framework: {e}", 35, True)
-        mark_generated(test_subdir)  # keep the crawlers out of our own tests
-
-        # Write generated tests to Xunit .cs file
-        progress("Writing and running generated tests for validation...", 40)
-        imports = state["imports"]
-        current_tests = state["current_tests"]
-        self._write_tests(test_subdir, codebase_name, imports, current_tests)
-        
-        # Run generated tests and produce report
-        try:
-            result = subprocess.run(["dotnet", "test", f"{test_subdir}"], capture_output=True, text=True)
-            report = Report(
-                return_code=result.returncode,
-                output=result.stdout.strip(),
-                errors=result.stderr.strip()
-            )
-            progress("Generating report...", 40)
-        except Exception as e:
-            report = Report(return_code=1, output="", errors=f"ERROR: {e}")
-            progress(f"Error running tests: {e}", 40, True)
-
-        return {
-            "report": report,
-        }
-    
     def validator_node(self, state: UTVGraphState) -> UTVGraphState:
         """
-        @brief Validates unit tests for generated tests.
+        @brief Writes, builds, repairs and runs the candidate tests.
 
-        @details
-        Uses the same language model but structured output to validate a unit test string
-        for each inputted test. The results are written to `validated_tests`
-        in the workflow state for the final writer node.
+        @details See agent/test_harness.py. Only tests that do not compile are sent to the AI,
+        each with its own compiler errors; tests that compile but fail an assertion are kept
+        and reported, since the failure may be a real bug in the codebase.
+
+        @param state Current workflow state containing current_tests.
+        @return Updated state with test_run.
         """
-
         progress(
             "Validating unit tests...",
-            50
+            20
         )
-        current_tests = state["current_tests"]
-        if not current_tests:
-            return {"validated_tests": []}
-        codebase_k = state["codebase_k"]
-        is_final_pass = codebase_k >= MAX_CODEBASE_K
+        codebase_name = state["codebase_name"]
+        codebase_path = state["codebase_path"]
+        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
+        codebase_subdir = os.path.join(base_output_dir, codebase_name)
+        code_collection = state.get("code_collection")
 
-        # rule_contexts = state.get("rule_contexts", {})
-        structured_llm = self.llm.with_structured_output(ValidatorOutput)
-
-        async def run_batch():
-            sem = asyncio.Semaphore(MAX_CONCURRENCY)
-            async def guarded(test: UnitTest):
-                async with sem:
-                    report = state["report"]
-                    return await _validate_single_test(
-                        structured_llm,
-                        test,
-                        report,
-                    )
-            return await asyncio.gather(*(guarded(r) for r in current_tests))
-
-        results = self._loop.run_until_complete(run_batch())
-
-        progress(
-            f"Validated {len(results)} unit test candidates.",
-            50
-        )
-               
-        validated_tests = []
-        discarded_tests = []
-        current_tests = []
-        imports = state["imports"]
-        for test, output, err in results:
-            if err is not None:
-                progress(f"Unit test validation error for unit test {test.id}: {err}", 50)
-                discarded_tests.append(UnitTest(
-                    id=test.id,
-                    rule=test.rule,
-                    imports=test.imports,
-                    source_directory=test.source_directory,
-                    source_file_paths=test.source_file_paths,
-                    unit_test=test.unit_test,
-                ))
-                continue
-            if output.decision == "success":
-                validated_tests.append(UnitTest(
-                    id=test.id,
-                    rule=test.rule,
-                    imports=test.imports,
-                    source_directory=test.source_directory,
-                    source_file_paths=test.source_file_paths,
-                    unit_test=test.unit_test,
-                ))
-                imports.update(test.imports or [])
-            elif output.decision == "failure":
-
-                repaired_imports, repaired_unit_test, was_repaired = _apply_repair(
-                    test,
-                    output,
-                )
-
-                repaired = UnitTest(
-                    id=test.id,
-                    rule=test.rule,
-                    imports=repaired_imports,
-                    source_directory=test.source_directory,
-                    source_file_paths=test.source_file_paths,
-                    unit_test=repaired_unit_test,
-                )
-
-                # A failure with no replacement method is not a fix. Re-running
-                # the identical test would fail the same way and spend the
-                # final pass doing it, so retire it now with its original
-                # content intact.
-                if not was_repaired:
-                    progress(
-                        f"Validator returned no replacement for unit test "
-                        f"{test.id}; discarding it.",
-                        50
-                    )
-                    discarded_tests.append(repaired)
-                elif is_final_pass:
-                    discarded_tests.append(repaired)
-                else:
-                    current_tests.append(repaired)
-
-            else:
-                # decision defaults to None, so a model that omits it would
-                # otherwise match neither branch above and drop the test from
-                # all three lists without a trace. Keep it as a discard so the
-                # run still accounts for every candidate it was given.
-                progress(
-                    f"Validator returned no decision for unit test "
-                    f"{test.id}; discarding it.",
-                    50
-                )
-                discarded_tests.append(UnitTest(
-                    id=test.id,
-                    rule=test.rule,
-                    imports=test.imports,
-                    source_directory=test.source_directory,
-                    source_file_paths=test.source_file_paths,
-                    unit_test=test.unit_test,
-                ))
-
-        progress(
-            f"Validation pass complete: {len(validated_tests)} valid, {len(discarded_tests)} discarded",
-            60
+        cases, rejected = make_cases(
+            "UT",
+            [(test.id, test) for test in state["current_tests"]],
+            body_of=lambda test: test.unit_test,
+            imports_of=lambda test: test.imports,
         )
 
-        update: dict = {
-            "validated_tests": validated_tests,
-            "discarded_tests": discarded_tests,
-            "imports": imports,
-        }
+        def context_for(case):
+            if code_collection is None or not code_collection.count():
+                return ""
+            test = case.source
+            query_text = f"{test.rule} {' '.join(case.errors[:3])}"
+            results = code_collection.query(
+                query_texts=[query_text],
+                n_results=min(REPAIR_CODEBASE_K, code_collection.count())
+            )
+            docs = results.get("documents", [[]])[0]
+            metas = results.get("metadatas", [[]])[0]
+            return "\n\n".join(
+                self._format_code_result(doc, meta, test.source_directory)
+                for doc, meta in zip(docs, metas)
+            )
 
-        if current_tests:
-            update["current_tests"] = current_tests
-            update["codebase_k"] = MAX_CODEBASE_K
-            update["file_summary_k"] = MAX_FILE_SUMMARY_K
-        else:
-            update["current_tests"] = []
-            update["codebase_k"] = DEFAULT_CODEBASE_K
-            update["file_summary_k"] = DEFAULT_FILE_SUMMARY_K
+        test_run = check_tests(
+            "Unit",
+            "UT",
+            cases,
+            rejected,
+            codebase_path,
+            codebase_name,
+            codebase_subdir,
+            fix=make_fixer(self.llm, context_for),
+            loop=self._loop,
+        )
 
-        return update
+        return {"test_run": test_run}
 
     def writer_node(self, state: UTVGraphState) -> UTVGraphState:
         """
-        @brief Writes unit tests to JSON output files.
+        @brief Writes the validation results to JSON output files.
 
         @details
-        Serializes unit tests from the workflow state to JSON files in an output directory named
-        under {output_directory}/{codebase_name}/. Creates directories if needed.
+        Writes validated_tests.json, discarded_tests.json and test_report.json under
+        {output_directory}/{codebase_name}/, next to unit_test_report.html.
         Runs exactly once at the end of the graph.
 
-        @param state Current workflow state containing validated_rules.
+        @param state Current workflow state containing test_run.
         @return Empty dict (terminal node).
         """
         progress(
             "Writing validated and discarded unit tests...",
-            70
+            90
         )
 
         codebase_name = state["codebase_name"]
-        codebase_path = state["codebase_path"]
-
-        base_output_dir = state.get("output_directory", "./agent/UTV_agent_output")
+        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
         codebase_subdir = os.path.join(base_output_dir, codebase_name)
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-        os.makedirs(codebase_subdir, exist_ok=True)
+        test_run = state["test_run"]
 
-        validated_tests = state["validated_tests"]
-        validated_tests.sort(key=lambda item: item.id)
-        discarded_tests = state["discarded_tests"]
-        discarded_tests.sort(key=lambda item: item.id)
-        imports = state["imports"]
-        
-        self._write_tests(test_subdir, codebase_name, imports, validated_tests)
-        validated_tests_path = os.path.join(codebase_subdir, "validated_tests.json")
-        discarded_tests_path = os.path.join(codebase_subdir, "discarded_tests.json")
-        with open(validated_tests_path, "w", encoding="utf-8") as file:
-            json.dump([test.model_dump() for test in validated_tests], file, indent=2)
-        with open(discarded_tests_path, "w", encoding="utf-8") as file:
-            json.dump([test.model_dump() for test in discarded_tests], file, indent=2)
-        try:
-            for html_file in Path(codebase_subdir).glob("*.html"):
-                try:
-                    html_file.unlink()
-                except OSError as e:
-                    progress(f"Error deleting html file: {e}", 100)
-            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_subdir}"])
-            progress("Tests completed. Generating html report...", 100)
-        except Exception as e:
-            progress(f"Error running tests: {e}", 100, True)
-            return {}
-        progress(f"Wrote {len(validated_tests)} validated unit tests to {validated_tests_path} and wrote {len(discarded_tests)} discarded unit tests to {discarded_tests_path}", 100, True)
+        write_results(
+            test_run,
+            codebase_subdir,
+            lambda case: dict(case.source.model_dump(), imports=case.imports, unit_test=case.body),
+        )
+
+        progress(test_run.message(), 100, True)
         return {}
-    
+
     # Helper methods
 
     def _normalize_path(self, path_value: str) -> str:
@@ -492,130 +301,3 @@ class UTVAgent:
             f"Parent: {meta.get('parent', 'N/A')}\n"
             f"Content:\n{doc}"
         )
-
-    def _write_tests(self, test_subdir: str,  codebase_name: str, imports: set, current_tests: list[UnitTest]):
-        with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
-            # Sorted so the emitted file is stable between runs -- set order is
-            # arbitrary, which otherwise makes every UnitTest1.cs diff noise.
-            # Blank entries are dropped: a bare newline in the using block is a
-            # compile error that fails the whole test project.
-            for import_statement in sorted(imports or []):
-                if import_statement and import_statement.strip():
-                    file.write(import_statement.strip() + "\n")
-            file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
-            file.write("\npublic class Tests {\n")
-            for test in current_tests:
-                file.write(test.unit_test + "\n\n")
-            file.write("}")
-        return
-
-
-def _apply_repair(test: UnitTest, output: ValidatorOutput) -> tuple[list[str], str, bool]:
-    """
-    @brief Builds a repaired UnitTest payload from a "failure" validator decision.
-
-    @details
-    ValidatorOutput marks both `imports` and `unit_test` Optional, so a model
-    that decides "failure" is free to return neither -- an empty imports box is
-    the common case. Passing those values straight into UnitTest raises a
-    pydantic ValidationError from inside the graph node, which aborts the whole
-    invoke() and discards every test already validated in that batch.
-
-    Falling back to the candidate's own values keeps the run alive. The
-    validation prompt forbids adding or removing import statements, so the
-    original set is the correct stand-in when the model returns none.
-
-    @param test The unit test candidate that was sent for validation.
-    @param output The validator's structured decision.
-    @return Tuple of (imports, unit_test, whether a usable repair was returned).
-    """
-
-    repaired_imports = [
-        line for line in (output.imports or []) if line and line.strip()
-    ]
-
-    repaired_unit_test = (output.unit_test or "").strip()
-
-    # No replacement method means nothing was actually repaired.
-    if not repaired_unit_test:
-        return list(test.imports or []), test.unit_test, False
-
-    return (
-        repaired_imports or list(test.imports or []),
-        repaired_unit_test,
-        True,
-    )
-
-
-async def _validate_single_test(
-    structured_llm,
-    test: UnitTest,
-    report: Report,
-) -> tuple:
-    try:
-        system_message = (
-            "You are a Senior Software Architect acting as an automated C# unit test auditor. "
-            "Your job is to strictly evaluate test output logs and decide if a test method succeeded or failed. "
-            "If the test failed in execution, you MUST mark it as 'failure' and fix it."
-        )
-
-        prompt = f"""
-#### UNIT TEST TO VALIDATE:
-- ID: {test.id}
-- UNIT TEST: {test.unit_test}
-- IMPORTS: {test.imports}
-
-#### UNIT TEST OUTPUT
-{report.output}
-
-#### REPORT ERRORS:
-{report.errors}
-
-#### TASK:
-Determine whether the unit test shown above has succeeded or failed based off of the given report generated. If the case of a failure rework the unit test and imports to solve the issue.
-
-1. **success** — The unit test succeeded when executed and resulted in ZERO errors or failures. Select this option only when:
-   - The unit tests method name does not appear anywhere in a failure context or stack trace.
-
-2. **failure** — The unit test is NOT supported and failed during execution. Choose this only when:
-   - The test contains syntax errors or invalid structure that would cause it to fail or crash when run.
-   - The test is not a complete, concrete unit test method block that can be run directly.
-   - The method name of the unit test appears under a `[FAIL]` section, stack trace, error message, or `Assert` failure in the report
-
-#### IMPORTANT
-- If the unit test is specifically stated in the error report as a failure. The decision MUST be 'failure'.
-
-#### RESPONSE INSTRUCTIONS:
-- If "success": select 'success' as your decision.
-- If "failure": select 'failure' as your decision and populate the unit_test and imports with your updated test and imports that fix the failure.
-
-#### TASK IN CASE OF FAILURE:
-- If the test decision results in a failure then update the original unit test and/or imports in order to solve the error that is currently present
-- The new test must be a realistic, structurally sound, executable unit test method.
-- Match the exact programming language, naming conventions, and recommended testing framework for that language (Example: Xunit for C#).
-- Use the context from the unit test report because it will tell you exactly what problems arise from the test and what needs to be fixed.
-
-#### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]:
-- **IMPORT SYNTAX:** Do not add or remove any import statements. Only alter the preexisting statements in order to make it full, complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
-- **NO REINVENTING:** Do not generate a completely new test and imports completely from scratch. Simply reuse the old one and ONLY change whats needs to be changed in order to fix the error.
-- **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the report.
-- **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
-- **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
-- **NO DECISION CHANGING:** Once you have selected your decision and attempted to rewrite the prompt in a case of failure. DO NOT change your decision to success no matter what
-"""
-
-        messages = [("system", system_message), ("user", prompt)]
-        for attempt in range(MAX_LLM_RETRIES):
-            try:
-                output = await structured_llm.ainvoke(messages)
-                return test, output, None
-            except Exception as e:
-                if "503" in e and attempt < MAX_LLM_RETRIES - 1:
-                    wait_seconds = LLM_RETRY_BACKOFF_SECONDS * (2 ** attempt)
-                    await asyncio.sleep(wait_seconds)
-                    continue
-                return test, None, e
-    except Exception as e:
-        return test, None, e
-    
-

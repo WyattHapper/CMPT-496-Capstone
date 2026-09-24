@@ -5,44 +5,24 @@
 structured state passed between nodes in the LangGraph execution graph.
 """
 
-from typing import TypedDict, Annotated, Any
-from agent.structured_output.UTV_output import UnitTest, Report
-from operator import add
+from typing import TypedDict, Any
+from agent.structured_output.UTV_output import UnitTest
 
 
 class UTVGraphState(TypedDict):
     """
-    @brief Represents the shared state passed between nodes in the UT Agent workflow graph.
+    @brief Represents the shared state passed between nodes in the UTV Agent workflow graph.
 
     @var current_tests
-        The list of UnitTest candidates that are currently being validated.
-        These tests are passed from the runner node into the validator node.
+        The list of UnitTest candidates being validated, as loaded from unit_tests.json.
 
-    @var validated_tests
-        Accumulating list of UnitTest objects that the validator has marked as successful.
-        These tests will be written to validated_tests.json.
-
-    @var discarded_tests
-        Accumulating list of UnitTest objects that the validator has rejected.
-        These tests will be written to discarded_tests.json.
-
-    @var report
-        The most recent execution report returned by the runner node.
-        This includes return_code, output, and errors from dotnet test.
-
-    @var codebase_k
-        Number of code snippets to retrieve from the code vector database per query iteration.
-        Used when validation requires additional context.
-
-    @var file_summary_k
-        Number of summary entries to retrieve from the summary vector database per query iteration.
-        Used when validation requires additional context.
+    @var test_run
+        TestRun from agent/test_harness.py: which tests were kept, repaired, dropped,
+        passed and failed. Set by the validator node, written out by the writer node.
 
     @var code_collection
-        ChromaDB collection handle for embedded code snippets.
-
-    @var summary_collection
-        ChromaDB collection handle for embedded file/class/function summaries.
+        ChromaDB collection handle for embedded code snippets, used to give the AI the
+        real API when it repairs a test. None if the codebase has no code database.
 
     @var codebase_name
         Name of the target codebase being analyzed, used for vector store
@@ -53,17 +33,12 @@ class UTVGraphState(TypedDict):
 
     @var output_directory
         Base directory for writing output JSON files. Defaults to
-        ./agent/UTV_agent_output if not specified.
+        ./agent/UT_agent_output if not specified, so the results show under
+        "View unit tests".
     """
     current_tests: list[UnitTest]
-    validated_tests: Annotated[list[UnitTest], add]
-    discarded_tests: Annotated[list[UnitTest], add]
-    imports: set
-    report: Report
-    codebase_k: int
-    file_summary_k: int
+    test_run: Any
     code_collection: Any
-    summary_collection: Any
     codebase_name: str
     codebase_path: str
     output_directory: str

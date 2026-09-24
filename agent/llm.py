@@ -176,9 +176,12 @@ class CheckpointGemini(ChatGoogleGenerativeAI):
             attempt, waited = attempt + 1, waited + wait
 
 
-def make_llm():
+def make_llm(max_output_tokens=None):
     """
     The Gemini model every agent uses unless a test passes its own.
+
+    max_output_tokens caps one answer (thinking included). Left unset, Gemini
+    allows ~65.5k -- which a runaway test answer used in full on 2026-09-24.
     """
     load_dotenv(override=True)
 
@@ -187,9 +190,15 @@ def make_llm():
     if not api_key:
         raise ValueError("GOOGLE_API_KEY environment variable not set.")
 
+    options = {}
+
+    if max_output_tokens is not None:
+        options["max_output_tokens"] = max_output_tokens
+
     return CheckpointGemini(
         model=GEMINI_MODEL,
         api_key=api_key,
         # 1 = no SDK retries (0 would mean "SDK default"); see module docstring.
         max_retries=1,
+        **options,
     )

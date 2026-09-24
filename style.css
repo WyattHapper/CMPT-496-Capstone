@@ -1774,6 +1774,8 @@ h2{
     line-height: 1.45;
     text-align: left;
     word-wrap: break-word;
+    /* The full pipeline joins several steps' warnings with blank lines. */
+    white-space: pre-line;
 }
 
 #tokenMeterTotal {

@@ -74,6 +74,23 @@ def skipped_diagrams_message(skipped):
         "and the PDF marks where each skipped diagram would be."
     )
 
+
+def test_run_result(test_run, **extra):
+    """
+    Result for a test step: counts for the UI, plus a warning for the
+    Complete screen when tests were dropped, failed, or never ran -- the step
+    itself still succeeds so the rest of the pipeline carries on.
+    """
+    result = dict(extra, message=test_run.message(), tests=test_run.summary())
+
+    if test_run.needs_attention():
+        result["warning"] = (
+            test_run.message()
+            + " Reasons are in test_report.json under the test outputs."
+        )
+
+    return result
+
 from backend.token_estimate import estimate_pipeline
 from backend.token_usage import (
     record_usage,
@@ -491,11 +508,13 @@ class Commands:
                     if rule["id"] in selected_rules:
                         input_rules.append(ValidatedRule.model_validate(rule))
 
-            UTAgent().run(
+            final_state = UTAgent().run(
                 input_rules,
                 codebase_name,
                 str(codebase_path)
             )
+
+            return test_run_result(final_state["test_run"])
 
 
         return self._run_command(
@@ -556,11 +575,13 @@ class Commands:
             for test in raw_tests:
                 input_tests.append(UnitTest.model_validate(test))
 
-            UTVAgent().run(
+            final_state = UTVAgent().run(
                 input_tests,
                 codebase_name,
                 str(codebase_path)
             )
+
+            return test_run_result(final_state["test_run"])
 
 
         return self._run_command(
@@ -648,13 +669,13 @@ class Commands:
             )
 
 
-            return {
-                "message": "Integration tests generated successfully",
-                "rules_processed": len(input_rules),
-                "workflows_generated": len(
+            return test_run_result(
+                result["test_run"],
+                rules_processed=len(input_rules),
+                workflows_generated=len(
                     result.get("integration_tests", [])
-                )
-            }
+                ),
+            )
 
 
         return self._run_command(
@@ -1072,12 +1093,17 @@ class Commands:
                 "message": "Full pipeline completed",
             }
 
-            # The UML step is last; pass on its warning if it skipped any
-            # diagrams, so the Complete screen can show it.
-            warning = steps[-1]["result"].get("warning")
+            # Pass on every step's warning (tests dropped or failing, UML
+            # diagrams skipped), so the Complete screen can show them.
+            warnings = [
+                step["result"]["warning"]
+                for step in steps
+                if isinstance(step.get("result"), dict)
+                and step["result"].get("warning")
+            ]
 
-            if warning:
-                summary["warning"] = warning
+            if warnings:
+                summary["warning"] = "\n\n".join(warnings)
 
             pipeline_progress("Pipeline Complete", 100)
             return summary
