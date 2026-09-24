@@ -8,7 +8,15 @@ The dispatcher routes the request to the correct
 method in Commands.
 """
 
+import json
+import os
+from datetime import datetime
+
 from backend.commands import Commands
+
+
+# Saved so the Insights "Errors" view still has them after the app restarts.
+ERROR_LOG_NAME = "error_log.json"
 
 
 class CommandDispatcher:
@@ -19,8 +27,9 @@ class CommandDispatcher:
     def __init__(self):
         self.commands = Commands()
 
-        # Store all backend errors for this session
-        self.error_log = []
+        # Backend errors since the last full pipeline started, each with its
+        # time, command and error code (429, 503, ...). Kept on disk.
+        self.error_log = self._load_errors()
 
         self.routes = {
 
@@ -81,6 +90,36 @@ class CommandDispatcher:
         Clear the error log.
         """
         self.error_log.clear()
+        self._save_errors()
+
+    def _error_log_path(self):
+        return self.commands.app_dir / ERROR_LOG_NAME
+
+    def _load_errors(self):
+        try:
+            data = json.loads(self._error_log_path().read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else []
+        except (OSError, ValueError):
+            return []
+
+    def _save_errors(self):
+        # Best-effort: failing to save an error must not become an error.
+        try:
+            path = self._error_log_path()
+            tmp = path.with_name(path.name + ".tmp")
+            tmp.write_text(json.dumps(self.error_log, indent=2), encoding="utf-8")
+            os.replace(tmp, path)
+        except Exception:
+            pass
+
+    def _record_error(self, command, message, code=None):
+        self.error_log.append({
+            "time": datetime.now().isoformat(timespec="seconds"),
+            "command": command,
+            "code": code,
+            "message": message,
+        })
+        self._save_errors()
 
     def dispatch(self, command: str, **kwargs):
         """
@@ -96,7 +135,7 @@ class CommandDispatcher:
 
         if command not in self.routes:
             error = f"Unknown command: {command}"
-            self.error_log.append(error)
+            self._record_error(command, error)
 
             return {
                 "success": False,
@@ -126,8 +165,10 @@ class CommandDispatcher:
                 isinstance(result, dict)
                 and result.get("success") is False
             ):
-                self.error_log.append(
-                    f"[{command}] {result.get('error', 'Unknown error')}"
+                self._record_error(
+                    command,
+                    result.get("error", "Unknown error"),
+                    result.get("error_code"),
                 )
 
             return result
@@ -136,7 +177,7 @@ class CommandDispatcher:
 
             error = f"[{command}] {str(e)}"
 
-            self.error_log.append(error)
+            self._record_error(command, str(e))
 
             return {
                 "success": False,

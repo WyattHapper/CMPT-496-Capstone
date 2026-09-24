@@ -48,6 +48,7 @@ from agent.UT_agent import UTAgent
 from agent.UTV_agent import UTVAgent
 from agent.directory_agent import DirectoryAgent
 from agent.file_summary_agent import FileSummaryAgent
+from agent.llm import GEMINI_MODEL
 from agent.structured_output.file_summary_output import BusinessRule
 from agent.structured_output.UT_output import ValidatedRule
 from agent.structured_output.UTV_output import UnitTest
@@ -80,8 +81,20 @@ from backend.token_usage import (
     suggest_constants,
     emit_stage_total,
     track_command,
+    status_code,
     RUN_LOG_NAME,
 )
+
+
+class StepFailedError(RuntimeError):
+    """
+    A pipeline step failed. Carries the step's error code (429, 503, ...) up
+    to the pipeline, which only sees the step's result dict, not its error.
+    """
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 # ---------------------------------------------------------
@@ -171,6 +184,7 @@ class Commands:
                     "elapsed": round(elapsed, 2),
                     "individualStep": individualStep,
                     "error": str(exc),
+                    "error_code": status_code(exc),
                 }
         
     def _require_success(self, result):
@@ -179,11 +193,12 @@ class Commands:
         """
 
         if not result["success"]:
-            raise RuntimeError(
+            raise StepFailedError(
                 result.get(
                     "error",
                     "Unknown command failure"
-                )
+                ),
+                result.get("error_code"),
             )
 
         return result
@@ -797,7 +812,7 @@ class Commands:
     # than just checking the key also catches a key that is real but has
     # no access to this model -- a failure that would otherwise only show
     # up part-way through a run.
-    VALIDATION_MODEL = "gemini-3-flash-preview"
+    VALIDATION_MODEL = GEMINI_MODEL
     VALIDATION_TIMEOUT_SECONDS = 15
 
     def verify_api_key(self, api_key: str):

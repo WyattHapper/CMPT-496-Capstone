@@ -965,19 +965,34 @@ function renderErrorPreview(errors) {
         return;
     }
 
-    const pre = document.createElement("pre");
+    // Entries are {time, command, code, message}; older ones may be strings.
+    const rows = errorList.map(error => (
+        typeof error === "string"
+            ? ["—", "—", "—", error]
+            : [
+                formatStamp(error.time),
+                error.code ?? "—",
+                error.command || "—",
+                error.message || "—",
+            ]
+    ));
 
-    pre.className = "file-preview-text";
+    const card = document.createElement("div");
+    card.className = "summary-card usage-card";
 
-    pre.textContent = errorList
-        .map(error => (
-            typeof error === "string"
-                ? error
-                : JSON.stringify(error, null, 2)
-        ))
-        .join("\n\n");
+    card.appendChild(usageHeader("Errors"));
 
-    output.appendChild(pre);
+    card.appendChild(usageTable(["Time", "Code", "Step", "Message"], rows))
+        .classList.add("error-table");
+
+    const note = document.createElement("p");
+    note.className = "usage-note";
+    note.textContent =
+        "Errors since the last full pipeline started. " +
+        "They are kept when the app is closed.";
+    card.appendChild(note);
+
+    output.appendChild(card);
 }
 
 // ============================================
@@ -1087,25 +1102,37 @@ function renderRunUsage(run) {
         ? ` (${totals.failed_calls} failed)`
         : "";
 
-    card.appendChild(usageTable(
-        null,
-        [
-            ["Codebase", run.codebase || "—"],
-            ["Status", usageStatus(run.status)],
-            ["Started", formatStamp(run.started_at)],
-            ["Duration", formatSeconds(run.elapsed_seconds)],
-            ["AI calls", formatCount(totals.calls) + failedNote],
-            ["Input tokens", formatCount(totals.input_tokens)],
-            ["Output tokens", formatCount(totals.output_tokens)],
-            ["Total tokens", formatCount(totals.total_tokens)],
-            ["Run ID", run.run_id || "—"],
-        ]
-    )).classList.add("usage-overview");
+    const overview = [
+        ["Codebase", run.codebase || "—"],
+        ["Status", usageStatus(run.status)],
+        ["Started", formatStamp(run.started_at)],
+        ["Duration", formatSeconds(run.elapsed_seconds)],
+        ["AI calls", formatCount(totals.calls) + failedNote],
+        ["Input tokens", formatCount(totals.input_tokens)],
+        ["Output tokens", formatCount(totals.output_tokens)],
+        ["Total tokens", formatCount(totals.total_tokens)],
+        ["Run ID", run.run_id || "—"],
+    ];
+
+    // Only when Google made us wait, so a slow run reads as throttled,
+    // not stuck.
+    if (totals.waits) {
+        overview.splice(4, 0, [
+            "Waited for Google",
+            `${totals.waits} time${totals.waits === 1 ? "" : "s"}, ` +
+            formatSeconds(totals.waited_seconds),
+        ]);
+    }
+
+    card.appendChild(usageTable(null, overview))
+        .classList.add("usage-overview");
 
     if (run.error) {
         const error = document.createElement("pre");
         error.className = "summary-section-body usage-error";
-        error.textContent = run.error;
+        error.textContent = run.error_code
+            ? `Error ${run.error_code}: ${run.error}`
+            : run.error;
         card.appendChild(error);
     }
 
@@ -1165,8 +1192,32 @@ function renderRunUsage(run) {
         card.appendChild(usageHeader("Failed AI Calls"));
 
         card.appendChild(usageTable(
-            ["Step", "Error"],
-            failed.map(call => [call.stage, call.error || "—"])
+            ["Step", "Code", "Error"],
+            failed.map(call => [
+                call.stage,
+                call.error_code ?? "—",
+                call.error || "—",
+            ])
+        )).classList.add("error-table");
+    }
+
+    const waits = run.waits || [];
+
+    if (waits.length) {
+
+        card.appendChild(usageHeader("Waits for Google"));
+
+        const reasonText = reason => reason === "429"
+            ? "429 rate limit"
+            : `${reason} Google busy`;
+
+        card.appendChild(usageTable(
+            ["Step", "Reason", "Waited"],
+            waits.map(wait => [
+                wait.stage,
+                reasonText(wait.reason),
+                formatSeconds(wait.seconds),
+            ])
         ));
     }
 
