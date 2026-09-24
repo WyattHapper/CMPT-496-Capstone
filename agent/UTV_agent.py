@@ -130,7 +130,9 @@ class UTVAgent:
 
         imports = set()
         for test in input_tests:
-            imports.update(test.imports)
+            # `or []` because unit_tests.json is written by another agent and
+            # may carry a null imports field.
+            imports.update(test.imports or [])
 
         progress(
             "Loaded code and summary databases.",
@@ -278,26 +280,57 @@ class UTVAgent:
                     source_file_paths=test.source_file_paths,
                     unit_test=test.unit_test,
                 ))
-                imports.update(test.imports)
+                imports.update(test.imports or [])
             elif output.decision == "failure":
-                if is_final_pass:
-                    discarded_tests.append(UnitTest(
-                        id=test.id,
-                        rule=test.rule,
-                        imports=output.imports,
-                        source_directory=test.source_directory,
-                        source_file_paths=test.source_file_paths,
-                        unit_test=output.unit_test,
-                    ))
+
+                repaired_imports, repaired_unit_test, was_repaired = _apply_repair(
+                    test,
+                    output,
+                )
+
+                repaired = UnitTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=repaired_imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=repaired_unit_test,
+                )
+
+                # A failure with no replacement method is not a fix. Re-running
+                # the identical test would fail the same way and spend the
+                # final pass doing it, so retire it now with its original
+                # content intact.
+                if not was_repaired:
+                    progress(
+                        f"Validator returned no replacement for unit test "
+                        f"{test.id}; discarding it.",
+                        50
+                    )
+                    discarded_tests.append(repaired)
+                elif is_final_pass:
+                    discarded_tests.append(repaired)
                 else:
-                    current_tests.append(UnitTest(
-                        id=test.id,
-                        rule=test.rule,
-                        imports=output.imports,
-                        source_directory=test.source_directory,
-                        source_file_paths=test.source_file_paths,
-                        unit_test=output.unit_test,
-                    ))
+                    current_tests.append(repaired)
+
+            else:
+                # decision defaults to None, so a model that omits it would
+                # otherwise match neither branch above and drop the test from
+                # all three lists without a trace. Keep it as a discard so the
+                # run still accounts for every candidate it was given.
+                progress(
+                    f"Validator returned no decision for unit test "
+                    f"{test.id}; discarding it.",
+                    50
+                )
+                discarded_tests.append(UnitTest(
+                    id=test.id,
+                    rule=test.rule,
+                    imports=test.imports,
+                    source_directory=test.source_directory,
+                    source_file_paths=test.source_file_paths,
+                    unit_test=test.unit_test,
+                ))
 
         progress(
             f"Validation pass complete: {len(validated_tests)} valid, {len(discarded_tests)} discarded",
@@ -462,14 +495,56 @@ class UTVAgent:
 
     def _write_tests(self, test_subdir: str,  codebase_name: str, imports: set, current_tests: list[UnitTest]):
         with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
-            for import_statement in imports:
-                file.write(import_statement + "\n")
+            # Sorted so the emitted file is stable between runs -- set order is
+            # arbitrary, which otherwise makes every UnitTest1.cs diff noise.
+            # Blank entries are dropped: a bare newline in the using block is a
+            # compile error that fails the whole test project.
+            for import_statement in sorted(imports or []):
+                if import_statement and import_statement.strip():
+                    file.write(import_statement.strip() + "\n")
             file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
             file.write("\npublic class Tests {\n")
             for test in current_tests:
                 file.write(test.unit_test + "\n\n")
             file.write("}")
         return
+
+
+def _apply_repair(test: UnitTest, output: ValidatorOutput) -> tuple[list[str], str, bool]:
+    """
+    @brief Builds a repaired UnitTest payload from a "failure" validator decision.
+
+    @details
+    ValidatorOutput marks both `imports` and `unit_test` Optional, so a model
+    that decides "failure" is free to return neither -- an empty imports box is
+    the common case. Passing those values straight into UnitTest raises a
+    pydantic ValidationError from inside the graph node, which aborts the whole
+    invoke() and discards every test already validated in that batch.
+
+    Falling back to the candidate's own values keeps the run alive. The
+    validation prompt forbids adding or removing import statements, so the
+    original set is the correct stand-in when the model returns none.
+
+    @param test The unit test candidate that was sent for validation.
+    @param output The validator's structured decision.
+    @return Tuple of (imports, unit_test, whether a usable repair was returned).
+    """
+
+    repaired_imports = [
+        line for line in (output.imports or []) if line and line.strip()
+    ]
+
+    repaired_unit_test = (output.unit_test or "").strip()
+
+    # No replacement method means nothing was actually repaired.
+    if not repaired_unit_test:
+        return list(test.imports or []), test.unit_test, False
+
+    return (
+        repaired_imports or list(test.imports or []),
+        repaired_unit_test,
+        True,
+    )
 
 
 async def _validate_single_test(
