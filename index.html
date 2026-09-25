@@ -695,7 +695,17 @@
 
             <pre id="estimateOutput" class="hidden"></pre>
 
+            <button id="loadingCancelBtn" class="btn-cancel">Cancel</button>
             <button id="loadingOkBtn" class="btn-primary hidden">OK</button>
+        </div>
+    </div>
+
+    <!-- ERROR POPUP -->
+    <div id="errorPopup" class="error-popup hidden" role="alertdialog" aria-modal="true" aria-labelledby="errorPopupTitle">
+        <div class="error-popup-box">
+            <h2 id="errorPopupTitle">Operation Error</h2>
+            <p id="errorPopupMessage"></p>
+            <button id="errorPopupCloseBtn" class="btn-primary">OK</button>
         </div>
     </div>
 

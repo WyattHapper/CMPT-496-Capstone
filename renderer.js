@@ -119,6 +119,8 @@ function showLoading(title, message) {
 
     //hide ok button
     document.getElementById("loadingOkBtn").classList.add("hidden");
+    document.getElementById("loadingCancelBtn").classList.remove("hidden");
+    document.getElementById("loadingCancelBtn").disabled = false;
 
     // hide any report left over from a previous estimate
     const previousEstimate =
@@ -290,6 +292,7 @@ function finishLoading(message = "Process completed successfully!") {
 
     // show OK button
     document.getElementById("loadingOkBtn").classList.remove("hidden");
+    document.getElementById("loadingCancelBtn").classList.add("hidden");
 }
 
 function hideLoading() {
@@ -300,6 +303,28 @@ function hideLoading() {
     if (!overlay) return;
 
     overlay.classList.add("hidden");
+
+    const cancelButton = document.getElementById("loadingCancelBtn");
+    if (cancelButton) {
+        cancelButton.classList.add("hidden");
+        cancelButton.disabled = false;
+    }
+}
+
+function showErrorPopup(message) {
+    const popup = document.getElementById("errorPopup");
+    const messageElement = document.getElementById("errorPopupMessage");
+
+    if (!popup || !messageElement) return;
+
+    messageElement.textContent = String(message || "An unexpected error occurred.");
+    popup.classList.remove("hidden");
+}
+
+function hideErrorPopup() {
+    const popup = document.getElementById("errorPopup");
+
+    if (popup) popup.classList.add("hidden");
 }
 
 function updatePipleineProgressBar(percent){
@@ -349,6 +374,16 @@ async function runBackendCommand(command,args={}){
         args
     );
 
+}
+
+async function refreshErrorLog() {
+    const response = await window.electronAPI.getErrorLog();
+
+    if (response?.success) {
+        renderErrorPreview(response.errors);
+    } else {
+        renderTextPreview(response?.error || "Could not load errors.");
+    }
 }
 
 
@@ -988,8 +1023,8 @@ function renderErrorPreview(errors) {
     const note = document.createElement("p");
     note.className = "usage-note";
     note.textContent =
-        "Errors since the last full pipeline started. " +
-        "They are kept when the app is closed.";
+        "Errors recorded during the current app session. " +
+        "They are cleared when the app starts.";
     card.appendChild(note);
 
     output.appendChild(card);
@@ -1375,6 +1410,35 @@ async function loadValidatedRulesSelection() {
 
 
 //loading complete button
+document.getElementById("loadingCancelBtn").addEventListener("click", async () => {
+    if (!activeCommand) return;
+
+    const cancelButton = document.getElementById("loadingCancelBtn");
+    const cancelledCommand = activeCommand;
+    cancelButton.disabled = true;
+
+    const response = await window.electronAPI.cancelCommand();
+
+    if (!response?.success) {
+        cancelButton.disabled = false;
+        showErrorPopup(response?.error || "Could not cancel the operation.");
+        return;
+    }
+
+    const cancellationMessage = "Operation cancelled by user.";
+    errorsMade = true;
+
+    await window.electronAPI.recordErrorLog({
+        command: cancelledCommand,
+        message: cancellationMessage,
+        code: "CANCELLED"
+    });
+
+    activeCommand = null;
+    hideLoading();
+    showPage("homePage");
+});
+
 document.getElementById("loadingOkBtn").addEventListener("click", () => {
 
     hideLoading();
@@ -1436,8 +1500,12 @@ document.getElementById('mainViewBtn')
 
         
         showPage('mainViewPage');
+        refreshErrorLog();
 
     });
+
+document.getElementById("errorPopupCloseBtn")
+    .addEventListener("click", hideErrorPopup);
 
 document.getElementById("viewDisplaySourcesBtn")
 .addEventListener("click", () => {
@@ -1485,7 +1553,7 @@ document.getElementById("viewDisplayErrorsBtn")
 
     showButtons("viewErrorsBtns");
 
-    await runBackendCommand("get_errors");
+    await refreshErrorLog();
 
 });
 
@@ -2369,6 +2437,8 @@ window.electronAPI.onBackendResponse((response) => {
     if (!response.success) {
 
         errorsMade = true;
+
+        showErrorPopup(response.error || "The operation could not be completed.");
 
         const errorBox =
             document.getElementById("errorOutput");
