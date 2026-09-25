@@ -73,6 +73,8 @@ class CommandDispatcher:
 
             # Error log
             "get_errors": self.get_errors,
+            "clear_errors": self.clear_errors,
+            "record_error": self.record_error,
 
         }
 
@@ -91,6 +93,10 @@ class CommandDispatcher:
         """
         self.error_log.clear()
         self._save_errors()
+
+    def record_error(self, source_command, message, code=None):
+        self._record_error(source_command, message, code)
+        return {"success": True}
 
     def _error_log_path(self):
         return self.commands.app_dir / ERROR_LOG_NAME
@@ -142,10 +148,6 @@ class CommandDispatcher:
                 "error": error,
                 "command": command
             }
-
-        # Optional: clear old errors when running the full pipeline
-        if command == "full_pipeline":
-            self.clear_errors()
 
         # Tell Commands which codebase measured usage belongs to.
         if "codebase" in kwargs and kwargs["codebase"]:

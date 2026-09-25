@@ -130,8 +130,12 @@ def build_database(source_path: str) -> None:
         sys.exit(1)
 
     if not ids:
-        logger.info("No valid chunks were generated. Aborting upsert.")
-        sys.exit(1)
+        message = (
+            f"No code files detected in '{source_dir}'. "
+            "Supported code files are .cs and .js."
+        )
+        logger.info(message)
+        raise ValueError(message)
 
 
     progress(

@@ -7,6 +7,7 @@ const dotenv = require("dotenv");
 
 let pythonProcess = null;
 let mainWindow = null;
+let restartBackendAfterCancel = false;
 // Directory the backend actually writes its output to (userData when packaged).
 let backendOutputDir = __dirname;
 // ----------------------------------------------------
@@ -478,6 +479,23 @@ ipcMain.handle(
     }
 );
 
+ipcMain.handle(
+    "cancel-command",
+    async () => {
+        if (!pythonProcess) {
+            return { success: false, error: "No backend command is running" };
+        }
+
+        const processToCancel = pythonProcess;
+        restartBackendAfterCancel = true;
+
+        return new Promise((resolve) => {
+            processToCancel.once("close", () => resolve({ success: true }));
+            processToCancel.kill();
+        });
+    }
+);
+
 // ----------------------------------------------------
 // SEND PREVIEW COMMANDS
 // ----------------------------------------------------
@@ -872,7 +890,7 @@ ipcMain.handle("select-codebase", async () => {
 // START PYTHON BACKEND
 // ----------------------------------------------------
 
-function startPythonBackend() {
+function startPythonBackend(preserveErrors = false) {
 
     const isWindows = process.platform === "win32";
 
@@ -994,6 +1012,13 @@ function startPythonBackend() {
 
         console.log("Backend exited:", code);
 
+        if (restartBackendAfterCancel) {
+            restartBackendAfterCancel = false;
+            pythonProcess = null;
+            startPythonBackend(true);
+            return;
+        }
+
         if (code !== 0 && mainWindow && !mainWindow.isDestroyed()) {
 
             mainWindow.webContents.send(
@@ -1009,6 +1034,16 @@ function startPythonBackend() {
         pythonProcess = null;
 
     });
+
+    if (!preserveErrors) {
+        pythonProcess.stdin.write(
+            JSON.stringify({
+                type: "command",
+                command: "clear_errors",
+                args: {}
+            }) + "\n"
+        );
+    }
 
 }
 

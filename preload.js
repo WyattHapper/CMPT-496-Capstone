@@ -25,6 +25,8 @@ contextBridge.exposeInMainWorld(
 
         },
 
+    cancelCommand: () => ipcRenderer.invoke("cancel-command"),
+
 
 
         // ==================================
