@@ -376,6 +376,16 @@ async function runBackendCommand(command,args={}){
 
 }
 
+async function refreshErrorLog() {
+    const response = await window.electronAPI.getErrorLog();
+
+    if (response?.success) {
+        renderErrorPreview(response.errors);
+    } else {
+        renderTextPreview(response?.error || "Could not load errors.");
+    }
+}
+
 
 async function runPreviewCommand(
     action,
@@ -1013,8 +1023,8 @@ function renderErrorPreview(errors) {
     const note = document.createElement("p");
     note.className = "usage-note";
     note.textContent =
-        "Errors since the last full pipeline started. " +
-        "They are kept when the app is closed.";
+        "Errors recorded during the current app session. " +
+        "They are cleared when the app starts.";
     card.appendChild(note);
 
     output.appendChild(card);
@@ -1418,8 +1428,8 @@ document.getElementById("loadingCancelBtn").addEventListener("click", async () =
     const cancellationMessage = "Operation cancelled by user.";
     errorsMade = true;
 
-    await window.electronAPI.executeCommand("record_error", {
-        source_command: cancelledCommand,
+    await window.electronAPI.recordErrorLog({
+        command: cancelledCommand,
         message: cancellationMessage,
         code: "CANCELLED"
     });
@@ -1490,6 +1500,7 @@ document.getElementById('mainViewBtn')
 
         
         showPage('mainViewPage');
+        refreshErrorLog();
 
     });
 
@@ -1542,7 +1553,7 @@ document.getElementById("viewDisplayErrorsBtn")
 
     showButtons("viewErrorsBtns");
 
-    await runBackendCommand("get_errors");
+    await refreshErrorLog();
 
 });
 

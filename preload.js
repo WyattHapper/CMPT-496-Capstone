@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld(
 
     cancelCommand: () => ipcRenderer.invoke("cancel-command"),
 
+        getErrorLog: () => ipcRenderer.invoke("get-error-log"),
+
+        recordErrorLog: (error) => ipcRenderer.invoke("record-error-log", error),
+
 
 
         // ==================================
