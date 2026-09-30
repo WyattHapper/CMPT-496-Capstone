@@ -9,6 +9,8 @@ import tree_sitter_language_pack as tslp
 from tree_sitter import Parser, Tree, Node, Query, QueryCursor
 from pathlib import Path
 from dataclasses import dataclass
+import os
+from agent.crawl_config import prune
 
 # Create language dictionary to associate file extensions with tree-sitter
 # language packs and desired S-expression queries for chunk extraction.
@@ -112,10 +114,19 @@ def parse_dir(dirpath: str) -> list[CodeBundle]:
 
     bundle_list = []
 
+    # Find source files, skipping the same folders the crawlers skip
+    # (bin/, obj/, Checkpoint's generated tests, ...). rglob skipped nothing,
+    # so build output and our own generated tests ended up in the vector store.
+    found = []
+    for root, dirs, filenames in os.walk(pathway):
+        prune(root, dirs)
+        for name in filenames:
+            found.append(Path(root) / name)
+
     # Parse all files
     extensions = LANGUAGE_DICT.keys()
     for ext in extensions:
-        for filepath in pathway.rglob(f"*{ext}"):
+        for filepath in (p for p in found if p.suffix.lower() == ext):
             code_bytes = filepath.read_bytes()
             tree = parsers[ext].parse(code_bytes)
             bundle = CodeBundle(path = filepath, content = code_bytes, tree = tree, language = LANGUAGE_DICT[ext]["name"])

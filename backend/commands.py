@@ -19,6 +19,7 @@ from xml.parsers.expat import errors
 import chromadb
 import json
 import time
+import requests
 from pathlib import Path
 from backend.progress_logging import progress, pipeline_progress
 
@@ -47,6 +48,7 @@ from agent.UT_agent import UTAgent
 from agent.UTV_agent import UTVAgent
 from agent.directory_agent import DirectoryAgent
 from agent.file_summary_agent import FileSummaryAgent
+from agent.llm import GEMINI_MODEL
 from agent.structured_output.file_summary_output import BusinessRule
 from agent.structured_output.UT_output import ValidatedRule
 from agent.structured_output.UTV_output import UnitTest
@@ -54,7 +56,62 @@ from agent.structured_output.UTV_output import UnitTest
 from src.build_database import build_database
 from src.build_database_JSON import build_database as build_summary_database
 
-from utils.uml_json_to_pdf import main as uml_main
+from utils.uml_json_to_pdf import (
+    build_report as uml_build_report,
+    parse_args as uml_parse_args,
+)
+
+
+def skipped_diagrams_message(skipped):
+    """
+    Warning for the Complete screen naming the diagrams the UML step
+    skipped, so a missing picture in the PDF doesn't look like a bug.
+    """
+    noun = "diagram was" if len(skipped) == 1 else "diagrams were"
+    return (
+        f"{len(skipped)} UML {noun} skipped because the AI wrote invalid "
+        f"diagram text: {', '.join(skipped)}. Everything else was created, "
+        "and the PDF marks where each skipped diagram would be."
+    )
+
+
+def test_run_result(test_run, **extra):
+    """
+    Result for a test step: counts for the UI, plus a warning for the
+    Complete screen when tests were dropped, failed, or never ran -- the step
+    itself still succeeds so the rest of the pipeline carries on.
+    """
+    result = dict(extra, message=test_run.message(), tests=test_run.summary())
+
+    if test_run.needs_attention():
+        result["warning"] = (
+            test_run.message()
+            + " Reasons are in test_report.json under the test outputs."
+        )
+
+    return result
+
+from backend.token_estimate import estimate_pipeline
+from backend.token_usage import (
+    record_usage,
+    record_to_log,
+    suggest_constants,
+    emit_stage_total,
+    track_command,
+    status_code,
+    RUN_LOG_NAME,
+)
+
+
+class StepFailedError(RuntimeError):
+    """
+    A pipeline step failed. Carries the step's error code (429, 503, ...) up
+    to the pipeline, which only sees the step's result dict, not its error.
+    """
+
+    def __init__(self, message, code=None):
+        super().__init__(message)
+        self.code = code
 
 
 # ---------------------------------------------------------
@@ -76,6 +133,9 @@ class Commands:
     def __init__(self):
         self.app_dir = APP_DIR
 
+        # Set by the dispatcher so measured usage can be filed per codebase.
+        self.current_codebase_name = "unknown"
+
     # -----------------------------------------------------
     # Internal helper
     # -----------------------------------------------------
@@ -92,30 +152,57 @@ class Commands:
 
         start = time.perf_counter()
 
-        try:
-            result = func(*args, **kwargs)
+        # Times this command into last_run_log.json: the outermost command is
+        # the run, the commands it calls are its stages.
+        with track_command(
+            self.app_dir,
+            self.current_codebase_name,
+            command_name,
+        ) as outcome:
 
-            elapsed = time.perf_counter() - start
+            try:
+                # Records real token usage for any LLM call made inside func,
+                # streaming a running total to the frontend as it goes. Scopes
+                # nest, so full_pipeline totals its stages as well as itself.
+                # Stages that call no model record nothing.
+                with record_usage(command_name, live=True) as usage:
+                    result = func(*args, **kwargs)
 
-            return {
-                "success": True,
-                "command": command_name,
-                "elapsed": round(elapsed, 2),
-                "individualStep": individualStep,
-                "result": result,
-            }
+                summary = usage.summary()
 
-        except Exception as exc:
+                if summary["calls"]:
+                    emit_stage_total(summary)
 
-            elapsed = time.perf_counter() - start
+                record_to_log(
+                    self.app_dir,
+                    self.current_codebase_name,
+                    summary,
+                )
 
-            return {
-                "success": False,
-                "command": command_name,
-                "elapsed": round(elapsed, 2),
-                "individualStep": individualStep,
-                "error": str(exc),
-            }
+                elapsed = time.perf_counter() - start
+
+                return {
+                    "success": True,
+                    "command": command_name,
+                    "elapsed": round(elapsed, 2),
+                    "individualStep": individualStep,
+                    "result": result,
+                }
+
+            except Exception as exc:
+
+                outcome.fail(exc)
+
+                elapsed = time.perf_counter() - start
+
+                return {
+                    "success": False,
+                    "command": command_name,
+                    "elapsed": round(elapsed, 2),
+                    "individualStep": individualStep,
+                    "error": str(exc),
+                    "error_code": status_code(exc),
+                }
         
     def _require_success(self, result):
         """
@@ -123,14 +210,100 @@ class Commands:
         """
 
         if not result["success"]:
-            raise RuntimeError(
+            raise StepFailedError(
                 result.get(
                     "error",
                     "Unknown command failure"
-                )
+                ),
+                result.get("error_code"),
             )
 
         return result
+
+    # -----------------------------------------------------
+    # Usage Commands
+    # -----------------------------------------------------
+
+    def get_run_usage(self):
+        """
+        Return the last run's record for the Insights "AI Usage" view.
+
+        Read-only and deliberately outside _run_command: looking at the log
+        must not be logged as a run of its own.
+        """
+
+        path = self.app_dir / RUN_LOG_NAME
+
+        if not path.exists():
+            return {"success": True, "run_usage": None}
+
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return {
+                "success": False,
+                "error": f"Could not read {RUN_LOG_NAME}: {exc}",
+            }
+
+        return {"success": True, "run_usage": data}
+
+    # -----------------------------------------------------
+    # Calibration Commands
+    # -----------------------------------------------------
+
+    def token_calibration(self, codebase: str = None, individualStep = True):
+        """
+        Report measured token usage and the constants it suggests.
+        """
+
+        def task():
+            progress("Reading recorded token usage...")
+
+            name = Path(codebase).name if codebase else None
+
+            result = suggest_constants(self.app_dir, name)
+
+            if not result.get("success", False):
+                raise RuntimeError(
+                    result.get("error", "Calibration failed")
+                )
+
+            return result
+
+        return self._run_command(
+            "token_calibration",
+            task,
+            individualStep=individualStep,
+        )
+
+    # -----------------------------------------------------
+    # Estimation Commands
+    # -----------------------------------------------------
+
+    def estimate_tokens(self, codebase: str, individualStep = True):
+        """
+        Estimate token usage for a full pipeline run without calling any LLM.
+        """
+
+        def task():
+            progress("Estimating token usage...")
+
+            result = estimate_pipeline(codebase, app_dir=self.app_dir)
+
+            # _run_command only marks a command failed when it raises, so a
+            # returned failure dict would surface as success to the frontend.
+            if not result.get("success", False):
+                raise RuntimeError(
+                    result.get("error", "Token estimate failed")
+                )
+
+            return result
+
+        return self._run_command(
+            "estimate_tokens",
+            task,
+            individualStep=individualStep,
+        )
 
     # -----------------------------------------------------
     # Database Commands
@@ -335,11 +508,13 @@ class Commands:
                     if rule["id"] in selected_rules:
                         input_rules.append(ValidatedRule.model_validate(rule))
 
-            UTAgent().run(
+            final_state = UTAgent().run(
                 input_rules,
                 codebase_name,
                 str(codebase_path)
             )
+
+            return test_run_result(final_state["test_run"])
 
 
         return self._run_command(
@@ -400,11 +575,13 @@ class Commands:
             for test in raw_tests:
                 input_tests.append(UnitTest.model_validate(test))
 
-            UTVAgent().run(
+            final_state = UTVAgent().run(
                 input_tests,
                 codebase_name,
                 str(codebase_path)
             )
+
+            return test_run_result(final_state["test_run"])
 
 
         return self._run_command(
@@ -492,13 +669,13 @@ class Commands:
             )
 
 
-            return {
-                "message": "Integration tests generated successfully",
-                "rules_processed": len(input_rules),
-                "workflows_generated": len(
+            return test_run_result(
+                result["test_run"],
+                rules_processed=len(input_rules),
+                workflows_generated=len(
                     result.get("integration_tests", [])
-                )
-            }
+                ),
+            )
 
 
         return self._run_command(
@@ -547,10 +724,17 @@ class Commands:
 
 
             try:
-                uml_main()
+                skipped = uml_build_report(uml_parse_args())
 
             finally:
                 sys.argv = old_argv
+
+            result = {"skipped_diagrams": skipped}
+
+            if skipped:
+                result["warning"] = skipped_diagrams_message(skipped)
+
+            return result
 
 
         return self._run_command(
@@ -560,7 +744,12 @@ class Commands:
         )
 
 
-    def generate_all_uml(self, summary_dir: str, individualStep = True):
+    def generate_all_uml(
+        self,
+        summary_dir: str = None,
+        codebase: str = None,
+        individualStep = True
+    ):
         """
         Generate UML PDFs for every JSON summary
         in a directory.
@@ -568,6 +757,18 @@ class Commands:
         Refactor of old:
             uml_generation()
         """
+
+        if summary_dir is None:
+            if codebase is None:
+                raise ValueError("Either summary_dir or codebase is required.")
+
+            codebase_name = Path(codebase).name
+            summary_dir = (
+                self.app_dir
+                / "agent"
+                / "file_summary_agent_output"
+                / codebase_name
+            )
 
         summary_dir = Path(summary_dir)
 
@@ -601,9 +802,21 @@ class Commands:
                     )
 
 
-            return {
-                "generated_files": generated
+            skipped = [
+                label
+                for result in generated
+                for label in result["result"]["skipped_diagrams"]
+            ]
+
+            summary = {
+                "generated_files": generated,
+                "skipped_diagrams": skipped,
             }
+
+            if skipped:
+                summary["warning"] = skipped_diagrams_message(skipped)
+
+            return summary
 
 
         return self._run_command(
@@ -615,6 +828,85 @@ class Commands:
         # -----------------------------------------------------
     # Configuration Commands
     # -----------------------------------------------------
+
+    # Model the pipeline actually uses. Verifying against this one rather
+    # than just checking the key also catches a key that is real but has
+    # no access to this model -- a failure that would otherwise only show
+    # up part-way through a run.
+    VALIDATION_MODEL = GEMINI_MODEL
+    VALIDATION_TIMEOUT_SECONDS = 15
+
+    def verify_api_key(self, api_key: str):
+        """
+        Check a key by making the smallest real generation call possible.
+
+        Returns a dict with:
+            ok      True accepted, False rejected, None could not ask.
+                    A failure to ask is not a rejection, so it does not
+                    block a key that may be perfectly good.
+            detail  human-readable reason, Google's own wording when it
+                    rejected the key.
+            model   the model version Google answered with.
+            tokens  what this check cost, from Google's own accounting.
+        """
+
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{self.VALIDATION_MODEL}:generateContent"
+        )
+
+        try:
+            response = requests.post(
+                url,
+                params={"key": api_key},
+                json={
+                    # One token in, one token out: enough to prove the key
+                    # works without a meaningful cost.
+                    "contents": [{"parts": [{"text": "hi"}]}],
+                    "generationConfig": {"maxOutputTokens": 1},
+                },
+                timeout=self.VALIDATION_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            return {
+                "ok": None,
+                "detail": f"Could not reach Google to verify the key ({exc}).",
+                "model": None,
+                "tokens": None,
+            }
+
+        try:
+            body = response.json()
+        except ValueError:
+            body = {}
+
+        if response.status_code == 200:
+
+            # Google reports the exact model that answered and what the
+            # call cost. Both are worth surfacing: the model confirms the
+            # key can reach the one the pipeline needs, and the token
+            # count is the honest price of checking.
+            usage = body.get("usageMetadata") or {}
+
+            return {
+                "ok": True,
+                "detail": "Key accepted by Google.",
+                "model": body.get("modelVersion") or self.VALIDATION_MODEL,
+                "tokens": usage.get("totalTokenCount"),
+            }
+
+        # Google puts a readable reason in the body; prefer it to the code.
+        try:
+            detail = body["error"]["message"]
+        except (KeyError, TypeError):
+            detail = response.text[:200] or f"HTTP {response.status_code}"
+
+        return {
+            "ok": False,
+            "detail": detail,
+            "model": None,
+            "tokens": None,
+        }
 
     def set_api_key(self, api_key: str):
         """
@@ -628,6 +920,22 @@ class Commands:
         """
 
         def task():
+
+            # Guarded in the frontend too, but an empty key must never
+            # reach the file: a bare "GOOGLE_API_KEY=" reads back as
+            # "no key" on the next launch while the running app believes
+            # one is set.
+            if not api_key or not api_key.strip():
+                raise ValueError("No API key provided.")
+
+            progress("Verifying API key...")
+
+            check = self.verify_api_key(api_key.strip())
+
+            if check["ok"] is False:
+                raise ValueError(
+                    "Google rejected this API key: " + str(check["detail"])
+                )
 
             progress("Saving API key...")
 
@@ -644,8 +952,28 @@ class Commands:
                 )
 
 
+            if check["ok"] is None:
+                return {
+                    "message": (
+                        "API key saved, but not verified. "
+                        + str(check["detail"])
+                    ),
+                    "verified": False,
+                    "model": None,
+                    "tokens": None,
+                }
+
+            tokens = check["tokens"]
+            unit = "token" if tokens == 1 else "tokens"
+            cost = f" - {tokens} {unit} used" if tokens else ""
+
             return {
-                "message": "API key saved"
+                "message": (
+                    f"Key verified against {check['model']}{cost}. Saved."
+                ),
+                "verified": True,
+                "model": check["model"],
+                "tokens": tokens,
             }
 
 
@@ -745,7 +1073,7 @@ class Commands:
             steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],individualStep=False)))
 
             pipeline_progress("Generating UML report...", 95)
-            steps.append( self._require_success(self.generate_all_uml(str(summary_directory), False)))
+            steps.append( self._require_success(self.generate_all_uml(str(summary_directory), individualStep=False)))
 
 
             failed = [
@@ -760,13 +1088,25 @@ class Commands:
                     failed
                 )
 
-            pipeline_progress("Pipeline Complete", 100)
-            return {
+            summary = {
                 "steps": steps,
-                "message": (
-                    "Full pipeline completed"
-                ),
+                "message": "Full pipeline completed",
             }
+
+            # Pass on every step's warning (tests dropped or failing, UML
+            # diagrams skipped), so the Complete screen can show them.
+            warnings = [
+                step["result"]["warning"]
+                for step in steps
+                if isinstance(step.get("result"), dict)
+                and step["result"].get("warning")
+            ]
+
+            if warnings:
+                summary["warning"] = "\n\n".join(warnings)
+
+            pipeline_progress("Pipeline Complete", 100)
+            return summary
 
 
         return self._run_command(

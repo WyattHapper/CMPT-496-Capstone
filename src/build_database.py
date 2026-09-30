@@ -8,6 +8,7 @@ import chromadb
 import sys
 from pathlib import Path
 from utils.tree_parse import *
+from utils.chroma_utils import collection_name
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from backend.progress_logging import progress
 
@@ -33,7 +34,7 @@ def build_database(source_path: str) -> None:
 
     source_dir = (base_dir / source_path).resolve()
     db_dir = (base_dir / "vectorStores").resolve()
-    db_name = f"{source_dir.name}_code_db"
+    db_name = collection_name(source_dir.name, "code")
 
     progress(
         f"Preparing codebase indexing: {source_dir.name}",
@@ -130,8 +131,12 @@ def build_database(source_path: str) -> None:
         sys.exit(1)
 
     if not ids:
-        logger.info("No valid chunks were generated. Aborting upsert.")
-        sys.exit(1)
+        message = (
+            f"No code files detected in '{source_dir}'. "
+            "Supported code files are .cs and .js."
+        )
+        logger.info(message)
+        raise ValueError(message)
 
 
     progress(

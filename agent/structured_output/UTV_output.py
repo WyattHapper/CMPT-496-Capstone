@@ -1,19 +1,10 @@
 """
 @file UTV_output.py
 @brief Defines structured output models for the Unit Test Validation agent (G3).
-@details Includes models for unit test candidates, execution reports, and validator decisions.
+@details Includes the unit test candidate model and the AI's answer when it repairs a test
+that does not compile (shared with the integration test agent via agent/test_harness.py).
 """
-from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
-
-class Report(BaseModel):
-    """
-    @brief Represents the unit test reports that are executed
-    """
-    model_config = ConfigDict(extra="forbid")
-    return_code: int = Field(..., description="Return code for the report. 0 if all pass. 1 if at least one failure")
-    output: str = Field(..., description="Output from the results of the executed tests")
-    errors: str = Field(..., description="Errors from the results of the executed tests")
 
 class UnitTest(BaseModel):
     """
@@ -27,19 +18,12 @@ class UnitTest(BaseModel):
     source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")
 
-class ValidatorOutput(BaseModel):
+class TestRepair(BaseModel):
     """
-    @brief class that represents the ouptut given from the validator node
-    @details The LLM assesses the tests validity based on code context and determines if the test is valid, discarded or needs more context
+    @brief The AI's corrected version of a generated test that failed to compile.
+    @details An empty test_method means the AI could not fix it, and the test is dropped.
     """
+    __test__ = False  # not a pytest test class
     model_config = ConfigDict(extra="forbid")
-    decision: Literal["failure", "success"] = Field(None, description = "The validator's decision: 'failure' if the unit test function failed when executed. 'success' if the unit test function succeeded.")
-    unit_test: Optional[str] = Field(
-        None,
-        description="Updated unit test after the LLM fixes it. Populate only when decision is 'failure'."
-    )
-    imports: Optional[list[str]] = Field(
-        None,
-        description="Updated imports after the LLM fixes it. Populate only when decision is 'failure'."
-    )
-
+    imports: list[str] = Field(default_factory=list, description="Every using directive the test needs, one per entry, e.g. 'using Xunit;'.")
+    test_method: str = Field("", description="The corrected test method(s) with their [Fact] or [Theory] attribute, and nothing else. Empty if the test cannot be fixed.")

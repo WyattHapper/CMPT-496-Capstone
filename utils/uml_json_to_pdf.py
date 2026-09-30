@@ -75,6 +75,23 @@ TEXT = colors.HexColor("#1F2937")
 MUTED = colors.HexColor("#6B7280")
 BORDER = colors.HexColor("#D5DDF0")
 
+
+class DiagramSyntaxError(RuntimeError):
+    """
+    PlantUML rejected one diagram's text.
+
+    The diagram text is written by the LLM and occasionally has a slip in it
+    (e.g. `} (enum)` after an enum body). That spoils one picture, not the
+    report, so it is skipped rather than failing the whole UML stage. Setup
+    problems -- no Java, no PlantUML -- still raise plain RuntimeError.
+    """
+
+
+# Stands in for an image path when a diagram was skipped, so the PDF can say
+# why it is missing instead of the generic "Diagram unavailable".
+SKIPPED = object()
+
+
 def sanitize_stem(name: str) -> str:
     # Replace characters that give errors for windoes file names
     import re
@@ -198,7 +215,7 @@ def render_plantuml(
             ):
                 continue
 
-            raise RuntimeError(
+            raise DiagramSyntaxError(
                 f"PlantUML failed for {puml_path.name}.\n"
                 f"STDOUT:\n{stdout}\n"
                 f"STDERR:\n{stderr}"
@@ -393,6 +410,14 @@ def image_flowable(
     max_height: float,
     styles: StyleSheet1,
 ) -> Any:
+    if image_path is SKIPPED:
+        return Paragraph(
+            "<i>Diagram skipped: the AI-generated diagram text contained an "
+            "error, so it could not be drawn. The rest of this report is "
+            "unaffected.</i>",
+            styles["SmallMuted"],
+        )
+
     if image_path is None or not image_path.exists():
         return Paragraph("<i>Diagram unavailable</i>", styles["SmallMuted"])
 
@@ -724,14 +749,19 @@ def build_story(
     return story
 
 
-def main() -> int:
-    args = parse_args()
+def build_report(args: argparse.Namespace) -> list[str]:
+    """
+    Render the PDF for one summary JSON.
+
+    Returns a label for each diagram that was skipped because PlantUML
+    rejected its text, e.g. "Format in ConsoleTable.cs". Empty if every
+    diagram rendered.
+    """
     input_path = Path(args.input).expanduser().resolve()
-    
+
     if not input_path.exists():
-        print(f"Input file not found: {input_path}", file=sys.stderr)
-        return 1
-    
+        raise FileNotFoundError(f"Input file not found: {input_path}")
+
     output_path = (
         Path(args.output).expanduser().resolve()
         if args.output
@@ -751,22 +781,30 @@ def main() -> int:
     temp_ctx = tempfile.TemporaryDirectory(prefix="uml_pdf_")
     temp_dir = Path(temp_ctx.name)
 
-    image_paths: dict[str, Optional[Path]] = {}
+    skipped: list[str] = []
+
+    def render_or_skip(snippet: str, stem: str, label: str) -> Any:
+        try:
+            return render_plantuml(snippet, stem, temp_dir, args)
+        except DiagramSyntaxError:
+            skipped.append(f"{label} in {source_name}")
+            return SKIPPED
+
+    # Values are a Path, None (no diagram given) or SKIPPED.
+    image_paths: dict[str, Any] = {}
     try:
         rel_puml = data.get("relationship_plantuml", "").replace("\\n", "\n")
-        image_paths["relationship_plantuml"] = render_plantuml(
+        image_paths["relationship_plantuml"] = render_or_skip(
             rel_puml,
             "relationship_diagram",
-            temp_dir,
-            args,
-)
+            "Relationship diagram",
+        )
 
         for idx, type_info in enumerate(data.get("types") or []):
-            image_paths[f"type_{idx}"] = render_plantuml(
+            image_paths[f"type_{idx}"] = render_or_skip(
                 type_info.get("plantuml", "").replace("\\n", "\n"),
                 f"type_{idx}_{sanitize_stem(type_info.get('name', 'type'))}",
-                temp_dir,
-                args,
+                type_info.get("name", "Unnamed type"),
             )
 
         doc = SimpleDocTemplate(
@@ -793,6 +831,21 @@ def main() -> int:
             temp_ctx.cleanup()
 
     print(f"PDF written to: {output_path}")
+    return skipped
+
+
+def main() -> int:
+    args = parse_args()
+
+    try:
+        skipped = build_report(args)
+    except FileNotFoundError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+
+    for label in skipped:
+        print(f"Skipped diagram (invalid PlantUML): {label}", file=sys.stderr)
+
     return 0
 
 

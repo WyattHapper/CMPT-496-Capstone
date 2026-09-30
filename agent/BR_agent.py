@@ -14,8 +14,7 @@ from agent.structured_output.BR_output import (
 )
 from agent.structured_output.file_summary_output import BusinessRule
 from langgraph.graph import StateGraph, START, END
-from langchain_google_genai import ChatGoogleGenerativeAI
-from dotenv import load_dotenv
+from agent.llm import make_llm
 import os
 import sys
 import json
@@ -26,6 +25,7 @@ from pathlib import Path
 from collections import defaultdict
 
 from backend.progress_logging import progress
+from utils.chroma_utils import collection_name
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -53,13 +53,7 @@ class BRAgent:
         """
         progress("Initializing business rule agent...", 0)
         if model is None:
-            load_dotenv()
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable not set.")
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
-                api_key=api_key)
+            self.llm = make_llm()
         else:
             self.llm = model
         self.graph = self.build_graph()
@@ -124,12 +118,12 @@ class BRAgent:
         client = chromadb.PersistentClient(path=str(db_dir))
 
         code_collection = client.get_collection(
-            name=f"{codebase_name}_code_db",
+            name=collection_name(codebase_name, "code"),
             embedding_function=embedding_fn
         )
 
         summary_collection = client.get_collection(
-            name=f"{codebase_name}_summary_db",
+            name=collection_name(codebase_name, "summary"),
             embedding_function=embedding_fn
         )
 

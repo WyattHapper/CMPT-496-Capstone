@@ -56,6 +56,9 @@ class UTGraphState(TypedDict):
     @var output_directory
         Base directory for writing output JSON files. Defaults to
         ./agent/UT_agent_output if not specified.
+    @var test_run
+        TestRun from agent/test_harness.py: which unit tests were kept, repaired,
+        dropped, passed and failed. Set by the runner node.
     """
     validated_rules: dict[str, list[ValidatedRule]]
     unit_tests: list[UnitTest]
@@ -69,3 +72,4 @@ class UTGraphState(TypedDict):
     codebase_name: str
     codebase_path: str
     output_directory: str
+    test_run: Any

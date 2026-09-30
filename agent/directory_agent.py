@@ -3,9 +3,9 @@ logger = logging.getLogger(__name__)
 from agent.states.directory_agent_state import DirectoryGraphState
 from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput, BusinessRulesOutput
 from langgraph.graph import StateGraph, START, END
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agent.llm import make_llm
+from agent.crawl_config import prune
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
-from dotenv import load_dotenv
 import os
 import sys
 import chromadb
@@ -14,6 +14,7 @@ from pathlib import Path
 from collections import deque
 import json
 from backend.progress_logging import progress
+from utils.chroma_utils import collection_name
 
 class DirectoryAgent:
     def __init__(self, model = None):
@@ -23,13 +24,7 @@ class DirectoryAgent:
         """
         progress("Initializing directory agent...", 5)
         if model is None:
-            load_dotenv()
-            api_key = os.getenv("GOOGLE_API_KEY")
-            if not api_key:
-                raise ValueError("GOOGLE_API_KEY environment variable not set.")
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
-                api_key=api_key)
+            self.llm = make_llm()
         else:
             self.llm = model
         self.graph = self.build_graph()
@@ -97,12 +92,12 @@ class DirectoryAgent:
         client = chromadb.PersistentClient(path=str(db_dir))
 
         code_collection = client.get_collection(
-            name=f"{codebase_name}_code_db",
+            name=collection_name(codebase_name, "code"),
             embedding_function=embedding_fn
         )
 
         summary_collection = client.get_collection(
-            name=f"{codebase_name}_summary_db",
+            name=collection_name(codebase_name, "summary"),
             embedding_function=embedding_fn
         )
 
@@ -150,23 +145,10 @@ class DirectoryAgent:
             raise ValueError(f"Invalid directory path: {root_path}")
 
         discovered_directories = [root_path]
-        IGNORED_DIRS = {
-            ".git",
-            ".github",
-            "__pycache__",
-            "node_modules",
-            "bin",
-            "obj",
-            ".venv",
-            ".vscode",
-            "NuSpecs", 
-            "NuSpec",
-            "Debug"
-        } # may have to be changed depending on what we deem useful
 
         # Walk directory tree
         for root, dirs, _ in os.walk(root_path):
-            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]  # removes directories that are in IGNORED_DIRS
+            prune(root, dirs)  # removes IGNORED_DIRS and Checkpoint-generated folders
             for d in dirs:
                 full_path = os.path.join(root, d)
                 discovered_directories.append(full_path)

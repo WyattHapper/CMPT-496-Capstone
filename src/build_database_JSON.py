@@ -16,6 +16,7 @@ import chromadb
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
 from backend.progress_logging import progress
+from utils.chroma_utils import collection_name as build_collection_name
 
 
 def format_parameters(parameters: list[dict] | None) -> str:
@@ -88,7 +89,7 @@ def build_database(codebase_name: str) -> None:
         percent=25
     )
 
-    collection_name = f"{codebase_name}_summary_db"
+    collection_name = build_collection_name(codebase_name, "summary")
     logger.info(f"\n--- Building Collection: {collection_name} ---")
     collection = client.get_or_create_collection(
         name=collection_name,

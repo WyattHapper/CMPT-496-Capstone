@@ -9,9 +9,8 @@ logger = logging.getLogger(__name__)
 from agent.states.file_summary_agent_state import FileGraphState
 from langgraph.graph import StateGraph, START, END
 from agent.structured_output.file_summary_output import FileSummaryOutput
-from langchain_google_genai import ChatGoogleGenerativeAI
+from agent.llm import make_llm
 from langchain_core.messages import AIMessage
-from dotenv import load_dotenv
 import os
 import sys
 import json
@@ -19,6 +18,7 @@ import asyncio
 from pathlib import Path
 from collections import deque
 from backend.progress_logging import progress
+from agent.crawl_config import ACCEPTABLE_EXTENSIONS, prune
 
 BATCH_SIZE = 10
 MAX_CONCURRENCY = 10
@@ -59,10 +59,7 @@ class FileSummaryAgent:
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
         else:
-            load_dotenv()
-            self.llm = ChatGoogleGenerativeAI(
-                model="gemini-3-flash-preview",
-                api_key=os.getenv("GOOGLE_API_KEY"))
+            self.llm = make_llm()
             self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
             self.graph = self.build_graph()
 
@@ -156,16 +153,19 @@ class FileSummaryAgent:
             15
         )
         files = deque()
-        acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css"]
 
         codebase_name = Path(state["directory_path"]).name
 
         # recursively loop through all files in the directory path
-        for root, _, filenames in os.walk(state["directory_path"]):
+        for root, dirs, filenames in os.walk(state["directory_path"]):
+            # Skip generated and vendored folders. Without this the crawler
+            # descends into bin/, obj/, node_modules/ and .venv/ and spends
+            # one LLM call per file it finds there.
+            prune(root, dirs)
             filenames.sort()
             for f in filenames:
                 file_ext = Path(f).suffix.lower()
-                if file_ext in acceptable_extensions:
+                if file_ext in ACCEPTABLE_EXTENSIONS:
                     # add file to queue
                     files.append(os.path.join(root, f))
 

@@ -7,6 +7,7 @@ const dotenv = require("dotenv");
 
 let pythonProcess = null;
 let mainWindow = null;
+let restartBackendAfterCancel = false;
 // Directory the backend actually writes its output to (userData when packaged).
 let backendOutputDir = __dirname;
 // ----------------------------------------------------
@@ -416,6 +417,57 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+    "get-error-log",
+    () => {
+        const errorLogPath = path.join(backendOutputDir, "error_log.json");
+
+        try {
+            const errors = JSON.parse(fs.readFileSync(errorLogPath, "utf8"));
+            return {
+                success: true,
+                errors: Array.isArray(errors) ? errors : []
+            };
+        } catch (error) {
+            return {
+                success: false,
+                error: `Could not read error log: ${error.message}`
+            };
+        }
+    }
+);
+
+ipcMain.handle(
+    "record-error-log",
+    (event, error) => {
+        const errorLogPath = path.join(backendOutputDir, "error_log.json");
+        let errors = [];
+
+        try {
+            const existing = JSON.parse(fs.readFileSync(errorLogPath, "utf8"));
+            errors = Array.isArray(existing) ? existing : [];
+        } catch (readError) {
+            // Start a new log when no readable log exists yet.
+        }
+
+        errors.push({
+            time: new Date().toISOString().slice(0, 19),
+            command: error?.command || "unknown",
+            code: error?.code || null,
+            message: error?.message || "Unknown error"
+        });
+
+        try {
+            const temporaryPath = `${errorLogPath}.tmp`;
+            fs.writeFileSync(temporaryPath, JSON.stringify(errors, null, 2), "utf8");
+            fs.renameSync(temporaryPath, errorLogPath);
+            return { success: true };
+        } catch (writeError) {
+            return { success: false, error: writeError.message };
+        }
+    }
+);
+
+ipcMain.handle(
     "exit-app",
     () => {
         if (pythonProcess) {
@@ -475,6 +527,23 @@ ipcMain.handle(
             success:true
         };
 
+    }
+);
+
+ipcMain.handle(
+    "cancel-command",
+    async () => {
+        if (!pythonProcess) {
+            return { success: false, error: "No backend command is running" };
+        }
+
+        const processToCancel = pythonProcess;
+        restartBackendAfterCancel = true;
+
+        return new Promise((resolve) => {
+            processToCancel.once("close", () => resolve({ success: true }));
+            processToCancel.kill();
+        });
     }
 );
 
@@ -833,10 +902,6 @@ function createWindow() {
 
     });
 
-    mainWindow.loadFile(
-        "index.html"
-    );
-
     // This just gets rid of the top bar
     Menu.setApplicationMenu(null);
 
@@ -848,6 +913,11 @@ function createWindow() {
     });
 
     startPythonBackend();
+
+    // Clear the previous session before the renderer can request the error log.
+    mainWindow.loadFile(
+        "index.html"
+    );
 
 }
 
@@ -872,7 +942,7 @@ ipcMain.handle("select-codebase", async () => {
 // START PYTHON BACKEND
 // ----------------------------------------------------
 
-function startPythonBackend() {
+function startPythonBackend(preserveErrors = false) {
 
     const isWindows = process.platform === "win32";
 
@@ -888,6 +958,18 @@ function startPythonBackend() {
     // APP_DIR to: the frozen exe's own directory, or the repo root
     // (__dirname) when falling back to running main.py directly.
     backendOutputDir = exeExists ? backendDir : __dirname;
+
+    if (!preserveErrors) {
+        try {
+            fs.writeFileSync(
+                path.join(backendOutputDir, "error_log.json"),
+                "[]",
+                "utf8"
+            );
+        } catch (error) {
+            console.error("Could not clear the previous error log:", error);
+        }
+    }
 
     console.log("Backend directory:", backendDir);
     console.log("Output directory:", backendOutputDir);
@@ -993,6 +1075,13 @@ function startPythonBackend() {
     pythonProcess.on("close", (code) => {
 
         console.log("Backend exited:", code);
+
+        if (restartBackendAfterCancel) {
+            restartBackendAfterCancel = false;
+            pythonProcess = null;
+            startPythonBackend(true);
+            return;
+        }
 
         if (code !== 0 && mainWindow && !mainWindow.isDestroyed()) {
 

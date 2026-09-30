@@ -66,8 +66,7 @@ window.electronAPI.hasAPIKey()
 
         if (hasAPI) {
 
-            const apiBtnEl = document.getElementById("apiBtn");
-            if (apiBtnEl) apiBtnEl.classList.add("unusable-btn");
+            showApiKeyPresent();
 
             const analysisBtnEl = document.getElementById("analysisBtn");
             if (analysisBtnEl) analysisBtnEl.classList.remove("unusable-btn");
@@ -120,6 +119,19 @@ function showLoading(title, message) {
 
     //hide ok button
     document.getElementById("loadingOkBtn").classList.add("hidden");
+    document.getElementById("loadingCancelBtn").classList.remove("hidden");
+    document.getElementById("loadingCancelBtn").disabled = false;
+
+    // hide any report left over from a previous estimate
+    const previousEstimate =
+        document.getElementById("estimateOutput");
+
+    if (previousEstimate) {
+        previousEstimate.classList.add("hidden");
+        previousEstimate.textContent = "";
+    }
+
+    resetTokenMeter();
 
    
 }
@@ -159,6 +171,106 @@ function updatePipelineLoading(message) {
 
 
 
+// ============================================
+// Live token meter
+// ============================================
+
+function resetTokenMeter() {
+
+    const meter =
+        document.getElementById("tokenMeter");
+
+    if (!meter) return;
+
+    meter.classList.add("hidden");
+
+    document.getElementById("tokenMeterValue")
+        .textContent = "0";
+
+    document.getElementById("tokenMeterStages")
+        .textContent = "";
+
+    showLoadingWarning(null);
+
+}
+
+
+// Shown on the Complete screen when a command finished but had to leave
+// something out, e.g. UML diagrams skipped because the AI's diagram text was
+// invalid. Without it a missing diagram looks like a program mistake.
+function showLoadingWarning(text) {
+
+    const warning =
+        document.getElementById("loadingWarning");
+
+    if (!warning) return;
+
+    warning.textContent = text || "";
+    warning.classList.toggle("hidden", !text);
+
+}
+
+
+function updateTokenMeter(response) {
+
+    const meter =
+        document.getElementById("tokenMeter");
+
+    if (!meter) return;
+
+    meter.classList.remove("hidden");
+
+    const total = response.total_tokens ?? 0;
+
+    document.getElementById("tokenMeterValue")
+        .textContent = total.toLocaleString();
+
+}
+
+
+function addTokenMeterStage(response) {
+
+    const meter =
+        document.getElementById("tokenMeter");
+
+    const list =
+        document.getElementById("tokenMeterStages");
+
+    if (!meter || !list) return;
+
+    meter.classList.remove("hidden");
+
+    const used =
+        (response.input_tokens ?? 0) + (response.output_tokens ?? 0);
+
+    // The pipeline records itself as well as its stages, so showing its row
+    // alongside them would look like double counting. Its figure is already
+    // the running total above.
+    if (response.stage === "full_pipeline") {
+
+        document.getElementById("tokenMeterValue")
+            .textContent = used.toLocaleString();
+
+        return;
+    }
+
+    const row = document.createElement("div");
+    row.className = "stage-row";
+
+    const name = document.createElement("span");
+    name.textContent = response.stage;
+
+    const amount = document.createElement("span");
+    amount.textContent =
+        `${used.toLocaleString()} (${response.calls} calls)`;
+
+    row.appendChild(name);
+    row.appendChild(amount);
+    list.appendChild(row);
+
+}
+
+
 function finishLoading(message = "Process completed successfully!") {
 
     document.getElementById("loadingTitle").textContent = "Complete";
@@ -180,6 +292,7 @@ function finishLoading(message = "Process completed successfully!") {
 
     // show OK button
     document.getElementById("loadingOkBtn").classList.remove("hidden");
+    document.getElementById("loadingCancelBtn").classList.add("hidden");
 }
 
 function hideLoading() {
@@ -190,6 +303,28 @@ function hideLoading() {
     if (!overlay) return;
 
     overlay.classList.add("hidden");
+
+    const cancelButton = document.getElementById("loadingCancelBtn");
+    if (cancelButton) {
+        cancelButton.classList.add("hidden");
+        cancelButton.disabled = false;
+    }
+}
+
+function showErrorPopup(message) {
+    const popup = document.getElementById("errorPopup");
+    const messageElement = document.getElementById("errorPopupMessage");
+
+    if (!popup || !messageElement) return;
+
+    messageElement.textContent = String(message || "An unexpected error occurred.");
+    popup.classList.remove("hidden");
+}
+
+function hideErrorPopup() {
+    const popup = document.getElementById("errorPopup");
+
+    if (popup) popup.classList.add("hidden");
 }
 
 function updatePipleineProgressBar(percent){
@@ -239,6 +374,16 @@ async function runBackendCommand(command,args={}){
         args
     );
 
+}
+
+async function refreshErrorLog() {
+    const response = await window.electronAPI.getErrorLog();
+
+    if (response?.success) {
+        renderErrorPreview(response.errors);
+    } else {
+        renderTextPreview(response?.error || "Could not load errors.");
+    }
 }
 
 
@@ -855,19 +1000,270 @@ function renderErrorPreview(errors) {
         return;
     }
 
-    const pre = document.createElement("pre");
+    // Entries are {time, command, code, message}; older ones may be strings.
+    const rows = errorList.map(error => (
+        typeof error === "string"
+            ? ["—", "—", "—", error]
+            : [
+                formatStamp(error.time),
+                error.code ?? "—",
+                error.command || "—",
+                error.message || "—",
+            ]
+    ));
 
-    pre.className = "file-preview-text";
+    const card = document.createElement("div");
+    card.className = "summary-card usage-card";
 
-    pre.textContent = errorList
-        .map(error => (
-            typeof error === "string"
-                ? error
-                : JSON.stringify(error, null, 2)
-        ))
-        .join("\n\n");
+    card.appendChild(usageHeader("Errors"));
 
-    output.appendChild(pre);
+    card.appendChild(usageTable(["Time", "Code", "Step", "Message"], rows))
+        .classList.add("error-table");
+
+    const note = document.createElement("p");
+    note.className = "usage-note";
+    note.textContent =
+        "Errors recorded during the current app session. " +
+        "They are cleared when the app starts.";
+    card.appendChild(note);
+
+    output.appendChild(card);
+}
+
+// ============================================
+// AI Usage (last_run_log.json)
+// ============================================
+
+function formatSeconds(seconds) {
+
+    if (seconds === null || seconds === undefined) return "—";
+
+    if (seconds < 60) return `${seconds.toFixed(1)} s`;
+
+    const minutes = Math.floor(seconds / 60);
+    const rest = Math.round(seconds % 60);
+
+    return `${minutes} min ${rest} s`;
+}
+
+function formatCount(value) {
+
+    return (value ?? 0).toLocaleString();
+}
+
+function formatStamp(stamp) {
+
+    return stamp ? new Date(stamp).toLocaleString() : "—";
+}
+
+function usageStatus(status) {
+
+    const badge = document.createElement("span");
+    badge.className = `usage-status ${status}`;
+    badge.textContent = status;
+
+    return badge;
+}
+
+// rows: array of arrays of cells; a cell is text or a DOM node.
+// headers may be null for a plain label/value table.
+function usageTable(headers, rows, footer) {
+
+    const table = document.createElement("table");
+    table.className = "usage-table";
+
+    if (headers) {
+
+        const head = table.createTHead().insertRow();
+
+        headers.forEach(text => {
+            const th = document.createElement("th");
+            th.textContent = text;
+            head.appendChild(th);
+        });
+    }
+
+    const body = table.createTBody();
+
+    const addRow = (cells, target) => {
+        const row = target.insertRow();
+        cells.forEach(cell => {
+            const td = row.insertCell();
+            if (cell instanceof Node) td.appendChild(cell);
+            else td.textContent = cell;
+        });
+    };
+
+    rows.forEach(cells => addRow(cells, body));
+
+    if (footer) addRow(footer, table.createTFoot());
+
+    return table;
+}
+
+function usageHeader(text) {
+
+    const header = document.createElement("h2");
+    header.className = "summary-header";
+    header.textContent = text;
+
+    return header;
+}
+
+function renderRunUsage(run) {
+
+    const output =
+        document.getElementById("viewDisplayOutputBox");
+
+    output.innerHTML = "";
+
+    if (!run) {
+        renderTextPreview(
+            "No run recorded yet.\n\n" +
+            "Run the full pipeline, or any step that uses the AI, " +
+            "and its token usage and timings will show here."
+        );
+        return;
+    }
+
+    const card = document.createElement("div");
+    card.className = "summary-card usage-card";
+
+    card.appendChild(usageHeader("AI Usage — Last Run"));
+
+    const totals = run.totals || {};
+
+    const failedNote = totals.failed_calls
+        ? ` (${totals.failed_calls} failed)`
+        : "";
+
+    const overview = [
+        ["Codebase", run.codebase || "—"],
+        ["Status", usageStatus(run.status)],
+        ["Started", formatStamp(run.started_at)],
+        ["Duration", formatSeconds(run.elapsed_seconds)],
+        ["AI calls", formatCount(totals.calls) + failedNote],
+        ["Input tokens", formatCount(totals.input_tokens)],
+        ["Output tokens", formatCount(totals.output_tokens)],
+        ["Total tokens", formatCount(totals.total_tokens)],
+        ["Run ID", run.run_id || "—"],
+    ];
+
+    // Only when Google made us wait, so a slow run reads as throttled,
+    // not stuck.
+    if (totals.waits) {
+        overview.splice(4, 0, [
+            "Waited for Google",
+            `${totals.waits} time${totals.waits === 1 ? "" : "s"}, ` +
+            formatSeconds(totals.waited_seconds),
+        ]);
+    }
+
+    card.appendChild(usageTable(null, overview))
+        .classList.add("usage-overview");
+
+    if (run.error) {
+        const error = document.createElement("pre");
+        error.className = "summary-section-body usage-error";
+        error.textContent = run.error_code
+            ? `Error ${run.error_code}: ${run.error}`
+            : run.error;
+        card.appendChild(error);
+    }
+
+    const stages = run.stages || [];
+
+    if (stages.length) {
+
+        card.appendChild(usageHeader("By Step"));
+
+        card.appendChild(usageTable(
+            ["Step", "Status", "Time", "Calls", "Input", "Output", "Total"],
+            stages.map(stage => [
+                stage.stage,
+                usageStatus(stage.status),
+                formatSeconds(stage.elapsed_seconds),
+                formatCount(stage.calls),
+                formatCount(stage.input_tokens),
+                formatCount(stage.output_tokens),
+                formatCount(stage.total_tokens),
+            ]),
+            [
+                "Total", "", formatSeconds(run.elapsed_seconds),
+                formatCount(totals.calls),
+                formatCount(totals.input_tokens),
+                formatCount(totals.output_tokens),
+                formatCount(totals.total_tokens),
+            ]
+        ));
+    }
+
+    const calls = run.calls || [];
+
+    if (calls.length) {
+
+        card.appendChild(usageHeader("Slowest AI Calls"));
+
+        const slowest = [...calls]
+            .sort((a, b) => (b.duration_seconds ?? 0) - (a.duration_seconds ?? 0))
+            .slice(0, 5);
+
+        card.appendChild(usageTable(
+            ["Step", "Time", "Input", "Output", "Status"],
+            slowest.map(call => [
+                call.stage,
+                formatSeconds(call.duration_seconds),
+                formatCount(call.input_tokens),
+                formatCount(call.output_tokens),
+                usageStatus(call.status),
+            ])
+        ));
+    }
+
+    const failed = calls.filter(call => call.status === "failed");
+
+    if (failed.length) {
+
+        card.appendChild(usageHeader("Failed AI Calls"));
+
+        card.appendChild(usageTable(
+            ["Step", "Code", "Error"],
+            failed.map(call => [
+                call.stage,
+                call.error_code ?? "—",
+                call.error || "—",
+            ])
+        )).classList.add("error-table");
+    }
+
+    const waits = run.waits || [];
+
+    if (waits.length) {
+
+        card.appendChild(usageHeader("Waits for Google"));
+
+        const reasonText = reason => reason === "429"
+            ? "429 rate limit"
+            : `${reason} Google busy`;
+
+        card.appendChild(usageTable(
+            ["Step", "Reason", "Waited"],
+            waits.map(wait => [
+                wait.stage,
+                reasonText(wait.reason),
+                formatSeconds(wait.seconds),
+            ])
+        ));
+    }
+
+    const note = document.createElement("p");
+    note.className = "usage-note";
+    note.textContent =
+        "Shows the most recent run that used the AI. " +
+        "Output tokens include the model's thinking tokens.";
+    card.appendChild(note);
+
+    output.appendChild(card);
 }
 
 function renderTextPreview(text) {
@@ -1014,6 +1410,35 @@ async function loadValidatedRulesSelection() {
 
 
 //loading complete button
+document.getElementById("loadingCancelBtn").addEventListener("click", async () => {
+    if (!activeCommand) return;
+
+    const cancelButton = document.getElementById("loadingCancelBtn");
+    const cancelledCommand = activeCommand;
+    cancelButton.disabled = true;
+
+    const response = await window.electronAPI.cancelCommand();
+
+    if (!response?.success) {
+        cancelButton.disabled = false;
+        showErrorPopup(response?.error || "Could not cancel the operation.");
+        return;
+    }
+
+    const cancellationMessage = "Operation cancelled by user.";
+    errorsMade = true;
+
+    await window.electronAPI.recordErrorLog({
+        command: cancelledCommand,
+        message: cancellationMessage,
+        code: "CANCELLED"
+    });
+
+    activeCommand = null;
+    hideLoading();
+    showPage("homePage");
+});
+
 document.getElementById("loadingOkBtn").addEventListener("click", () => {
 
     hideLoading();
@@ -1075,8 +1500,12 @@ document.getElementById('mainViewBtn')
 
         
         showPage('mainViewPage');
+        refreshErrorLog();
 
     });
+
+document.getElementById("errorPopupCloseBtn")
+    .addEventListener("click", hideErrorPopup);
 
 document.getElementById("viewDisplaySourcesBtn")
 .addEventListener("click", () => {
@@ -1124,7 +1553,16 @@ document.getElementById("viewDisplayErrorsBtn")
 
     showButtons("viewErrorsBtns");
 
-    await runBackendCommand("get_errors");
+    await refreshErrorLog();
+
+});
+
+document.getElementById("viewUsageBtn")
+.addEventListener("click", async () => {
+
+    showButtons("viewUsageBtns");
+
+    await runBackendCommand("get_run_usage");
 
 });
 
@@ -1359,6 +1797,36 @@ document.getElementById('codebaseAnalysisPipelineBtn')
 
 });
 
+document.getElementById('estimateTokensBtn')
+    .addEventListener('click', () => {
+
+        showLoading(
+            "Token Usage Estimate",
+            "Scanning codebase..."
+        );
+
+        runBackendCommand(
+            "estimate_tokens",
+        {
+            codebase:selectedCodebasePath
+        });
+    });
+
+document.getElementById('tokenCalibrationBtn')
+    .addEventListener('click', () => {
+
+        showLoading(
+            "Token Calibration",
+            "Reading recorded usage..."
+        );
+
+        runBackendCommand(
+            "token_calibration",
+        {
+            codebase:selectedCodebasePath
+        });
+    });
+
 document.getElementById('createCodeDatabaseOnlyBtn')
     .addEventListener('click', () => {
 
@@ -1565,7 +2033,7 @@ document.getElementById('runUnitTestValidationOnlyBtn')
 
 
 document.getElementById('runIntegrationTestGenerationOnlyBtn')
-    .addEventListener('click', () => {
+    .addEventListener('click', (event) => {
         event.preventDefault();
         event.stopPropagation();
         showLoading(
@@ -1611,7 +2079,7 @@ document.getElementById('runUMLGenerationOnly')
         );
 
         runBackendCommand(
-            "generate_uml",
+            "generate_all_uml",
             {
                 codebase:selectedCodebasePath
             }
@@ -1640,18 +2108,27 @@ document.getElementById('apiBackBtn')
 document.getElementById('submitApiKeyBtn')
     .addEventListener('click', async () => {
 
-        showPage('homePage');
+        const apiKeyInputEl = document.getElementById('apiKeyInput');
+        const apiKey = apiKeyInputEl.value.trim();
 
-        document.getElementById('apiBtn').classList.add('unusable-btn');
-        document.getElementById('analysisBtn').classList.remove('unusable-btn');
-
-        const apiKey = document.getElementById('apiKeyInput').value;
-
-        const response = await runBackendCommand("set_api_key", { api_key: apiKey });
-
-        if (response?.success) {
-            hasAPI = true;
+        // Nothing typed: saving would write a bare "GOOGLE_API_KEY=" and
+        // still report success, so the app would behave as though a key
+        // were set until the next launch read it back as missing. trim()
+        // so a box holding only spaces counts as empty too.
+        if (!apiKey) {
+            showApiKeyError("Please enter an API key.");
+            return;
         }
+
+        hideApiKeyError();
+
+        // executeCommand resolves as soon as the command has been written
+        // to the backend's stdin -- its {success:true} means "sent", not
+        // "worked". The real verdict arrives later on the response stream,
+        // so everything that depends on it lives in onBackendResponse.
+        setApiKeyPending(true);
+
+        await runBackendCommand("set_api_key", { api_key: apiKey });
 
     });
 
@@ -1659,10 +2136,12 @@ document.getElementById('replaceApiKeyBtn')
     .addEventListener('click', () => {
 
         console.log("Replace API Key button clicked");
-        
 
+        // newApiUi() reveals the Back button, and it is left revealed on
+        // purpose. Hiding it here stranded anyone who opened this page to
+        // change a key and then thought better of it -- the only way out
+        // was to enter a key that Google would accept.
         newApiUi();
-        document.getElementById('apiBackBtn').classList.add('hidden');
 
     });
     
@@ -1780,10 +2259,73 @@ window.electronAPI.onBackendResponse((response) => {
     }
 
 
+    // ----------------------------------------
+    // API key save / verification result
+    // ----------------------------------------
+    // Handled here rather than at the Submit button because that only ever
+    // sees the "command sent" acknowledgement. Taken before the generic
+    // error path below so a rejected key stays on the API page with an
+    // explanation instead of being dumped into the error box.
+    if (response.command === "set_api_key") {
+
+        setApiKeyPending(false);
+        activeCommand = null;
+
+        if (!response.success) {
+            showApiKeyError(
+                response.error || "Could not save the API key. Please try again."
+            );
+            return;
+        }
+
+        hasAPI = true;
+
+        // Saved now, so there is no reason to keep it on screen.
+        document.getElementById('apiKeyInput').value = "";
+
+        showApiKeyPresent();
+        document.getElementById('analysisBtn').classList.remove('unusable-btn');
+
+        // Show what the check found -- which model answered and what it
+        // cost -- before leaving the page. Navigating straight home threw
+        // that away, so a verified key looked no different from no check
+        // at all.
+        const verdict = response.result?.message || "API key saved.";
+
+        if (response.result?.verified === false) {
+            showApiKeyError(verdict);
+        } else {
+            showApiKeySuccess(verdict);
+        }
+
+        setTimeout(() => {
+            hideApiKeyError();
+            showPage('homePage');
+        }, 2500);
+
+        return;
+    }
+
+
     // The command acknowledgement does not contain the error list.
     if (activeCommand === "get_errors" && response.errors !== undefined) {
 
         renderErrorPreview(response.errors);
+        activeCommand = null;
+
+        return;
+    }
+
+    // Handled here, ahead of the generic error path, so a missing or
+    // unreadable log shows in the Insights panel instead of leaving the page.
+    if (activeCommand === "get_run_usage" && !response.type) {
+
+        if (response.success) {
+            renderRunUsage(response.run_usage);
+        } else {
+            renderTextPreview(response.error || "Could not load AI usage.");
+        }
+
         activeCommand = null;
 
         return;
@@ -1859,6 +2401,20 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+    // ----------------------------------------
+    // Live token usage
+    // ----------------------------------------
+    if (response.type === "token_usage") {
+        updateTokenMeter(response);
+        return;
+    }
+
+    if (response.type === "token_usage_stage") {
+        addTokenMeterStage(response);
+        return;
+    }
+
+
     if (response.type === "pipeline_progress") {
 
         console.log(response);
@@ -1881,6 +2437,8 @@ window.electronAPI.onBackendResponse((response) => {
     if (!response.success) {
 
         errorsMade = true;
+
+        showErrorPopup(response.error || "The operation could not be completed.");
 
         const errorBox =
             document.getElementById("errorOutput");
@@ -1907,6 +2465,54 @@ window.electronAPI.onBackendResponse((response) => {
         return;
     }
 
+
+
+    // ----------------------------------------
+    // Token estimate report
+    // ----------------------------------------
+    // Handled ahead of the generic path because the report is multi-line and
+    // loadingStepMessage collapses whitespace.
+    const reportCommands = ["estimate_tokens", "token_calibration"];
+
+    if (
+        reportCommands.includes(activeCommand) &&
+        reportCommands.includes(response.command) &&
+        response.result
+    ) {
+
+        const report =
+            document.getElementById("estimateOutput");
+
+        if (report && response.result.message) {
+
+            report.textContent = response.result.message;
+            report.classList.remove("hidden");
+
+        }
+
+        const low  = response.result.total_input_low;
+        const high = response.result.total_input_high;
+
+        let summary =
+            response.command === "token_calibration"
+                ? "Calibration complete"
+                : "Estimate complete";
+
+        if (typeof low === "number" && typeof high === "number") {
+
+            summary =
+                low === high
+                    ? `~${low.toLocaleString()} input tokens`
+                    : `~${low.toLocaleString()} - ${high.toLocaleString()} input tokens`;
+
+        }
+
+        finishLoading(summary);
+
+        activeCommand = null;
+
+        return;
+    }
 
 
     // ----------------------------------------
@@ -1946,6 +2552,8 @@ window.electronAPI.onBackendResponse((response) => {
                 response.message ||
                 `${activeCommand} completed`
             );
+
+            showLoadingWarning(response.result?.warning);
 
             activeCommand = null;
         }
@@ -2098,7 +2706,74 @@ function toggleTheme() {
   localStorage.setItem("theme", newTheme);
 }
 
+function setApiKeyPending(pending) {
+
+    const btn = document.getElementById('submitApiKeyBtn');
+
+    if (!btn) return;
+
+    btn.disabled = pending;
+    btn.textContent = pending ? "Verifying..." : "Submit";
+
+}
+
+
+function showApiKeySuccess(text) {
+
+    const el = document.getElementById('apiKeyErrorMsg');
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.classList.remove("api-key-error");
+    el.classList.add("api-key-ok");
+    el.classList.remove("hidden");
+
+}
+
+
+function showApiKeyError(text) {
+
+    const el = document.getElementById('apiKeyErrorMsg');
+
+    if (!el) return;
+
+    el.textContent = text;
+    el.classList.remove("api-key-ok");
+    el.classList.add("api-key-error");
+    el.classList.remove("hidden");
+
+}
+
+
+function hideApiKeyError() {
+
+    const el = document.getElementById('apiKeyErrorMsg');
+
+    if (el) el.classList.add("hidden");
+
+}
+
+
+function showApiKeyPresent() {
+
+    const apiBtnEl = document.getElementById("apiBtn");
+
+    if (!apiBtnEl) return;
+
+    // Deliberately NOT .unusable-btn. That class is cosmetic -- it only
+    // fades the button and shows a not-allowed cursor -- but this button
+    // is the only route to the Replace / Keep page, so looking disabled
+    // made a stale key appear unchangeable. Relabel instead of greying.
+    apiBtnEl.classList.remove("unusable-btn");
+    apiBtnEl.textContent = "Change API Key";
+
+}
+
+
 function overwriteApiUi() {
+    hideApiKeyError();
+
     document.getElementById('apiKeyMsg').classList.remove("hidden");
     document.getElementById('apiKeyInput').classList.add("hidden");
     document.getElementById('submitApiKeyBtn').classList.add("hidden");
@@ -2109,6 +2784,14 @@ function overwriteApiUi() {
 
 function newApiUi() {
     document.getElementById('apiKeyMsg').classList.add("hidden");
+
+    // Start empty every time. Pages here are shown/hidden rather than
+    // reloaded, so whatever the last person typed would otherwise still
+    // be sitting in the box when someone opens it to change the key.
+    document.getElementById('apiKeyInput').value = "";
+
+    hideApiKeyError();
+
     document.getElementById('apiKeyInput').classList.remove("hidden");
     document.getElementById('submitApiKeyBtn').classList.remove("hidden");
     document.getElementById('replaceApiKeyBtn').classList.add("hidden");
