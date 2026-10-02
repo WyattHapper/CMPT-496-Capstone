@@ -11,95 +11,46 @@
 
 from pathlib import Path
 
+LSP_LANGUAGES = {
+    "python",
+    "javascript",
+    "typescript",
+    "go",
+    "rust",
+    "csharp",
+}
+
+NON_LSP_LANGUAGES = {
+    "markdown",
+    "html",
+    "css",
+    "sql",
+    "yaml",
+    "bash",
+    "powershell",
+}
+
+SUPPORTED_LANGUAGES = LSP_LANGUAGES | NON_LSP_LANGUAGES
+
 LANGUAGE_EXTENSIONS = {
-    # Systems / compiled
-    ".c": "c",
-    ".h": "c",              # ambiguous with C++, resolved by filename/content if needed
-    ".cpp": "cpp",
-    ".cc": "cpp",
-    ".cxx": "cpp",
-    ".hpp": "cpp",
-    ".rs": "rust",
-    ".go": "go",
-    ".swift": "swift",
-    ".m": "objective-c",    # ambiguous with MATLAB
-    ".mm": "objective-c",
-
-    # JVM
-    ".java": "java",
-    ".kt": "kotlin",
-    ".kts": "kotlin",
-    ".scala": "scala",
-    ".groovy": "groovy",
-    ".clj": "clojure",
-
-    # Web / scripting
     ".py": "python",
-    ".rb": "ruby",
-    ".php": "php",
     ".js": "javascript",
     ".jsx": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
-    ".pl": "perl",
-    ".lua": "lua",
-
-    # .NET
+    ".go": "go",
+    ".rs": "rust",
     ".cs": "csharp",
-    ".fs": "fsharp",
-    ".vb": "vbnet",
 
-    # Functional
-    ".hs": "haskell",
-    ".ml": "ocaml",
-    ".ex": "elixir",
-    ".exs": "elixir",
-    ".erl": "erlang",
-
-    # Data / scientific
-    ".r": "r",
-    ".jl": "julia",
+    ".md": "markdown",
+    ".html": "html",
+    ".css": "css",
     ".sql": "sql",
-
-    # Shell / config / infra
-    ".sh": "bash",
-    ".bash": "bash",
-    ".zsh": "bash",
-    ".ps1": "powershell",
-    ".tf": "terraform",
     ".yaml": "yaml",
     ".yml": "yaml",
-
-    # Mobile
-    ".dart": "dart",
-
-    # Other
-    ".zig": "zig",
-    ".nim": "nim",
-    ".sol": "solidity",
-}
-
-# Exact, case-sensitive filenames with no (or a non-signaling) extension.
-LANGUAGE_FILENAMES = {
-    "Dockerfile": "dockerfile",
-    "Makefile": "makefile",
-    "GNUmakefile": "makefile",
-    "Rakefile": "ruby",
-    "Gemfile": "ruby",
-    "Vagrantfile": "ruby",
-    "Podfile": "ruby",
-    "Jenkinsfile": "groovy",
-    "BUILD": "starlark",       # Bazel
-    "BUILD.bazel": "starlark",
-    "WORKSPACE": "starlark",
-    "CMakeLists.txt": "cmake",
-    "go.mod": "go",
-    "go.sum": "go",
-    ".bashrc": "bash",
-    ".zshrc": "bash",
-    ".profile": "bash",
-    ".gitignore": "gitignore",
-    ".editorconfig": "editorconfig",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".ps1": "powershell",
 }
 
 def detect_language(filename: str) -> str | None:

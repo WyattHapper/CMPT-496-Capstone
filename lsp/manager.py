@@ -1,98 +1,149 @@
-"""
-@file backend/lsp/language.py
-@brief Selects the right server for the codebase depending on the detected language.
-@details This module provides a function to detect the programming language of a file based on its extension
-"""
-
 from pathlib import Path
-from lsp_client import PyrightClient, GoplsClient, RustAnalyzerClient, TypescriptClient, DenoClient
+
 from lsp.language import detect_language
 from lsp.base_client import LSPClient
+from lsp.context import FileContext
+from contextlib import AsyncExitStack
+
+#language-specific client imports go here
+import lsp.clients.csharp as csharp_client
+
+
 
 class LSPManager:
     """
-    Manages the Language Server Protocol (LSP) client based on the detected programming language of a file.
+    Manages language-specific LSP clients for a given codebase.
+
+    This class is responsible for detecting the programming languages
+    used in the codebase and providing access to the appropriate
+    language-specific LSP clients.
     """
 
     CLIENTS = {
-        "python": PyrightClient,
-        "go": GoplsClient,
-        "rust": RustAnalyzerClient,
-        "typescript": TypescriptClient,
-        "deno": DenoClient,
+        "csharp": csharp_client.CSharpClient,
     }
 
     def __init__(self, codebase_path: str | Path):
-        self.codebase_path = Path(codebase_path).resolve()
-        self.languages = self._detect_languages()
+        self.codebase_path = Path(codebase_path)
+        self.languages = self.detect_languages()
+
+        self._stack = AsyncExitStack()
+        self.clients = {}
+        
+    async def __aenter__ (self):
+
+        for language in self.languages:
+            
+            client_class = self.get_client_class(language)
+
+            if client_class is None:
+                print(f"No LSP client registered for {language}, skipping.")
+                continue
+
+            client = client_class(self.codebase_path)
+            client = await self._stack.enter_async_context(client)
+
+            self.clients[language] = client
+        
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback):
+
+        await self._stack.aclose()
+
         
 
-    def _select_client(self):
+    def detect_languages(self) -> set[str]:
         """
-        Selects the appropriate LSP client based on the detected programming language.
+        Detects the programming languages used in the codebase.
 
         Returns:
-            An instance of the appropriate LSP client.
+            set[str]: A set of detected programming languages.
         """
-        if self.language == "python":
-            return PyrightClient
-        elif self.language == "typescript":
-            return TypescriptClient
-        elif self.language == "rust":
-            return RustAnalyzerClient
-        else:
-            raise ValueError(f"No LSP client available for language: {self.language}")
-        
-    def create_client(self, workspace_path: str | Path):
-        """
-        Creates an instance of the selected LSP client.
-
-        Returns:
-            An instance of the selected LSP client.
-        """
-        return LSPClient(workspace_path, client_class=self.client_class)
-    
-
-    def _detect_languages(self):
-        """
-        Detects the programming languages present in the codebase.
-
-        Returns:
-            A set of detected programming languages.
-        """
-        languages = set()
-       
+        detected_languages = set()
         for file_path in self.codebase_path.rglob("*"):
-        
             if file_path.is_file():
                 language = detect_language(file_path)
                 if language:
-                    languages.add(language)
-        return languages
+                    detected_languages.add(language)
+        return detected_languages
+
     
-    def get_client_class(self, file_path: str | Path):
+    def get_language(self, file_path: str | Path) -> str | None:
         """
-        Returns the LSP client class for the given programming language.
+        Detects the programming language of a specific file.
 
         Args:
-            file_path (str | Path): The path to the file for which to get the LSP client class.
+            file_path: Path to the source file.
 
         Returns:
-            The corresponding LSP client class.
+            The detected programming language, or None if it cannot be detected.
         """
-        language = detect_language(file_path)
+        return detect_language(file_path)
+    
+    def get_client(self, file_path: str | Path):
+        language = self.get_language(file_path)
 
-        if language not in self.CLIENTS:
-            raise ValueError(f"No LSP client available for language: {language}")
+    
+        if language is None:
+            return None
+        
+        return self.clients.get(language)
 
-        return self.CLIENTS.get(language)
-
-    def create_client(self, file_path: str | Path):
+    def get_client_class(self, language: str):
         """
-        Creates an instance of the selected LSP client for the given file.
+        Returns the appropriate LSP client class for a given programming language.
 
         Args:
-            file_path (str | Path): The path to the file for which to create the LSP client."
+            language (str): The programming language.
         """
-        client_class = self.get_client_class(file_path)
-        return LSPClient(self.codebase_path, client_class=client_class)
+
+       
+        if language is None:
+            raise ValueError("Language cannot be None")
+        
+        client_class = self.CLIENTS.get(language)
+
+        # if client_class is None:
+        #     raise ValueError(
+        #         f"No LSP client class found for language: {language}"
+        #     )
+
+       
+        
+        # Add more language-specific client classes here as needed
+        return client_class
+    
+    def create_client(self, language: str) -> LSPClient | None:
+        """
+        Creates a language-specific LSP client for the given programming language.
+
+        Args:
+            language (str): The programming language.
+        """
+        client_class = self.get_client_class(language)
+
+        if client_class is None:
+            return None
+       
+        return client_class(self.codebase_path)
+    
+
+    async def get_file_context(self, file_path: str | Path):
+
+        file_path = Path(file_path)
+
+        language = self.get_language(file_path)
+
+        if language is None:
+            return None
+        
+        client = self.get_client(file_path)
+
+        if client is None:
+            return None
+        
+        symbols = await client.get_document_symbols(file_path)
+
+        return FileContext(file_path = file_path, language = language, symbols = symbols)
+      

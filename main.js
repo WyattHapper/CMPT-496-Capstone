@@ -905,8 +905,8 @@ function startPythonBackend() {
         console.log("Executable not found, falling back to Python script");
 
         const pythonPath = isWindows
-            ? path.join(__dirname, ".venv", "Scripts", "python.exe")
-            : "python3";
+        ? path.join(__dirname, ".venv", "Scripts", "python.exe")
+        : path.join(__dirname, ".venv", "bin", "python");
 
         const scriptPath = path.join(__dirname, "main.py");
 

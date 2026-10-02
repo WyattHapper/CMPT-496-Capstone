@@ -1,16 +1,17 @@
 """
-@file client.py
+@file base_client.py
 @brief Wrapper around the LSP client dependency.
 """
 from contextlib import AsyncExitStack
 from pathlib import Path
-from lsp_client import PyrightClient, Position
+from lsp_client import Position
 from lsp.models import (
     Position as ModelPosition,
     Range,
     Location,
     Definition,
     Reference,
+    DocumentSymbol,
 )
 
 
@@ -24,11 +25,11 @@ class LSPClient:
     def __init__(
         self,
         workspace_path: str | Path,
-        client_class=PyrightClient
+        client_class
     ):
        
         self.workspace_path = Path(workspace_path).resolve()
-        self._client = client_class(self.workspace_path)
+        self._client = client_class(workspace=self.workspace_path)
 
         self._exit_stack = AsyncExitStack()
 
@@ -64,7 +65,9 @@ class LSPClient:
         """
         file_path = Path(file_path).resolve()
 
-        await self._client.notify_text_document_opened(file_path, file_content)
+        relative_path = file_path.relative_to(self.workspace_path)
+
+        await self._client.notify_text_document_opened(relative_path, file_content)
 
 
     async def get_definitions(self, file_path, line: int, character: int):
@@ -80,9 +83,10 @@ class LSPClient:
         """
 
         file_path = Path(file_path).resolve()
+        relative_path = file_path.relative_to(self.workspace_path)
         position = Position(line=line, character=character)
 
-        results = await self._client.request_definition(file_path, position)
+        results = await self._client.request_definition(relative_path, position)
         
         if results is None:
             return []  
@@ -105,11 +109,12 @@ class LSPClient:
         """
 
         file_path = Path(file_path).resolve()
+        relative_path = file_path.relative_to(self.workspace_path)
 
         position = Position(line=line, character=character)
 
         results =  await self._client.request_references(
-                    file_path,
+                    relative_path,
                     position,
         )
 
@@ -117,7 +122,27 @@ class LSPClient:
             return []
         
         return [Reference(location=self._convert_location(location)) for location in results]
+    
 
+    async def get_document_symbols(self, file_path):
+        """
+        Get document symbols for a particular file.
+        Args:
+            file_path: The path to the file.
+        Returns:
+            A list of DocumentSymbol objects representing the symbols found in the specified file.
+        """
+        file_path = Path(file_path).resolve()
+        relative_path = file_path.relative_to(self.workspace_path)
+
+        results = await self._client.request_document_symbol(relative_path)
+
+        if results is None:
+            return []
+        
+        return [self._convert_document_symbol(symbol) for symbol in results]
+
+    
     def _convert_location(self, location: Location) -> Location:
             """
             Convert a location from the LSP client to the internal Location model.
@@ -133,3 +158,40 @@ class LSPClient:
                     end=ModelPosition(line=location.range.end.line, character=location.range.end.character)
                 )
             )
+    
+    def _convert_document_symbol(self, symbol) -> DocumentSymbol:
+        """
+        Convert a document symbol from the LSP client to the internal DocumentSymbol model.
+        Args:
+            symbol: The document symbol object from the LSP client.
+        Returns:
+            DocumentSymbol: The converted DocumentSymbol object.
+        """
+
+        converted_children = []
+
+        if symbol.children:
+            for child in symbol.children:
+                converted_children.append(self._convert_document_symbol(child))
+            
+        return DocumentSymbol(
+            name=symbol.name,
+            kind=symbol.kind.value,
+            range=self._convert_range(symbol.range),
+            selection_range=self._convert_range(symbol.selection_range),
+            detail=symbol.detail,
+            children=converted_children
+        )
+    
+    def _convert_range(self, range) -> Range:
+        """
+        Convert a range from the LSP client to the internal Range model.
+        Args:
+            range: The range object from the LSP client.
+        Returns:
+            Range: The converted Range object.
+        """
+        return Range(
+            start=ModelPosition(line=range.start.line, character=range.start.character),
+            end=ModelPosition(line=range.end.line, character=range.end.character)
+        )

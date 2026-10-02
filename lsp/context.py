@@ -1,14 +1,23 @@
-from pydantic import BaseModel, Field
+from dataclasses import dataclass, field
+from pathlib import Path
 
-from lsp.models import Definition, Reference
+from lsp.models import DocumentSymbol, Definition, Reference
 
-class CodeContext(BaseModel):
+@dataclass
+class FileContext:
     """
-    Represents the context of a code element, including its definition and references.
+    Represents the context of a file in the workspace.
 
     Attributes:
-        definition (Definition): The definition of the code element.
-        references (list[Reference]): A list of references to the code element.
+        file_path (Path): The path to the file.
+        document_symbols (list[DocumentSymbol]): A list of document symbols in the file.
+        definitions (list[Definition]): A list of definitions in the file.
+        references (list[Reference]): A list of references in the file.
     """
-    definitions: list[Definition] = Field(default_factory=list)
-    references: list[Reference] = Field(default_factory=list)
+    file_path: Path
+    language: str
+
+    symbols: list[DocumentSymbol] = field(default_factory=list)
+    definitions: list[Definition] = field(default_factory=list)
+    references: list[Reference] = field(default_factory=list)
+

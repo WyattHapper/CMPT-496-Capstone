@@ -19,10 +19,14 @@ import asyncio
 from pathlib import Path
 from collections import deque
 from backend.progress_logging import progress
-from lsp.context import CodeContext
+
+from lsp.manager import LSPManager
+from lsp.language import detect_language
 
 BATCH_SIZE = 10
 MAX_CONCURRENCY = 10
+
+
 
 class FileSummaryAgent:
     """
@@ -157,17 +161,16 @@ class FileSummaryAgent:
             15
         )
         files = deque()
-        acceptable_extensions = [".cs", ".py", ".md", ".js", ".ts", ".sh", ".bash", ".c", ".cpp", ".html", ".css"]
 
         codebase_name = Path(state["directory_path"]).name
 
         # recursively loop through all files in the directory path
         for root, _, filenames in os.walk(state["directory_path"]):
+
+    
             filenames.sort()
             for f in filenames:
-                file_ext = Path(f).suffix.lower()
-                if file_ext in acceptable_extensions:
-                    # add file to queue
+                if detect_language(f) is not None:
                     files.append(os.path.join(root, f))
 
         progress(
@@ -191,13 +194,19 @@ class FileSummaryAgent:
         batch = []
         while state["files"] and len(batch) < BATCH_SIZE:
             batch.append(state["files"].popleft())
-
+        
+        
         async def run_batch():
+
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
-            async def guarded(fp):
-                async with sem:
-                    return await _summarize_one(self.structured_llm, fp)
-            return await asyncio.gather(*(guarded(fp) for fp in batch))
+
+            async with LSPManager(state["directory_path"]) as lsp_manager:
+                
+                async def guarded(fp):
+                    async with sem:
+                        code_context = await lsp_manager.get_file_context(fp)
+                        return await _summarize_one(self.structured_llm, fp, code_context)
+                return await asyncio.gather(*(guarded(fp) for fp in batch))
 
         results = self._loop.run_until_complete(run_batch())
 
@@ -295,10 +304,30 @@ class FileSummaryAgent:
         )
         return {}
 
-async def _summarize_one(structured_llm, file_path: str, code_context: CodeContext):
+async def _summarize_one(structured_llm, file_path: str, code_context):
     progress(f'Summarizing: {file_path}')
     try:
         contents = Path(file_path).read_text(encoding="utf-8", errors="replace")
+        if code_context is not None:
+            lsp_context = {
+                "file_path": str(code_context.file_path),
+                "language": code_context.language,
+                "symbols": [
+                    {
+                        "name": symbol.name,
+                        "children": [
+                            child.name
+                            for child in symbol.children
+                        ]
+                    }
+                    for symbol in code_context.symbols
+                ]
+       
+             }
+        else:
+            lsp_context = None
+
+        lsp_context_text = json.dumps(lsp_context, indent=2)
         messages = [
             (
                 "system",
@@ -416,6 +445,21 @@ These describe CI/CD pipeline behavior and deployment policies, not product doma
 
 File path:
 {file_path}
+
+### LSP Code Context
+
+The following structural information was obtained from the language
+server for this file. Use it as additional context when analyzing
+the source code. The source code remains the source of truth.
+
+If LSP context is provided, use it to improve your understanding
+of symbols, structure, and relationships.
+
+If no LSP context is provided, analyze the source code directly.
+Do not assume that the absence of LSP context means the file is
+unsupported or invalid.
+
+{lsp_context_text}
 
 Code:
 {contents}

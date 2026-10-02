@@ -5,6 +5,7 @@
 """
 
 from pydantic import BaseModel, Field
+from dataclasses import dataclass, field
 
 
 class Position(BaseModel):
@@ -59,3 +60,21 @@ class Reference(BaseModel):
         location (location): The location of the reference in the document.
     """
     location: Location
+
+@dataclass
+class DocumentSymbol:
+    """
+    Represents a symbol in a text document.
+
+    Attributes:
+        name (str): The name of the symbol.
+        kind (str): The kind of the symbol (e.g., class, method, variable).
+        range (range): The range of the symbol in the document.
+        selection_range (range): The range that should be selected and revealed when this symbol is being"
+    """
+    name: str
+    kind: str
+    range: Range
+    selection_range: Range
+    detail: str| None = None
+    children: list['DocumentSymbol'] = field(default_factory=list)
