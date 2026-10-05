@@ -60,8 +60,8 @@ def detect_language(filename: str) -> str | None:
     """
     path = Path(filename)
 
-    if path.name in LANGUAGE_FILENAMES:
-        return LANGUAGE_FILENAMES[path.name]
+    if path.name in LANGUAGE_EXTENSIONS:
+        return LANGUAGE_EXTENSIONS[path.name]
 
     extension = path.suffix.lower()
 
