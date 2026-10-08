@@ -22,7 +22,6 @@ import time
 import requests
 from pathlib import Path
 from backend.progress_logging import progress, pipeline_progress
-from backend.env_file import save_env_value
 
 # ---------------------------------------------------------
 # Logging Configuration 
@@ -942,12 +941,15 @@ class Commands:
 
             env_path = self.app_dir / ".env"
 
-            # Only the key's line changes; other .env values survive.
-            save_env_value(
+            with open(
                 env_path,
-                "GOOGLE_API_KEY",
-                api_key.strip()
-            )
+                "w",
+                encoding="utf-8"
+            ) as env:
+
+                env.write(
+                    f"GOOGLE_API_KEY={api_key}\n"
+                )
 
 
             if check["ok"] is None:
