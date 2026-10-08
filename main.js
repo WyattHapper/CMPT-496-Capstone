@@ -11,32 +11,110 @@ let restartBackendAfterCancel = false;
 // Directory the backend actually writes its output to (userData when packaged).
 let backendOutputDir = __dirname;
 // ----------------------------------------------------
-// API KEY CHECK
+// API KEYS (.env)
 // ----------------------------------------------------
+// Each saved key is one line  APIKEY__<PROVIDER>__<label>=<key>
+// with its model in           APIMODEL__<PROVIDER>__<label>=<model>
+// The selected one is mirrored into ACTIVE_LLM_* for the Python backend.
 
-function hasAPIKey() {
-    const isWindows = process.platform === "win32";
+const PROVIDERS = ["google", "openai", "anthropic", "mistral", "groq", "deepseek", "xai", "openrouter"];
 
+function getEnvPath() {
     const backendDir = app.isPackaged
         ? path.join(process.resourcesPath, "backend")
         : path.join(__dirname, "releases", "main");
 
-    const executableName = isWindows ? "main.exe" : "main";
-    const exePath = path.join(backendDir, executableName);
+    const exeName = process.platform === "win32" ? "main.exe" : "main";
+    const exeExists = fs.existsSync(path.join(backendDir, exeName));
 
-    // If exe exists, .env should be next to it
-    // If not, .env should be next to main.py
-    const envDir = fs.existsSync(exePath) ? backendDir : __dirname;
-    const envPath = path.join(envDir, ".env");
-
-    if (!fs.existsSync(envPath))
-        return false;
-
-    const env = dotenv.parse(fs.readFileSync(envPath));
-    return env.GOOGLE_API_KEY && env.GOOGLE_API_KEY.trim() !== "";
+    // Same rule the Python side uses: next to the exe, else next to main.py.
+    return path.join(exeExists ? backendDir : __dirname, ".env");
 }
 
+function ensureEnvFile() {
+    const p = getEnvPath();
+    try {
+        fs.mkdirSync(path.dirname(p), { recursive: true });
+        if (!fs.existsSync(p)) fs.writeFileSync(p, "", "utf8");
+    } catch (error) {
+        console.error("Could not create .env:", error);
+    }
+}
 
+function readEnv() {
+    const p = getEnvPath();
+    return fs.existsSync(p) ? dotenv.parse(fs.readFileSync(p)) : {};
+}
+
+function writeEnv(env) {
+    const p = getEnvPath();
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+
+    const text = Object.entries(env)
+        .filter(([, v]) => v !== undefined && v !== null && v !== "")
+        .map(([k, v]) => `${k}=${v}`)
+        .join("\n") + "\n";
+
+    const tmp = `${p}.tmp`;
+    fs.writeFileSync(tmp, text, "utf8");
+    fs.renameSync(tmp, p);
+}
+
+function applyActive(env, id) {
+    const key = id && env[`APIKEY__${id}`];
+
+    if (!key) {
+        delete env.ACTIVE_LLM_KEY;
+        delete env.ACTIVE_LLM_PROVIDER;
+        delete env.ACTIVE_LLM_MODEL;
+        delete env.ACTIVE_LLM_API_KEY;
+        return;
+    }
+
+    env.ACTIVE_LLM_KEY = id;
+    env.ACTIVE_LLM_PROVIDER = id.split("__")[0].toLowerCase();
+    env.ACTIVE_LLM_MODEL = env[`APIMODEL__${id}`] || "";
+    env.ACTIVE_LLM_API_KEY = key;
+}
+
+// Moves an old single GOOGLE_API_KEY into the new format. Returns true if it changed anything.
+function migrateLegacyKey(env) {
+    const legacy = (env.GOOGLE_API_KEY || "").trim();
+    if (!legacy) return false;
+
+    if (!env["APIKEY__GOOGLE__default"]) {
+        env["APIKEY__GOOGLE__default"] = legacy;
+        env["APIMODEL__GOOGLE__default"] = "gemini-3-flash-preview";
+    }
+
+    delete env.GOOGLE_API_KEY;
+
+    if (!env.ACTIVE_LLM_KEY) applyActive(env, "GOOGLE__default");
+    return true;
+}
+
+function listKeys(env) {
+    return Object.keys(env)
+        .filter(k => k.startsWith("APIKEY__"))
+        .map(k => {
+            const id = k.slice("APIKEY__".length);
+            const [provider, label] = id.split("__");
+            return {
+                id,
+                provider: provider.toLowerCase(),
+                label,
+                model: env[`APIMODEL__${id}`] || "",
+                masked: "…" + String(env[k]).slice(-4),
+                active: env.ACTIVE_LLM_KEY === id
+            };
+        });
+}
+
+function hasAPIKey() {
+    const env = readEnv();
+    if (migrateLegacyKey(env)) writeEnv(env);
+    return Boolean((env.ACTIVE_LLM_API_KEY || "").trim());
+}
 
 
 function detectFileType(json) {
@@ -408,6 +486,74 @@ function formatBusinessRules(json) {
 // ----------------------------------------------------
 // ICP HANDLERS
 // ----------------------------------------------------
+
+ipcMain.handle("list-api-keys", () => {
+    const env = readEnv();
+    if (migrateLegacyKey(env)) writeEnv(env);
+    return { success: true, keys: listKeys(env) };
+});
+
+ipcMain.handle("save-api-key", (event, { provider, label, apiKey, model, makeActive = true }) => {
+    provider = String(provider || "").toLowerCase();
+    if (!PROVIDERS.includes(provider)) return { success: false, error: "Unknown provider." };
+
+    apiKey = String(apiKey || "").trim();
+    if (!apiKey) return { success: false, error: "API key is empty." };
+
+    label = String(label || "default").replace(/[^A-Za-z0-9-]/g, "-").slice(0, 32) || "default";
+    const id = `${provider.toUpperCase()}__${label}`;
+
+    const env = readEnv();
+    migrateLegacyKey(env);
+
+    env[`APIKEY__${id}`] = apiKey;
+    env[`APIMODEL__${id}`] = String(model || "").trim();
+
+    if (makeActive || !env.ACTIVE_LLM_KEY || env.ACTIVE_LLM_KEY === id) applyActive(env, id);
+
+    try {
+        writeEnv(env);
+    } catch (error) {
+        return { success: false, error: `Could not write .env: ${error.message}` };
+    }
+
+    return { success: true, id };
+});
+
+ipcMain.handle("select-api-key", (event, { id, model }) => {
+    const env = readEnv();
+    if (!env[`APIKEY__${id}`]) return { success: false, error: "Key not found." };
+
+    if (typeof model === "string") env[`APIMODEL__${id}`] = model.trim();
+    applyActive(env, id);
+
+    try {
+        writeEnv(env);
+    } catch (error) {
+        return { success: false, error: `Could not write .env: ${error.message}` };
+    }
+
+    return { success: true };
+});
+
+ipcMain.handle("delete-api-key", (event, { id }) => {
+    const env = readEnv();
+    delete env[`APIKEY__${id}`];
+    delete env[`APIMODEL__${id}`];
+
+    if (env.ACTIVE_LLM_KEY === id) {
+        const next = listKeys(env)[0];
+        applyActive(env, next ? next.id : null);
+    }
+
+    try {
+        writeEnv(env);
+    } catch (error) {
+        return { success: false, error: `Could not write .env: ${error.message}` };
+    }
+
+    return { success: true };
+});
 
 ipcMain.handle(
     "has-api-key",
@@ -912,6 +1058,7 @@ function createWindow() {
         }
     });
 
+    ensureEnvFile();
     startPythonBackend();
 
     // Clear the previous session before the renderer can request the error log.
