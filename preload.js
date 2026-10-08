@@ -66,6 +66,12 @@ contextBridge.exposeInMainWorld(
 
         },
 
+        // --- multi-key manager ---
+        listApiKeys:  ()     => ipcRenderer.invoke("list-api-keys"),
+        saveApiKey:   (data) => ipcRenderer.invoke("save-api-key", data),
+        selectApiKey: (data) => ipcRenderer.invoke("select-api-key", data),
+        deleteApiKey: (data) => ipcRenderer.invoke("delete-api-key", data),
+
         getValidatedRules: (
             codebasePath
         ) => {

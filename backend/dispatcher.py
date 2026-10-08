@@ -59,7 +59,7 @@ class CommandDispatcher:
             "generate_all_uml": self.commands.generate_all_uml,
 
             # API
-            "set_api_key": self.commands.set_api_key,
+            "verify_api_key": self.commands.verify_api_key,
             
             # Pipeline
             "full_pipeline": self.commands.full_pipeline,

@@ -353,18 +353,21 @@ def status_code(exc):
     """
     The HTTP status behind an error (429, 503, ...), or None.
 
-    Google's SDK errors carry it as .code; LangChain wraps a 429 in its own
-    error, and our retry errors wrap Google's, so walk the cause chain until
-    one turns up.
+    Google's SDK errors carry it as .code; OpenAI/Anthropic/Groq/Mistral
+    errors as .status_code (or on their .response). LangChain wraps some of
+    these and our retry errors wrap the provider's, so walk the cause chain
+    until one turns up.
     """
     seen = set()
 
     while exc is not None and id(exc) not in seen:
         seen.add(id(exc))
 
-        code = getattr(exc, "code", None)
-        if isinstance(code, int):
-            return code
+        for source in (exc, getattr(exc, "response", None)):
+            for attr in ("status_code", "code"):
+                value = getattr(source, attr, None)
+                if isinstance(value, int) and not isinstance(value, bool):
+                    return value
 
         exc = exc.__cause__ or exc.__context__
 

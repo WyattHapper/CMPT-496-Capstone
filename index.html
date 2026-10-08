@@ -16,28 +16,33 @@
 
         <button class="btn-primary unusable-btn" id="analysisBtn">Run Operations</button>
         <button class="btn-primary" id="mainViewBtn">View Insights</button>
-        <button class="btn-primary" id="apiBtn">Upload API Key</button>
+        <button class="btn-primary" id="apiBtn">Manage API Keys</button>
         <button class="btn-primary" id="faqAndSupportBtn">FAQ & Support</button>
         <button class="btn-primary back-btn" id="exitBtn">Exit</button>
 
     </div>
 
 
-    <!-- API PAGE -->
+   <!-- API PAGE -->
     <div id="apiPage" class="page hidden">
 
-        <h1>Upload API Key</h1>
+        <h1>API Keys</h1>
 
-        <h3 id="apiKeyMsg" class="hidden"> An API key is already connected would you like to replace it?</h3>
-        <button class="btn-primary hidden" id="replaceApiKeyBtn">Replace API Key</button>
-        <button class="btn-primary hidden" id="keepApiKeyBtn">Keep Current API Key</button>
+        <h2>Active key</h2>
+        <select class="input-glass" id="apiKeySelect"></select>
+        <input class="input-glass" id="activeModelInput" list="modelSuggestions" placeholder="Model for this key" autocomplete="off" />
+        <button class="btn-secondary" id="deleteApiKeyBtn">Delete Selected Key</button>
 
+        <h2>Add a key</h2>
+        <select class="input-glass" id="providerSelect"></select>
+        <input class="input-glass" id="apiKeyLabel" type="text" placeholder="Label (e.g. work, personal)" autocomplete="off" />
+        <input class="input-glass" id="newModelInput" list="modelSuggestions" placeholder="Model name" autocomplete="off" />
         <input class="input-glass" id="apiKeyInput" type="password" placeholder="Enter API Key" autocomplete="off" />
-        <h3 id="apiKeyErrorMsg" class="api-key-error hidden"></h3>
-        <button class="btn-primary" id="submitApiKeyBtn">Submit</button>
-        <button class="btn-primary back-btn" id="apiBackBtn">Back</button>
+        <datalist id="modelSuggestions"></datalist>
 
-        
+        <h3 id="apiKeyErrorMsg" class="api-key-error hidden"></h3>
+        <button class="btn-primary" id="submitApiKeyBtn">Verify &amp; Save</button>
+        <button class="btn-primary back-btn" id="apiBackBtn">Back</button>
 
     </div>
 
