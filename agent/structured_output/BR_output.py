@@ -10,6 +10,22 @@ from typing import Optional, Literal
 from pydantic import BaseModel, Field, ConfigDict
 
 
+RuleOrigin = Literal["file", "directory_observed", "directory_inferred"]
+
+
+class RuleCandidate(BaseModel):
+    """
+    @brief Represents a single unvalidated business rule loaded from G1/G2 output.
+    @details Common input format for file-level and directory-level rules. Each
+    candidate keeps its own provenance; duplicates are not merged at this stage.
+    """
+    model_config = ConfigDict(extra="forbid")
+    rule: str = Field(..., description="The business rule statement as produced by G1/G2.")
+    source_directory: str = Field(..., description="POSIX path of the directory this rule pertains to, relative to the codebase root ('.' for the root).")
+    source_file_paths: list[str] = Field(default_factory=list, description="Known source file paths, relative to the codebase root. Empty when the source files are unknown.")
+    origin: RuleOrigin = Field(..., description="Where the rule came from: file-level output, or directory-level observed/inferred rules.")
+
+
 class CondensedRule(BaseModel):
     """
     @brief Represents a business rule after the condensation step.
