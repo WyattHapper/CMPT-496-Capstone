@@ -761,6 +761,8 @@ async def _validate_single_rule(
         code_text = "\n\n".join(code_context) if code_context else "None"
         summary_text = "\n\n".join(summary_context) if summary_context else "None"
 
+        lsp_text = json.dumps(lsp_context or [], indent=2)
+
         force_decision_clause = ""
         if is_final_pass:
             force_decision_clause = (
@@ -816,6 +818,12 @@ RESPONSE INSTRUCTIONS:
 - If "valid": populate the `explanation` field with `evidence` (a dict mapping filenames to lists of relevant code snippets that support the rule) and `reasoning` (a clear explanation of how those snippets support the rule).
 - If "discard": populate the `discard_reason` field explaining why the rule is not supported.
 - If "need_more_context": leave both `explanation` and `discard_reason` as None.
+
+### LSP Structural Context
+The following information was retrieved from the language server.
+Use it to understand the structure of the source files and the
+relationships between classes and methods when evaluating the rule.
+{lsp_text}
 
 EXAMPLES:
 
