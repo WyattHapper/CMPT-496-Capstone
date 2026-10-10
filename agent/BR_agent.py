@@ -27,6 +27,8 @@ from collections import defaultdict
 
 from backend.progress_logging import progress
 
+from lsp.manager import LSPManager
+
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
 DEFAULT_FILE_SUMMARY_K = 5
@@ -100,12 +102,13 @@ class BRAgent:
 
         return builder.compile()
 
-    def run(self, input_rules: dict[str, list[BusinessRule]], codebase_name: str):
+    def run(self, input_rules: dict[str, list[BusinessRule]], codebase_name: str, codebase_path: str):
         """
         @brief Executes the BRAgent workflow.
         @param input_rules Dictionary of business rules from G1/G2. Keys are file or directory paths,
                values are lists of BusinessRule objects.
         @param codebase_name Name of the target codebase, used to look up the correct ChromaDB collections.
+        @param codebase_path Absolute path to the target codebase.
         @return Final state of the graph after execution.
         """
 
@@ -148,13 +151,30 @@ class BRAgent:
             "code_collection": code_collection,
             "summary_collection": summary_collection,
             "codebase_name": codebase_name,
+            "codebase_path": codebase_path,
             "output_directory": "./agent/BR_agent_output",
         }
 
         self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
+        self._lsp_manager = None
+
         try:
+            self._lsp_manager = LSPManager(Path(codebase_path))
+
+            # start the language servers we need for the given codebase
+
+            self._loop.run_until_complete(self._lsp_manager.__aenter__())
+
+
             return self.graph.invoke(initial_state)
         finally:
+
+            if self._lsp_manager is not None:
+                self._loop.run_until_complete(self._lsp_manager.__aexit__(None, None, None))
+                self._lsp_manager = None
+
             self._loop.close()
             self._loop = None
 
@@ -364,7 +384,7 @@ class BRAgent:
 
             # Get existing per-rule context for deduplication (str key for JSON serialization safety)
             rule_key = str(rule.id)
-            rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": []})
+            rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": [], "lsp_context": []})
             existing_code = set(rule_ctx["code_context"])
             existing_summary = set(rule_ctx["summary_context"])
 
@@ -409,7 +429,9 @@ class BRAgent:
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
+            lsp_context = self._get_lsp_context_for_rule(source_file_paths, state["codebase_path"])
+
+            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary, "lsp_context": lsp_context}
 
         return {
             "rule_contexts": updated_contexts,
@@ -458,6 +480,7 @@ class BRAgent:
                         rule,
                         ctx["code_context"],
                         ctx["summary_context"],
+                        ctx.get("lsp_context", []),
                         is_final_pass,
                     )
             return await asyncio.gather(
@@ -722,6 +745,7 @@ async def _validate_single_rule(
     rule: CondensedRule,
     code_context: list[str],
     summary_context: list[str],
+    lsp_context: None,
     is_final_pass: bool,
 ) -> tuple:
     """
@@ -868,6 +892,62 @@ Expected output:
         return rule, output, None
     except Exception as e:
         return rule, None, e
+    
+
+
+
+def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str,):
+    """
+    TODO write docstring
+    """
+
+    #incase no lsp
+    if self._lsp_manager is None:
+        return []
+    
+    contexts = []
+
+    for source_path in source_file_paths:
+        
+        try:
+            file_path = Path(source_path)
+
+            # scrub for relative pathing
+            if not file_path.is_absolute():
+                file_path = Path(codebase_path) / file_path
+
+            file_path = file_path.resolve()
+
+            # if we dont have a client don't try it
+            client = self._lsp_manager.get_client(file_path)
+
+            if client is None:
+                continue
+
+            file_context = self._loop.run_until_complete(self._lsp_manager.get_file_context(file_path))
+
+            symbols = []
+
+            for symbol in file_context.symbols:
+                symbols.append({
+                    "name": symbol.name,
+                    "children": [child.name for child in symbol.children]}
+                )
+
+            contexts.append(json.dumps({
+                "file_path": str(file_context.file_path),
+                "language": file_context.language,
+                "symbols": symbols
+            }, indent= 2))
+
+
+        except Exception as exc:
+            logger.warning(f"LSP Context unavailable for {source_path}: {exc}") 
+
+    return contexts
+        
+
+
 
 
 if __name__ == "__main__":
