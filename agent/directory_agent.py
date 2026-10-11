@@ -14,6 +14,8 @@ from pathlib import Path
 from collections import deque
 import json
 from backend.progress_logging import progress
+from lsp.manager import LSPManager
+import asyncio 
 
 class DirectoryAgent:
     def __init__(self, model = None):
@@ -78,7 +80,7 @@ class DirectoryAgent:
 
         return builder.compile()
     
-    def run(self, directory_path: str):
+    async def run(self, directory_path: str):
         """
         @brief Executes the DirectoryAgent workflow starting from the provided initial state.
         @param directory_path The path to the directory to be analyzed.
@@ -124,10 +126,18 @@ class DirectoryAgent:
             "summary_acceptable": False,
             "summary_feedback": "",
             "refinement_attempts": 0,
-            "accumulated_business_rules": {}
+            "accumulated_business_rules": {},
+            "lsp_context": [],
         }
 
-        return self.graph.invoke(initial_state)
+  
+    
+        async with LSPManager(directory_path) as lsp_manager:
+            self.lsp_manager = lsp_manager
+            try:
+                return await self.graph.ainvoke(initial_state)
+            finally:
+                self.lsp_manager = None
 
     def crawler_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
@@ -189,7 +199,7 @@ class DirectoryAgent:
             "current_directory": first_dir
         }        
 
-    def retriever_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
+    async def retriever_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
         """
         @brief Retrieves relevant code and summary context for the current directory using vector search.
             This node performs retrieval as part of the agentic RAG loop. It queries two ChromaDB
@@ -309,6 +319,7 @@ class DirectoryAgent:
         # Append results to context
         updated_code_context = list(state.get("code_context", []))
         updated_summary_context = list(state.get("summary_context", []))
+        updated_lsp_context = list(state.get("lsp_context", []))
 
         for item in prioritized_code + fallback_code:
             if item not in existing_code_context:
@@ -318,6 +329,20 @@ class DirectoryAgent:
             if item not in existing_summary_context:
                 updated_summary_context.append(item)
 
+        lsp_manager = getattr(self, 'lsp_manager', None)
+        if lsp_manager is not None:
+            for file_path in Path(current_directory).rglob("*"):
+                if not file_path.is_file():
+                    continue
+
+                file_context = await lsp_manager.get_file_context(file_path)
+
+                if file_context is not None:
+                    if all(
+                        existing.file_path != file_context.file_path 
+                        for existing in updated_lsp_context):
+                            updated_lsp_context.append(file_context)
+
         progress(
             "Context retrieval complete.",
             45
@@ -326,6 +351,7 @@ class DirectoryAgent:
             "current_directory": current_directory,
             "code_context": updated_code_context,
             "summary_context": updated_summary_context,
+            "lsp_context": updated_lsp_context
         }
 
     def context_analyser_node(self, state: DirectoryGraphState) -> DirectoryGraphState:
@@ -498,6 +524,8 @@ class DirectoryAgent:
             summary_context = "\n\n".join(state["summary_context"])
             code_context = "\n\n".join(state["code_context"])
 
+            lsp_context = self._format_lsp_context(state.get("lsp_context", []))
+
             # Create prompt and system message for LLM
             system_message = "You are a Senior Software Architect. Your task is to provide a high-level technical summary of a specific directory in a large codebase."
             prompt = f"""DIRECTORY TO ANALYZE: {state['current_directory']}
@@ -511,6 +539,9 @@ class DirectoryAgent:
 
                         3. CODE SNIPPETS:
                         {code_context if code_context else "None"}
+
+                        4. LSP CONTEXT:
+                        {lsp_context if lsp_context else "None"}
 
                         INSTRUCTIONS:
                         Follow these steps to generate your summary:
@@ -569,6 +600,7 @@ class DirectoryAgent:
             formatted_child_summaries = self._format_child_summaries(child_summaries)
             summary_context = "\n\n".join(state["summary_context"])
             code_context = "\n\n".join(state["code_context"])
+            lsp_content = self._format_lsp_context(state.get("lsp_context", []))
             
             system_message = """You are a principal software architect writing a comprehensive root-level codebase summary.
 Your audience includes technical leads, stakeholders, and new developers seeking to understand the entire system.
@@ -586,6 +618,9 @@ INPUT DATA (in order of priority):
 
 3. CODE SNIPPETS (tertiary — reference only if necessary for clarification):
 {code_context if code_context else "None"}
+
+4. LSP SYMBOL CONTEXT (additional structural evidence):
+{lsp_content if lsp_content else "None"}
 
 TASK:
 Write a comprehensive root-level summary of the entire codebase that explains the system as a whole to someone new to the project.
@@ -1015,6 +1050,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
         return {
             "code_context": [],
             "summary_context": [],
+            "lsp_context": [],
             "sufficient_code_context": False,
             "sufficient_summary_context": False,
             "codebase_k": 10,
@@ -1225,6 +1261,37 @@ Show how the parts connect and the overall shape of the system, not just what ea
             formatted.append(text)
         
         return "\n\n".join(formatted)
+    
+    def _format_lsp_context(self, lsp_context: list) -> str:
+        """
+        @brief Formats the LSP context into a readable string for the LLM prompt.
+        @param lsp_context List of LSP context objects retrieved from the language server.
+        @return Formatted string representation of the LSP context.
+        """
+        if not lsp_context:
+            return "No LSP context available."
+
+        formatted = []
+
+        for file_context in lsp_context:
+            symbols = []
+            for symbol in file_context.symbols:
+                name = getattr(symbol, 'name', 'unknown')
+                kind = getattr(symbol, 'kind', 'unknown')
+                detail = getattr(symbol, 'detail', 'unknown')
+
+                line = f"- {kind}: {name}"
+                if detail:
+                    line += f" ({detail})"
+
+                symbols.append(line)
+
+            if symbols:
+                formatted.append(
+                    f"File: {file_context.file_path}\nLanguage: {file_context.language}\nSymbols:\n" + "\n".join(symbols)
+                )
+
+        return "\n\n".join(formatted)
 
 if __name__ == "__main__":
     """
@@ -1245,6 +1312,6 @@ if __name__ == "__main__":
     directory_path = os.path.abspath(codebase)
 
     agent = DirectoryAgent()
-    agent.run(directory_path)
+    asyncio.run(agent.run(directory_path))
     progress("DirectoryAgent has completed its task!")
     

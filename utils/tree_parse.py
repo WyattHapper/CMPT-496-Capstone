@@ -39,7 +39,63 @@ LANGUAGE_DICT = {
         "property_type": "pair",
         "import_query": "(import_statement) @import",
         "namespace_query": "" # JS has no namespaces, so this is left empty
-    }
+    },
+    ".py": {
+        "name": "python",
+        "query": """
+            (function_definition name: (identifier) @name) @chunk
+            (class_definition name: (identifier) @name) @chunk
+        """,
+        "container_type": "class_definition",
+        "property_type": "",
+        "import_query": """
+            (import_statement) @import
+            (import_from_statement) @import
+        """,
+        "namespace_query": ""
+    },
+    ".ts": {
+        "name": "typescript",
+        "query": """
+            (function_declaration name: (identifier) @name) @chunk
+            (method_definition name: (property_identifier) @name) @chunk
+            (class_declaration name: (type_identifier) @name) @chunk
+            (interface_declaration name: (type_identifier) @name) @chunk
+            (type_alias_declaration name: (type_identifier) @name) @chunk
+        """,
+        "container_type": "class_declaration",
+        "property_type": "",
+        "import_query": "(import_statement) @import",
+        "namespace_query": ""
+    },
+    ".rs": {
+        "name": "rust",
+        "query": """
+            (function_item name: (identifier) @name) @chunk
+            (struct_item name: (type_identifier) @name) @chunk
+            (enum_item name: (type_identifier) @name) @chunk
+            (trait_item name: (type_identifier) @name) @chunk
+            (type_item name: (type_identifier) @name) @chunk
+        """,
+        "container_type": "impl_item",
+        "property_type": "",
+        "import_query": "(use_declaration) @import",
+        "namespace_query": ""
+    },
+    ".go": {
+        "name": "go",
+        "query": """
+            (function_declaration name: (identifier) @name) @chunk
+            (method_declaration name: (field_identifier) @name) @chunk
+            (type_declaration
+                (type_spec name: (type_identifier) @name)
+            ) @chunk
+        """,
+        "container_type": "type_declaration",
+        "property_type": "",
+        "import_query": "(import_declaration) @import",
+        "namespace_query": ""
+    },
 }
 
 @dataclass
@@ -188,7 +244,7 @@ def get_chunks(bundle: CodeBundle) -> list[dict]:
             code_text = bundle.content[chunk_node.start_byte:chunk_node.end_byte].decode("utf-8")
             
             # Handle Property Grouping
-            if chunk_node.type == config["property_type"]:
+            if config["property_type"] and chunk_node.type == config["property_type"]:
                 if parent_container not in grouped_properties:
                     grouped_properties[parent_container] = []
                 grouped_properties[parent_container].append(code_text)

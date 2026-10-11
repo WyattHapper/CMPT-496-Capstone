@@ -429,7 +429,7 @@ class BRAgent:
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            lsp_context = self._get_lsp_context_for_rule(source_file_paths, state["codebase_path"])
+            lsp_context = self._get_lsp_context(source_file_paths, state["codebase_path"])
 
             updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary, "lsp_context": lsp_context}
 
@@ -688,6 +688,58 @@ class BRAgent:
             f"Parent: {meta.get('parent', 'N/A')}\n"
             f"Content:\n{doc}"
         )
+    
+    def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str,):
+        """
+        TODO write docstring
+        """
+
+        #incase no lsp
+        if self._lsp_manager is None:
+            return []
+        
+        contexts = []
+
+        for source_path in source_file_paths:
+            
+            try:
+                file_path = Path(source_path)
+
+                # scrub for relative pathing
+                if not file_path.is_absolute():
+                    file_path = Path(codebase_path) / file_path
+
+                file_path = file_path.resolve()
+
+                # if we dont have a client don't try it
+                client = self._lsp_manager.get_client(file_path)
+
+                if client is None:
+                    continue
+
+                file_context = self._loop.run_until_complete(self._lsp_manager.get_file_context(file_path))
+
+                symbols = []
+
+                for symbol in file_context.symbols:
+                    symbols.append({
+                        "name": symbol.name,
+                        "children": [child.name for child in symbol.children]}
+                    )
+
+                contexts.append(json.dumps({
+                    "file_path": str(file_context.file_path),
+                    "language": file_context.language,
+                    "symbols": symbols
+                }, indent= 2))
+
+
+            except Exception as exc:
+                logger.warning(f"LSP Context unavailable for {source_path}: {exc}") 
+
+        return contexts
+            
+
 
 
 async def _condense_group(structured_llm, directory: str, rules: list) -> tuple[str, list[str], Exception | None]:
@@ -904,56 +956,6 @@ Expected output:
 
 
 
-def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str,):
-    """
-    TODO write docstring
-    """
-
-    #incase no lsp
-    if self._lsp_manager is None:
-        return []
-    
-    contexts = []
-
-    for source_path in source_file_paths:
-        
-        try:
-            file_path = Path(source_path)
-
-            # scrub for relative pathing
-            if not file_path.is_absolute():
-                file_path = Path(codebase_path) / file_path
-
-            file_path = file_path.resolve()
-
-            # if we dont have a client don't try it
-            client = self._lsp_manager.get_client(file_path)
-
-            if client is None:
-                continue
-
-            file_context = self._loop.run_until_complete(self._lsp_manager.get_file_context(file_path))
-
-            symbols = []
-
-            for symbol in file_context.symbols:
-                symbols.append({
-                    "name": symbol.name,
-                    "children": [child.name for child in symbol.children]}
-                )
-
-            contexts.append(json.dumps({
-                "file_path": str(file_context.file_path),
-                "language": file_context.language,
-                "symbols": symbols
-            }, indent= 2))
-
-
-        except Exception as exc:
-            logger.warning(f"LSP Context unavailable for {source_path}: {exc}") 
-
-    return contexts
-        
 
 
 

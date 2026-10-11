@@ -6,6 +6,7 @@
 from typing import TypedDict, Deque, Annotated, Any
 from agent.structured_output.directory_output import DirectoryOutput, JudgementOutput, BusinessRulesOutput
 from operator import add
+from lsp.context import FileContext
 
 def merge_summaries(existing: dict, new: dict) -> dict:
     """
@@ -46,6 +47,10 @@ class DirectoryGraphState(TypedDict):
         Retrieved file/class/function summaries relevant to the current directory.
         These come from the summary vector database and help provide higher-level
         structural context.
+    @var lsp_context
+        Retrieved structural context from the language server, including definitions,
+        references, and document symbols. This is used to understand the relationships
+        between code elements when evaluating business rules.
     @var sufficient_code_context
         Flag set by the context analyzer indicating whether enough code snippets have
         been retrieved to summarize the directory.
@@ -83,6 +88,8 @@ class DirectoryGraphState(TypedDict):
     directories: Deque[str]
     code_context: list[str]
     summary_context: list[str]
+    lsp_context: list[FileContext]
+    lsp_manager: Any
     sufficient_code_context: bool # For the context analyser node
     sufficient_summary_context: bool # For the context analyser node
     directory_summary: DirectoryOutput
