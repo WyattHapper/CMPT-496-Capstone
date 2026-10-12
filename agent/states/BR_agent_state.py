@@ -78,3 +78,4 @@ class BRGraphState(TypedDict):
     summary_collection: Any
     codebase_name: str
     output_directory: str
+    codebase_path: str

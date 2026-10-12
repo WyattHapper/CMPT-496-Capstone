@@ -21,6 +21,8 @@ import json
 import time
 from pathlib import Path
 from backend.progress_logging import progress, pipeline_progress
+import asyncio
+import inspect
 
 # ---------------------------------------------------------
 # Logging Configuration 
@@ -94,6 +96,10 @@ class Commands:
 
         try:
             result = func(*args, **kwargs)
+
+            # Execute async tasks to completion.
+            if inspect.isawaitable(result):
+                result = asyncio.run(result)
 
             elapsed = time.perf_counter() - start
 
@@ -263,7 +269,8 @@ class Commands:
 
             BRAgent().run(
                 input_rules,
-                codebase_name
+                codebase_name,
+                str(codebase_path)
             )
 
 
