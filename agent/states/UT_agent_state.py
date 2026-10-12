@@ -26,7 +26,7 @@ class UTGraphState(TypedDict):
 
     @var rule_contexts
         Per-rule retrieval context keyed by rule ID. Each value is a dict with
-        "code_context" (list[str]) and "summary_context" (list[str]).
+        "code_context" (list[str]), "summary_context" (list[str]), "lsp_context"
         Populated by the retriever node.
         Accumulates across retrieval iterations for the same rule.
 
@@ -59,7 +59,7 @@ class UTGraphState(TypedDict):
     """
     validated_rules: dict[str, list[ValidatedRule]]
     unit_tests: list[UnitTest]
-    rule_contexts: dict[int, dict]
+    rule_contexts: dict[int, dict[str, Any]]
     test_imports: set
     test_path: str
     codebase_k: int

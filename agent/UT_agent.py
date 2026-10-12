@@ -23,6 +23,7 @@ from pathlib import Path
 from collections import defaultdict
 import subprocess
 from backend.progress_logging import progress
+from lsp.manager import LSPManager
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -143,11 +144,22 @@ class UTAgent:
         }
 
         self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
+
+        self._lsp_manager = LSPManager(Path(codebase_path))
         try:
+            self._loop.run_until_complete(self._lsp_manager.__aenter__())
+            manager_entered = True
             return self.graph.invoke(initial_state)
         finally:
-            self._loop.close()
-            self._loop = None
+            try:
+                if manager_entered:
+                    self._loop.run_until_complete(self._lsp_manager.__aexit__(None, None, None))
+            finally:
+                self._lsp_manager = None
+                self._loop.close()
+                asyncio.set_event_loop(None)
+                self._loop = None
     
     def retriever_node(self, state: UTGraphState) -> UTGraphState:
         """
@@ -249,7 +261,8 @@ class UTAgent:
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}
+            lsp_context = self._get_lsp_context(source_file_paths, state["codebase_path"])
+            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary, "lsp_context": lsp_context}
 
         progress(
             "Business rule context retrieval complete.",
@@ -284,8 +297,8 @@ class UTAgent:
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
             async def guarded(rule: ValidatedRule):
                 async with sem:
-                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
-                    return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
+                    ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": [], "lsp_context": []})
+                    return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"], ctx.get("lsp_context", []))
             return await asyncio.gather(*(guarded(r) for r in validated_rules))
 
         results = self._loop.run_until_complete(run_batch())
@@ -488,16 +501,59 @@ class UTAgent:
             f"Parent: {meta.get('parent', 'N/A')}\n"
             f"Content:\n{doc}"
         )
+    
+    def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str) -> list[str]:
+        
+        
+        if self._lsp_manager is None or self._loop is None:
+            return []
+        
+        root = Path(codebase_path).resolve()
+        contexts = []
+
+        for source_path in source_file_paths:
+            path = Path(source_path)
+
+            if not path.is_absolute():
+                path = root / path
+
+            path = path.resolve()
+
+            if not path.is_file():
+                logger.warning(f"Source file path {path} does not exist or is not a file.")
+                continue
+
+            try:
+                file_context = self._loop.run_until_complete(self._lsp_manager.get_file_context(path))
+
+                if file_context is None:
+                    continue
+
+                context_data = {
+                    "file_path": str(getattr(file_context, "file_path", path)),
+                    "language": getattr(file_context, "language", "unknown"),
+                    "symbols": getattr(file_context, "symbols", []),
+                    "definitions": getattr(file_context, "definitions", []),
+                    "references": getattr(file_context, "references", []),
+                },
+                contexts.append("LSP CONTEXT:\n" + json.dumps(context_data, indent=2, default=str))
+            except Exception as e:
+                logger.error(f"Error retrieving LSP context for {path}: {e}")
+                
+            return contexts
+        
 
 async def _generate_single_test(
     structured_llm,
     rule: ValidatedRule,
     code_context: list[str],
     summary_context: list[str],
+    lsp_context: list[str]
 ) -> tuple:
     try:
         code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
         summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"
+        lsp_text = "\n\n".join(lsp_context) if lsp_context else "NO CONTEXT PROVIDED"
 
         system_message = (
             "You are a Senior Software Architect and expert Automated Test Engineer. "
@@ -518,6 +574,11 @@ async def _generate_single_test(
             #### RETRIEVED FILE SUMMARY CONTEXT:
             {summary_text}
 
+            #### LSP SEMANTIC CONTEXT
+            {lsp_text}
+
+
+
 ### [REQUIRED TASK]
 ---
 1. Analyze the provided Source Code and File Summaries to locate how the business rule is systematically enforced.
@@ -533,6 +594,16 @@ async def _generate_single_test(
 - **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
 - **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
+- Use LSP symbol information to identify actual functions,
+  classes, methods, and their relationships.
+- Use definition information, when available, to verify
+  the actual declarations and signatures being tested.
+- Use reference information, when available, to understand
+  how the target functions and types are used by other code.
+- Treat retrieved LSP information as evidence, not as a
+  guarantee that every referenced symbol is fully resolved.
+- Never invent a function, method, type, or signature
+  that contradicts the available source code or LSP context.
 
             *Note: If context is scarce, construct the most precise, narrow unit test possible based purely on the available evidence without making external assumptions or inventing anything.*
         """
