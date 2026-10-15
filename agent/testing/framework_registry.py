@@ -15,7 +15,7 @@ TEST_FRAMEWORKS = {
         language="csharp",
         framework="xunit",
         test_file="UnitTest1.cs",
-        test_directory="Tests",
+        test_directory="{codebase_name}.Tests",
         runner="dotnet"
     ),
     "python": TestFrameworkConfig(
@@ -23,28 +23,21 @@ TEST_FRAMEWORKS = {
         framework="pytest",
         test_file="test_generated.py",
         test_directory="tests",
-        runner="pytest"
-    ),
-    "csharp": TestFrameworkConfig(
-        language="csharp",
-        framework="xunit",
-        test_file="UnitTest1.cs",
-        test_directory="Tests",
-        runner="dotnet"
+        runner="python -m pytest"
     ),
     "javascript": TestFrameworkConfig(
         language="javascript",
         framework="jest",
         test_file="generated.test.js",
         test_directory="tests",
-        runner="jest"
+        runner="npx jest"
     ),
     "typescript": TestFrameworkConfig(
         language="typescript",
         framework="vitest",
         test_file="generated.test.ts",
         test_directory="tests",
-        runner="vitest"
+        runner="npx vitest"
     ),
     "java": TestFrameworkConfig(
         language="java",

@@ -24,6 +24,8 @@ from collections import defaultdict
 import subprocess
 from backend.progress_logging import progress
 from lsp.manager import LSPManager
+from agent.testing.runners.registry import RunnerRegistry
+
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
@@ -60,6 +62,7 @@ class UTAgent:
         else:
             self.llm = model
         self.graph = self.build_graph()
+        self._lsp_manager = None
 
     def build_graph(self) -> StateGraph:
         """
@@ -143,25 +146,20 @@ class UTAgent:
             "output_directory": "./agent/UT_agent_output",
         }
 
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-
-        self._lsp_manager = LSPManager(Path(codebase_path))
-        try:
-            self._loop.run_until_complete(self._lsp_manager.__aenter__())
-            manager_entered = True
-            return self.graph.invoke(initial_state)
-        finally:
-            try:
-                if manager_entered:
-                    self._loop.run_until_complete(self._lsp_manager.__aexit__(None, None, None))
-            finally:
-                self._lsp_manager = None
-                self._loop.close()
-                asyncio.set_event_loop(None)
-                self._loop = None
+        return asyncio.run(self._run_with_lsp(initial_state))
     
-    def retriever_node(self, state: UTGraphState) -> UTGraphState:
+    async def _run_with_lsp(self, initial_state: dict) -> dict:
+        """Run the graph while keeping the async in one task"""
+
+        self._lsp_manager = LSPManager(Path(initial_state["codebase_path"]))
+
+        try:
+            async with self._lsp_manager:
+                return await self.graph.ainvoke(initial_state)
+        finally:
+            self._lsp_manager = None
+    
+    async def retriever_node(self, state: UTGraphState) -> UTGraphState:
         """
         @brief Retrieves relevant code snippets and file summaries for all current validated business rules.
 
@@ -261,7 +259,7 @@ class UTAgent:
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            lsp_context = self._get_lsp_context(source_file_paths, state["codebase_path"])
+            lsp_context = await self._get_lsp_context(source_file_paths, state["codebase_path"])
             updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary, "lsp_context": lsp_context}
 
         progress(
@@ -272,7 +270,7 @@ class UTAgent:
             "rule_contexts": updated_contexts,
         }
 
-    def test_generator_node(self, state: UTGraphState) -> UTGraphState:
+    async def test_generator_node(self, state: UTGraphState) -> UTGraphState:
         """
         @brief Generates unit tests for validated business rules.
 
@@ -301,8 +299,7 @@ class UTAgent:
                     return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"], ctx.get("lsp_context", []))
             return await asyncio.gather(*(guarded(r) for r in validated_rules))
 
-        results = self._loop.run_until_complete(run_batch())
-
+        results = await run_batch()
         progress(
             f"Generated {len(results)} unit test candidates.",
             80
@@ -365,55 +362,14 @@ class UTAgent:
 
     def runner_node(self, state: UTGraphState) -> UTGraphState:
         """
-        @brief Creates test framework in target codebase and runs it
+        @brief Creates and runs the runner for the particular testing framework.
+        @param current state of the UTGraph
+        @return updated UTGraphState returned by the runner"""
 
-        @details Takes the generated unit tests and applies them with a testing framework and generates a report based on its results
+        language = RunnerRegistry.detect_language(state)
+        runner = RunnerRegistry.create_runner(language)
 
-        @param state Current workflow state contain unit_tests
-        @return Empty dict
-        """
-        codebase_path = state["codebase_path"]
-        codebase_name  = state["codebase_name"]
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-
-        # Generate Xunit framework
-        if not Path(test_subdir).is_dir():
-            try:
-                progress("Generating test framework", 98)
-                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
-                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
-                    lines = file.readlines()
-                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
-                    file.seek(0)
-                    file.writelines(lines)
-            except Exception as e:
-                logger.error(f"Error: {e}")
-                progress("Error generating framework", 98)
-
-        # Write generated tests to Xunit .cs file
-        test_imports = state["test_imports"]
-        unit_tests = state["unit_tests"]
-        with open(f"{test_subdir}/UnitTest1.cs", "w", encoding="utf-8") as file:
-            for import_statement in test_imports:
-                file.write(import_statement + "\n")
-            file.write(f"\nnamespace {codebase_name}.Tests;\n".replace("-", "_"))
-            file.write("\npublic class Tests {\n")
-            for test in unit_tests:
-                file.write(test.unit_test + "\n\n")
-            file.write("}")
-        
-        # Run generated tests and produce report
-        base_output_dir = state.get("output_directory", "./agent/UT_agent_output")
-        codebase_dir = os.path.join(base_output_dir, codebase_name)
-        try:
-            progress("Running generated tests", 99)
-            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_dir}"])
-            logger.info(f"Successfully ran tests and report generated to {codebase_dir}")
-            progress(f"Successfully ran tests and report generated to {codebase_dir}", 100, True)
-        except Exception as e:
-            logger.error(e)
-            progress("Error running tests!", 100, True)
-        return {}
+        return runner.run(state)
     
     # Helper methods
 
@@ -502,10 +458,10 @@ class UTAgent:
             f"Content:\n{doc}"
         )
     
-    def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str) -> list[str]:
+    async def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str) -> list[str]:
         
         
-        if self._lsp_manager is None or self._loop is None:
+        if self._lsp_manager is None:
             return []
         
         root = Path(codebase_path).resolve()
@@ -524,7 +480,7 @@ class UTAgent:
                 continue
 
             try:
-                file_context = self._loop.run_until_complete(self._lsp_manager.get_file_context(path))
+                file_context = await self._lsp_manager.get_file_context(path)
 
                 if file_context is None:
                     continue
@@ -540,7 +496,7 @@ class UTAgent:
             except Exception as e:
                 logger.error(f"Error retrieving LSP context for {path}: {e}")
                 
-            return contexts
+        return contexts
         
 
 async def _generate_single_test(

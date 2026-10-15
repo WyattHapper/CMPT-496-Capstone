@@ -51,6 +51,7 @@ LANGUAGE_EXTENSIONS = {
     ".sh": "bash",
     ".bash": "bash",
     ".ps1": "powershell",
+    ".java": "java",
 }
 
 def detect_language(filename: str) -> str | None:
