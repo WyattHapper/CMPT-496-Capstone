@@ -105,6 +105,10 @@ class BRAgent:
         return builder.compile()
 
     def run(self, input_rules: dict[str, list[BusinessRule]], codebase_name: str, codebase_path: str):
+    
+        return asyncio.run(self._run_async(input_rules,codebase_name, codebase_path))
+
+    async def _run_async(self, input_rules: dict[str, list[BusinessRule]], codebase_name: str, codebase_path: str):
         """
         @brief Executes the BRAgent workflow.
         @param input_rules Dictionary of business rules from G1/G2. Keys are file or directory paths,
@@ -158,30 +162,20 @@ class BRAgent:
             "output_directory": "./agent/BR_agent_output",
         }
 
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
 
-        self._lsp_manager = None
+        async with LSPManager(Path(codebase_path)) as lsp_manager:
+            self._lsp_manager = lsp_manager
 
-        try:
-            self._lsp_manager = LSPManager(Path(codebase_path))
-
-            # start the language servers we need for the given codebase
-
-            self._loop.run_until_complete(self._lsp_manager.__aenter__())
+            try:
+                return await self.graph.ainvoke(initial_state)
+            finally:
+                lsp_manager = None
 
 
-            return self.graph.invoke(initial_state)
-        finally:
 
-            if self._lsp_manager is not None:
-                self._loop.run_until_complete(self._lsp_manager.__aexit__(None, None, None))
-                self._lsp_manager = None
 
-            self._loop.close()
-            self._loop = None
 
-    def condenser_node(self, state: BRGraphState) -> BRGraphState:
+    async def condenser_node(self, state: BRGraphState) -> BRGraphState:
         """
         @brief Condenses duplicate or near-duplicate business rules from G1/G2 output.
 
@@ -272,7 +266,7 @@ class BRAgent:
             )
 
         if sorted_multi_dirs:
-            results = self._loop.run_until_complete(run_batch())
+            results = await run_batch()
         else:
             results = []
 
@@ -325,7 +319,7 @@ class BRAgent:
             "rule_contexts": {},
         }
 
-    def retriever_node(self, state: BRGraphState) -> BRGraphState:
+    async def retriever_node(self, state: BRGraphState) -> BRGraphState:
         """
         @brief Retrieves relevant code snippets and file summaries for all current business rules.
 
@@ -432,7 +426,7 @@ class BRAgent:
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            lsp_context = self._get_lsp_context(source_file_paths, state["codebase_path"])
+            lsp_context = await self._get_lsp_context(source_file_paths,state["codebase_path"])
 
             updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary, "lsp_context": lsp_context}
 
@@ -440,7 +434,7 @@ class BRAgent:
             "rule_contexts": updated_contexts,
         }
 
-    def validator_node(self, state: BRGraphState) -> BRGraphState:
+    async def validator_node(self, state: BRGraphState) -> BRGraphState:
         """
         @brief Validates all current business rules against retrieved context in batched async LLM calls.
 
@@ -494,7 +488,7 @@ class BRAgent:
             "Running validation models...",
             75
         )
-        results = self._loop.run_until_complete(run_batch())
+        results = await run_batch()
 
         progress(
             "Validation complete",
@@ -692,9 +686,9 @@ class BRAgent:
             f"Content:\n{doc}"
         )
     
-    def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str,):
+    async def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str,):
         """
-        TODO write docstring
+        gets the LSP context for a particualr file
         """
 
         #incase no lsp
@@ -732,7 +726,7 @@ class BRAgent:
                 if client is None:
                     continue
 
-                file_context = self._loop.run_until_complete(self._lsp_manager.get_file_context(file_path))
+                file_context = await self._lsp_manager.get_file_context(file_path)
 
                 symbols = []
 
