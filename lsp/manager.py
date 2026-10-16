@@ -7,6 +7,7 @@ from contextlib import AsyncExitStack
 
 #language-specific client imports go here
 import lsp.clients.csharp as csharp_client
+import lsp.clients.c as c_client
 
 
 
@@ -21,6 +22,7 @@ class LSPManager:
 
     CLIENTS = {
         "csharp": csharp_client.CSharpClient,
+        "c": c_client.CClient
     }
 
     def __init__(self, codebase_path: str | Path):
@@ -104,14 +106,6 @@ class LSPManager:
         
         client_class = self.CLIENTS.get(language)
 
-        # if client_class is None:
-        #     raise ValueError(
-        #         f"No LSP client class found for language: {language}"
-        #     )
-
-       
-        
-        # Add more language-specific client classes here as needed
         return client_class
     
     def create_client(self, language: str) -> LSPClient | None:
@@ -142,6 +136,16 @@ class LSPManager:
 
         if client is None:
             return None
+        
+        # ensure teh file is in the workspace
+        try:
+            file_path.relative_to(self.codebase_path.resolve())
+        except ValueError:
+            raise ValueError(f"File {file_path} is outside of LSP workspace\n{self.codebase_path.resolve()}")
+        
+        file_content = file_path.read_text(encoding="utf-8",errors="replace")
+
+        await client.open_file(file_path, file_content)
         
         symbols = await client.get_document_symbols(file_path)
 

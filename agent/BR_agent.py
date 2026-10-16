@@ -65,6 +65,8 @@ class BRAgent:
         else:
             self.llm = model
         self.graph = self.build_graph()
+        # dont make lsp calls over and over again for the same files
+        self._lsp_context_cache = {}
 
     def build_graph(self) -> StateGraph:
         """
@@ -111,6 +113,7 @@ class BRAgent:
         @param codebase_path Absolute path to the target codebase.
         @return Final state of the graph after execution.
         """
+        self._lsp_context_cache.clear()
 
         progress(
         "Loading business rule validation resources...",
@@ -699,11 +702,23 @@ class BRAgent:
             return []
         
         contexts = []
+        seen_paths = set()
 
         for source_path in source_file_paths:
             
             try:
                 file_path = Path(source_path)
+                cache_key = str(file_path)
+
+                if cache_key in seen_paths:
+                    continue
+
+                seen_paths.add(cache_key)
+
+                # Reuse LSP context if this file was already processed.
+                if cache_key in self._lsp_context_cache:
+                    contexts.append(self._lsp_context_cache[cache_key])
+                    continue
 
                 # scrub for relative pathing
                 if not file_path.is_absolute():
@@ -727,15 +742,28 @@ class BRAgent:
                         "children": [child.name for child in symbol.children]}
                     )
 
-                contexts.append(json.dumps({
+                context_json = json.dumps({
                     "file_path": str(file_context.file_path),
                     "language": file_context.language,
                     "symbols": symbols
-                }, indent= 2))
+                }, indent= 2)
+                
+
+                self._lsp_context_cache[cache_key] = context_json
+
+                contexts.append(context_json)
 
 
+            
             except Exception as exc:
-                logger.warning(f"LSP Context unavailable for {source_path}: {exc}") 
+                logger.warning(
+                    "LSP context unavailable for %s (%s): %r",
+                    source_path,
+                    type(exc).__name__,
+                    exc,
+                    exc_info=True,
+    )
+
 
         return contexts
             

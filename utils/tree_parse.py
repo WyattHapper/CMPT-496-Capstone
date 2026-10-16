@@ -96,6 +96,36 @@ LANGUAGE_DICT = {
         "import_query": "(import_declaration) @import",
         "namespace_query": ""
     },
+
+    ".c": {
+        "name": "c",
+        "query": """
+            (function_definition
+                declarator: (function_declarator
+                    declarator: (identifier) @name
+                )
+            ) @chunk
+        """,
+        "container_type": "struct_specifier",
+        "property_type": "",
+        "import_query": "(preproc_include) @import",
+        "namespace_query": ""
+    },
+    ".h": {
+        "name": "c",
+        "query": """
+            (function_definition
+                declarator: (function_declarator
+                    declarator: (identifier) @name
+                )
+            ) @chunk
+        """,
+        "container_type": "struct_specifier",
+        "property_type": "",
+        "import_query": "(preproc_include) @import",
+        "namespace_query": ""
+    },
+
 }
 
 @dataclass

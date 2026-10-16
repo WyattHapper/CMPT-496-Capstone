@@ -419,6 +419,15 @@ class DirectoryAgent:
         max_file_summary_k = 20
 
         if not code_context and not summary_context:
+
+            next_codebase_k = min(
+                state["codebase_k"] + 2,
+                max_codebase_k
+            )
+            next_file_summary_k = min(
+                state["file_summary_k"] + 2,
+                max_file_summary_k
+            )
             return {
                 "sufficient_code_context": False,
                 "sufficient_summary_context": False,

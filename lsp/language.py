@@ -18,6 +18,7 @@ LSP_LANGUAGES = {
     "go",
     "rust",
     "csharp",
+    "c"
 }
 
 NON_LSP_LANGUAGES = {
@@ -41,6 +42,8 @@ LANGUAGE_EXTENSIONS = {
     ".go": "go",
     ".rs": "rust",
     ".cs": "csharp",
+    ".c": "c",
+    ".h": "c",
 
     ".md": "markdown",
     ".html": "html",
