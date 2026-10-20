@@ -17,6 +17,7 @@ import sys
 import json
 import asyncio
 import chromadb
+import time
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import defaultdict
@@ -51,6 +52,7 @@ class ITAgent:
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
         progress("Intializing integration test agent...", 5)
+        self.llm_call_time = 0.0
         if model is None:
             self.llm = make_llm(max_output_tokens=MAX_TEST_OUTPUT_TOKENS)
         else:
@@ -85,8 +87,9 @@ class ITAgent:
         builder.add_edge("workflow_grouper", "retriever")
         builder.add_edge("retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", "runner")
-        builder.add_edge("runner", END)
+        builder.add_edge("writer", END)
+        #builder.add_edge("writer", "runner")
+        #builder.add_edge("runner", END)
 
         return builder.compile()
 
@@ -140,13 +143,16 @@ class ITAgent:
             "codebase_path": codebase_path,
             "output_directory": "./agent/IT_agent_output",
         }
-
+        start_time = time.perf_counter()
         self._loop = asyncio.new_event_loop()
         try:
             return self.graph.invoke(initial_state)
         finally:
+            total_time = time.perf_counter() - start_time
             self._loop.close()
             self._loop = None
+            logger.info(f"Total IT_agent runtime: {total_time:.2f}"
+                        f"\nLLM IT_agent runtime: {self.llm_call_time:.2f}")
 
     def workflow_grouper_node(self, state: ITGraphState) -> ITGraphState:
         """
@@ -612,8 +618,9 @@ class ITAgent:
                     return await _generate_single_test(structured_llm, workflow, workflow.rules, ctx["code_context"], ctx["summary_context"])
             return await asyncio.gather(*(guarded(workflow) for workflow in workflow_groups))
 
+        start_time = time.perf_counter()
         results = self._loop.run_until_complete(run_batch())
-
+        self.llm_call_time += time.perf_counter() - start_time
         progress(
             f"Generated {len(results)} integration test candidates.",
             80
@@ -745,7 +752,7 @@ class ITAgent:
             codebase_path,
             codebase_name,
             codebase_dir,
-            fix=make_fixer(self.llm, context_for),
+            fix=None, #make_fixer(self.llm, context_for),
             loop=self._loop,
         )
 

@@ -81,6 +81,14 @@ def test_run_result(test_run, **extra):
     Complete screen when tests were dropped, failed, or never ran -- the step
     itself still succeeds so the rest of the pipeline carries on.
     """
+    if test_run is None:
+        return dict(
+            extra,
+            message="Test execution was skipped.",
+            tests=None,
+            test_execution_skipped=True,
+        )
+
     result = dict(extra, message=test_run.message(), tests=test_run.summary())
 
     if test_run.needs_attention():
@@ -514,7 +522,7 @@ class Commands:
                 str(codebase_path)
             )
 
-            return test_run_result(final_state["test_run"])
+            return test_run_result(final_state.get("test_run"))
 
 
         return self._run_command(

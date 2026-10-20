@@ -17,6 +17,7 @@ import sys
 import json
 import asyncio
 import chromadb
+import time
 from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 from pathlib import Path
 from collections import defaultdict
@@ -52,6 +53,7 @@ class UTAgent:
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
         progress("Intializing unit test agent...", 5)
+        self.llm_call_time = 0.0
         if model is None:
             self.llm = make_llm(max_output_tokens=MAX_TEST_OUTPUT_TOKENS)
         else:
@@ -84,8 +86,9 @@ class UTAgent:
         builder.set_entry_point("retriever")
         builder.add_edge("retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", "runner")
-        builder.add_edge("runner", END)
+        builder.add_edge("writer", END)
+        #builder.add_edge("writer", "runner")
+        #builder.add_edge("runner", END)
 
         return builder.compile()
 
@@ -139,14 +142,17 @@ class UTAgent:
             "codebase_path": codebase_path,
             "output_directory": "./agent/UT_agent_output",
         }
-
+        start_time = time.perf_counter()
         self._loop = asyncio.new_event_loop()
         try:
             return self.graph.invoke(initial_state)
         finally:
+            total_time = time.perf_counter() - start_time
             self._loop.close()
             self._loop = None
-    
+            logger.info(f"Total UT_agent runtime: {total_time:.2f}"
+                        f"\nLLM UT_agent runtime: {self.llm_call_time:.2f}")
+
     def retriever_node(self, state: UTGraphState) -> UTGraphState:
         """
         @brief Retrieves relevant code snippets and file summaries for all current validated business rules.
@@ -285,8 +291,9 @@ class UTAgent:
                     ctx = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
                     return await _generate_single_test(structured_llm, rule, ctx["code_context"], ctx["summary_context"])
             return await asyncio.gather(*(guarded(r) for r in validated_rules))
-
+        start_time = time.perf_counter()
         results = self._loop.run_until_complete(run_batch())
+        self.llm_call_time += time.perf_counter() - start_time
 
         progress(
             f"Generated {len(results)} unit test candidates.",
@@ -302,6 +309,7 @@ class UTAgent:
                 continue
             test_imports.update(output.imports)
             unit_tests.append(UnitTest(imports=output.imports, unit_test=output.unit_test, id=rule.id, rule=rule.rule, source_directory = rule.source_directory, source_file_paths = rule.source_file_paths))
+
 
         progress(
             f"Validated {len(unit_tests)} generated unit tests.",
@@ -338,12 +346,18 @@ class UTAgent:
                 json.dump([u.model_dump() for u in unit_tests], f, indent=2)
             with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
                 for test in unit_tests:
-                    # Write imports first (if any), then the unit test method
                     if getattr(test, "imports", None):
                         try:
                             file.write("\n".join(test.imports) + "\n\n")
                         except Exception:
                             pass
+                for test in unit_tests:
+                    # Write imports first (if any), then the unit test method
+                    '''if getattr(test, "imports", None):
+                        try:
+                            file.write("\n".join(test.imports) + "\n\n")
+                        except Exception:
+                            pass'''
                     file.write(test.unit_test + "\n\n")
             progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
         return {}
@@ -389,7 +403,7 @@ class UTAgent:
             codebase_path,
             codebase_name,
             codebase_dir,
-            fix=make_fixer(self.llm, context_for),
+            fix= None,#make_fixer(self.llm, context_for),
             loop=self._loop,
         )
 
@@ -501,7 +515,7 @@ async def _generate_single_test(
 
         system_message = (
             "You are a Senior Software Architect and expert Automated Test Engineer. "
-            "Your sole objective is to output a syntactically flawless, concrete unit test method and its corresponding imports"
+            "Your sole objective is to output exactly one syntactically flawless, concrete unit test method and its corresponding imports"
             "based strictly on an extracted business rule and the corresponding codebase architecture contexts provided."
         )
 
@@ -528,10 +542,11 @@ async def _generate_single_test(
 ### [STRICT EXECUTION CONSTRAINTS - DO NOT VIOLATE]
 ---
 - **FULL IMPORTS:** The import statement must be full and complete and with correct syntax in the target programming language. (Example: C# statement = using **import**;) (Example: JavaScript statement = import **import**;)
+- **ONE TEST ONLY:** `unit_test` must contain exactly one method with a single [Fact] or [Theory] attribute. Do not write a class, nested classes, or additional test methods. If the rule has several conditions, pick the single most important one.
 - **IMPORTS STRUCTURE:** Return any required import/using statements in the structured output field `imports` as an array of strings (one statement per entry). Do not include import lines inside the `unit_test` field; `unit_test` must contain only the method block.
 - **NO DUPLICATION:** Create a completely unique method name that describes this rule. Do not copy an existing test title.
 - **NO INVENTIONS:** Do not hallucinate or invent helper classes, mock interfaces, or functions that are absent from the provided context. Use the exact signatures present.
-- **PUBLIC API ONLY:** The test lives in a separate test project, so it can only use public types and members. Anything internal or private will not compile, even if it appears in the context.
+- **PUBLIC API ONLY:** The test lives in a separate test project, so it can only use public types and members. Anything internal or private will not compile, even if it appears in the context. Do not use anything that cannot be imported or publicly utilized.
 - **XUNIT ONLY:** Only xUnit is installed in the test project. Use [Fact]/[Theory] and Assert.*; do not use Moq, FluentAssertions, Xunit.SkippableFact or any other test package, even if the codebase's own tests do.
 - **NO TEXT EXTRACTION:** The test must contain functioning assertions that exercise the rule logic—do not just repeat the text of the rule in a comment or string.
 - **FORMATTING:** Use standard Unix line breaks (\\n) and canonical indentation to format the generated method code perfectly. Do not use (\\\\n)
