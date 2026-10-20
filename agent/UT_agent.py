@@ -35,15 +35,29 @@ MAX_FILE_SUMMARY_K = 10
 
 
 class UTAgent:
+    
     """
-    @brief LangGraph-based agent for generating unit tests based on business rules.
+    @brief Executes the UTAgent workflow.
 
     @details
-    The UTAgent constructs and executes a LangGraph workflow that:
-    - Retrieves file and summary context for validated business rules from BR_agent output.
-    - Generates unit tests for each validated rule.
-    - Writes the generated unit tests to JSON output files.
+    Loads the code and file-summary ChromaDB collections for the target
+    codebase, initializes the workflow state, and runs the asynchronous
+    unit test generation graph with LSP support.
+
+    @param validated_rules Dictionary mapping file or directory paths to
+        lists of validated business rules.
+    @param codebase_name Name of the target codebase, used to locate the
+        corresponding ChromaDB collections and output directory.
+    @param codebase_path Absolute or relative path to the target codebase,
+        used to initialize the Language Server Protocol manager.
+
+    @return Final workflow state returned by the compiled LangGraph,
+            including generated unit tests, retrieved rule contexts,
+            and any test execution results added by the runner.
+    @raises ValueError If required configuration or database collections
+            cannot be loaded.
     """
+
 
     def __init__(self, model=None):
         """
@@ -71,7 +85,7 @@ class UTAgent:
 
         @details
         Graph structure:
-            retriever → test_generator → writer → END
+            retriever → test_generator → writer → runner → END
 
         Conditional routing from condenser and validator:
             - If current_rules is non-empty → retriever
@@ -149,7 +163,26 @@ class UTAgent:
         return asyncio.run(self._run_with_lsp(initial_state))
     
     async def _run_with_lsp(self, initial_state: dict) -> dict:
-        """Run the graph while keeping the async in one task"""
+        
+        """
+        @brief Executes the unit test generation graph with LSP support.
+
+        @details
+        Initializes an LSPManager for the target codebase and enters its
+        asynchronous context before invoking the compiled graph. The manager
+        is closed when execution finishes, and the stored manager reference
+        is reset even if an exception occurs.
+
+        @param initial_state Dictionary containing the initial workflow state,
+            including validated rules, database collections, and codebase
+            information.
+
+        @return Final workflow state produced by the asynchronous graph.
+
+        @raises Exception Propagates exceptions raised during LSP initialization
+                or graph execution after cleaning up the manager reference.
+        """
+
 
         self._lsp_manager = LSPManager(Path(initial_state["codebase_path"]))
 
@@ -271,14 +304,25 @@ class UTAgent:
         }
 
     async def test_generator_node(self, state: UTGraphState) -> UTGraphState:
+        
         """
         @brief Generates unit tests for validated business rules.
 
         @details
-        Uses the same language model but structured output to produce a unit test string
-        for each rule that passed validation. The results are written to `unit_tests`
-        in the workflow state for the final writer node.
+        Uses the configured language model with structured output to generate
+        one unit test candidate for each validated business rule. Each
+        generation task receives retrieved source-code, file-summary, and LSP
+        context. Tasks execute asynchronously with a concurrency limit.
+        Failed generations are logged and excluded from the results.
+
+        @param state Current workflow state containing validated rules and
+            their retrieved contexts.
+
+        @return Updated workflow state containing the generated unit tests
+                and the set of imports required by those tests. Returns an
+                empty unit_tests list if no validated rules are available.
         """
+
 
         progress(
             "Generating unit tests from validated business rules...",
@@ -322,17 +366,24 @@ class UTAgent:
         return {"unit_tests": unit_tests, "test_imports": test_imports}
 
     def writer_node(self, state: UTGraphState) -> UTGraphState:
+        
         """
-        @brief Writes unit tests to JSON output files.
+        @brief Writes generated unit tests to output files.
 
         @details
-        Serializes unit tests from the workflow state to JSON files in an output directory named
-        under {output_directory}/{codebase_name}/. Creates directories if needed.
-        Runs exactly once at the end of the graph.
+        Creates a codebase-specific output directory and serializes the
+        generated unit tests to JSON and text files. The JSON file contains
+        the structured test data, while the text file contains the required
+        imports and test methods. If no tests were generated, the output
+        directory is still created, but the test files are not written.
 
-        @param state Current workflow state containing validated_rules.
-        @return Empty dict (terminal node).
+        @param state Current workflow state containing the codebase name,
+            output directory, and generated unit tests.
+
+        @return Empty dictionary because this node performs file output
+                without adding new fields to the workflow state.
         """
+
         progress(
             "Writing generated unit tests...",
             90
@@ -361,10 +412,25 @@ class UTAgent:
         return {}
 
     def runner_node(self, state: UTGraphState) -> UTGraphState:
+        
         """
-        @brief Creates and runs the runner for the particular testing framework.
-        @param current state of the UTGraph
-        @return updated UTGraphState returned by the runner"""
+        @brief Creates and executes the appropriate test runner.
+
+        @details
+        Detects the programming language of the target codebase using
+        RunnerRegistry, creates the corresponding testing-framework runner,
+        and delegates test execution to that runner.
+
+        @param state Current workflow state containing the target codebase
+            information and generated unit tests.
+
+        @return Updated workflow state returned by the selected test runner,
+                potentially including test execution results and report paths.
+
+        @raises Exception Propagates exceptions raised during language
+                detection, runner creation, or test execution.
+        """
+
 
         language = RunnerRegistry.detect_language(state)
         runner = RunnerRegistry.create_runner(language)
@@ -460,6 +526,27 @@ class UTAgent:
     
     async def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str) -> list[str]:
         
+        """
+        @brief Retrieves LSP semantic context for the rule's source files.
+
+        @details
+        Resolves source-file paths relative to the target codebase, skips
+        paths that do not identify existing files, and requests semantic
+        context from the active LSPManager. Available symbols, definitions,
+        and references are serialized into JSON-formatted context strings.
+        Errors retrieving individual files are logged without stopping
+        the remaining retrieval process. Returns an empty list when no
+        LSP manager is active.
+
+        @param source_file_paths List of source-file paths associated with
+            the business rule.
+        @param codebase_path Root directory of the target codebase, used to
+            resolve relative source-file paths.
+
+        @return List of formatted LSP context strings, one for each file
+                whose semantic context was successfully retrieved.
+        """
+
         
         if self._lsp_manager is None:
             return []
@@ -506,6 +593,33 @@ async def _generate_single_test(
     summary_context: list[str],
     lsp_context: list[str]
 ) -> tuple:
+    
+   
+    """
+    @brief Generates a single unit test for a validated business rule.
+
+    @details
+    Combines the business rule with retrieved source-code, file-summary,
+    and LSP context to construct a prompt for the structured language
+    model. The model generates a unit test method and its required
+    imports. Exceptions are caught and returned as part of the result
+    tuple instead of being raised directly.
+
+    @param structured_llm Language model configured to return structured
+        output matching the UnitTest schema.
+    @param rule Validated business rule for which the unit test is generated.
+    @param code_context Retrieved source-code context strings relevant
+        to the rule.
+    @param summary_context Retrieved file-summary context strings relevant
+        to the rule.
+    @param lsp_context LSP semantic context strings containing available
+        symbols, definitions, and references.
+
+    @return Tuple containing the original rule, the generated UnitTest
+            output (or None on failure), and the exception (or None on
+            success).
+    """
+
     try:
         code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
         summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"

@@ -28,6 +28,8 @@ from collections import defaultdict
 import subprocess
 from backend.progress_logging import progress
 
+from testing.runners.registry import RunnerRegistry
+
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15
 DEFAULT_FILE_SUMMARY_K = 5
@@ -174,48 +176,37 @@ class UTVAgent:
         @param state Current workflow state contain unit_tests
         @return Empty dict
         """
-        codebase_path = state["codebase_path"]
-        codebase_name  = state["codebase_name"]
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-
-        # Generate Xunit framework
-        if not Path(test_subdir).is_dir():
-            progress("Creating test framework...", 35)
-            try:
-                progress("Initializing xUnit project...", 35)
-                subprocess.run(["dotnet", "new", "xunit", "-o", f"{test_subdir}"])
-                progress("Configuring project references...", 35)
-                with open(f"{test_subdir}/{codebase_name}.Tests.csproj", "r+", encoding="utf-8") as file:
-                    lines = file.readlines()
-                    lines.insert(-1, '<ItemGroup>\n<ProjectReference Include="..\\**\\*.csproj" Exclude="..\\**\\*.Tests.csproj" />\n</ItemGroup>\n\n')
-                    file.seek(0)
-                    file.writelines(lines)
-            except Exception as e:
-                progress(f"Error setting up test framework: {e}", 35, True)
-
-        # Write generated tests to Xunit .cs file
-        progress("Writing and running generated tests for validation...", 40)
-        imports = state["imports"]
-        current_tests = state["current_tests"]
-        self._write_tests(test_subdir, codebase_name, imports, current_tests)
         
-        # Run generated tests and produce report
-        try:
-            result = subprocess.run(["dotnet", "test", f"{test_subdir}"], capture_output=True, text=True)
-            report = Report(
-                return_code=result.returncode,
-                output=result.stdout.strip(),
-                errors=result.stderr.strip()
-            )
-            progress("Generating report...", 40)
-        except Exception as e:
-            report = Report(return_code=1, output="", errors=f"ERROR: {e}")
-            progress(f"Error running tests: {e}", 40, True)
-
-        return {
-            "report": report,
+        progress("Writing and running generated tests for validation...", 40)
+        
+        #intialize the state
+        runner_state = {
+            "codebase_path": state["codebase_path"],
+            "codebase_name": state["codebase_name"],
+            "output_directory": state.get("output_directory", ".agent/UTV_agent_output"),
+            "unit_tests": state["current_tests"]
         }
-    
+
+        #detect language to find the correct runner
+        runner = RunnerRegistry.create_runner(RunnerRegistry)
+
+        runner_state = runner.run(runner_state)
+        
+        result = runner_state["test_result"]
+
+        report = Report(
+            return_code=(
+                result["returncode"]
+                if result["returncode"] is not None
+                else 1
+                ),
+            output="result".get("stdout", ""),
+            errors="result".get("stderr", "")
+        )
+
+        progress("Test Execution reports generated...", 43)
+
+
     def validator_node(self, state: UTVGraphState) -> UTVGraphState:
         """
         @brief Validates unit tests for generated tests.
@@ -327,56 +318,95 @@ class UTVAgent:
         return update
 
     def writer_node(self, state: UTVGraphState) -> UTVGraphState:
+       
         """
-        @brief Writes unit tests to JSON output files.
+        @brief Writes the validated and discarded unit tests to output files.
 
-        @details
-        Serializes unit tests from the workflow state to JSON files in an output directory named
-        under {output_directory}/{codebase_name}/. Creates directories if needed.
-        Runs exactly once at the end of the graph.
+        @details Saves the final validation results as JSON and human-readable
+        text files without depending on a particular testing framework.
 
-        @param state Current workflow state containing validated_rules.
-        @return Empty dict (terminal node).
+        @param state Current workflow state containing validated_tests,
+                    discarded_tests, codebase_name, and output_directory.
+        @return An empty state update after writing the output files.
         """
-        progress(
-            "Writing validated and discarded unit tests...",
-            70
-        )
+       
+        progress("Writing validation results... ", 90)
 
-        codebase_name = state["codebase_name"]
-        codebase_path = state["codebase_path"]
-
-        base_output_dir = state.get("output_directory", "./agent/UTV_agent_output")
-        codebase_subdir = os.path.join(base_output_dir, codebase_name)
-        test_subdir = os.path.join(codebase_path, f"{codebase_name}.Tests")
-        os.makedirs(codebase_subdir, exist_ok=True)
-
-        validated_tests = state["validated_tests"]
-        validated_tests.sort(key=lambda item: item.id)
-        discarded_tests = state["discarded_tests"]
-        discarded_tests.sort(key=lambda item: item.id)
-        imports = state["imports"]
-        
-        self._write_tests(test_subdir, codebase_name, imports, validated_tests)
-        validated_tests_path = os.path.join(codebase_subdir, "validated_tests.json")
-        discarded_tests_path = os.path.join(codebase_subdir, "discarded_tests.json")
-        with open(validated_tests_path, "w", encoding="utf-8") as file:
-            json.dump([test.model_dump() for test in validated_tests], file, indent=2)
-        with open(discarded_tests_path, "w", encoding="utf-8") as file:
-            json.dump([test.model_dump() for test in discarded_tests], file, indent=2)
         try:
-            for html_file in Path(codebase_subdir).glob("*.html"):
-                try:
-                    html_file.unlink()
-                except OSError as e:
-                    progress(f"Error deleting html file: {e}", 100)
-            subprocess.run(["dotnet", "test", f"{test_subdir}", "--logger", "html", "--results-directory", f"{codebase_subdir}"])
-            progress("Tests completed. Generating html report...", 100)
-        except Exception as e:
-            progress(f"Error running tests: {e}", 100, True)
-            return {}
-        progress(f"Wrote {len(validated_tests)} validated unit tests to {validated_tests_path} and wrote {len(discarded_tests)} discarded unit tests to {discarded_tests_path}", 100, True)
-        return {}
+            output_dir = (Path(state.get("output_directory", ".agent/UTV_agent_output")) / state["codebase_name"])
+
+            output_dir.mkdir(parents=True, exist_ok="True")
+
+            validated_tests = sorted(
+                state.get("validated_tests", []),
+                key=lambda test : test.id
+            )
+
+            discarded_tests = sorted(
+                state.get("discarded_tests", []),
+                key=lambda test : test.id
+            )
+
+            #save results
+            validated_path = output_dir / "validated_tests.json"    
+            discarded_path = output_dir / "discarded_tests.json"    
+           
+            with validated_path.open("w", encoding="utf-8") as file:
+                json.dump([test.model_dump() for test in validated_tests], file, indent=4)
+
+            with validated_path.open("w", encoding="utf-8") as file:
+               json.dump([test.model_dump() for test in validated_tests], file, indent=4)
+
+            # save report as txt
+            report_path = output_dir / "validation_resutls.txt"  
+
+            with report_path.open("w", encoding="utf-8") as file:
+                file.write("UNIT TEST VALIDATION RESULTS\n")
+                file.write("=" * 32+"\n\n")
+                
+                file.write(f"Validate Rules: {len(validated_tests)}\n")
+                file.write(f"Discarded Rules: {len(discarded_tests)}\n\n")
+
+                file.write("VALIDATED TESTS\n")
+                file.write("-" * 32+"\n")
+
+                for test in validated_tests:
+                    file.write(f"\nTest ID: {test.id}\n")
+
+                    if getattr(test, "imports", None):
+                        file.write("Imports:\n")
+                        for import_statement in test.imports:
+                            file.write(f"   {import_statement}\n")
+
+                    test_code = (
+                        getattr(test, "unit_test", None)
+                        or getattr(test, "test_code", None) or
+                        ""
+                    )
+
+                    file.write(f"{test_code}\n")
+
+                file.write("\n\nDISCARDED TESTS\n")
+                file.write("-" * 32+"\n")
+
+                for test in discarded_tests:
+                    file.write(f"\nTest ID: {test.id}\n")
+
+                    test_code = (
+                        getattr(test, "unit_test", None)
+                        or getattr(test, "test_code", None) or
+                        ""
+                    )
+
+                    file.write(f"{test_code}\n")
+
+            progress("Validation results written successfully", 100)
+
+        except(OSError, KeyError, TypeError, AttributeError) as error:
+           logger.exception(f"Failed to write validation results: {error}")
+           raise
+           
+
     
     # Helper methods
 
@@ -484,9 +514,10 @@ async def _validate_single_test(
 ) -> tuple:
     try:
         system_message = (
-            "You are a Senior Software Architect acting as an automated C# unit test auditor. "
-            "Your job is to strictly evaluate test output logs and decide if a test method succeeded or failed. "
-            "If the test failed in execution, you MUST mark it as 'failure' and fix it."
+            "You are a senior software engineer acting as an "
+            "automated unit test auditor. Evaluate generated tests "
+            "using the execution report and the conventions of the "
+            "target language and testing framework."
         )
 
         prompt = f"""
