@@ -115,6 +115,8 @@ class Commands:
 
             elapsed = time.perf_counter() - start
 
+            logger.exception("Command '%s' failed", command_name)
+
             return {
                 "success": False,
                 "command": command_name,

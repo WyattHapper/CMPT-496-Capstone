@@ -28,7 +28,7 @@ from collections import defaultdict
 import subprocess
 from backend.progress_logging import progress
 
-from testing.runners.registry import RunnerRegistry
+from agent.testing.runners.registry import RunnerRegistry
 
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 15

@@ -43,7 +43,7 @@ class RunnerRegistry:
                 if language in cls.SUPPORTED_RUNNER_LANGUAGES:
                     languages.add(language)
 
-            if len(languages == 1):
+            if len(languages) == 1:
                 return languages.pop()
             
             if len(languages) > 1:
@@ -65,7 +65,7 @@ class RunnerRegistry:
         module_name, class_name = runner_info
 
         try:
-            module = __import__(module_name, fromList=[class_name])
+            module = __import__(module_name, fromlist=[class_name])
 
             runner_class = getattr(module, class_name)
         except (ImportError, AttributeError) as exc:

@@ -8,6 +8,11 @@ from contextlib import AsyncExitStack
 #language-specific client imports go here
 import lsp.clients.csharp as csharp_client
 import lsp.clients.c as c_client
+import lsp.clients.python as python_client
+import lsp.clients.typescript as typescript_client
+import lsp.clients.go as go_client
+import lsp.clients.rust as rust_client
+import lsp.clients.java as java_client
 
 
 
@@ -20,9 +25,25 @@ class LSPManager:
     language-specific LSP clients.
     """
 
+    
     CLIENTS = {
+        # Existing adapters
         "csharp": csharp_client.CSharpClient,
-        "c": c_client.CClient
+        "c": c_client.CClient,
+
+        # Python
+        "python": python_client.PythonClient,
+
+        # JavaScript and TypeScript
+        "javascript": typescript_client.TypescriptClientAdapter,
+        "typescript": typescript_client.TypescriptClientAdapter,
+
+        # Other supported languages
+        "go": go_client.GoClient,
+        "rust": rust_client.RustClient,
+        "java": java_client.JavaClient,
+
+        
     }
 
     def __init__(self, codebase_path: str | Path):

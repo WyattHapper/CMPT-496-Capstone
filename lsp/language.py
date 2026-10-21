@@ -18,7 +18,8 @@ LSP_LANGUAGES = {
     "go",
     "rust",
     "csharp",
-    "c"
+    "c",
+    "java"
 }
 
 NON_LSP_LANGUAGES = {
