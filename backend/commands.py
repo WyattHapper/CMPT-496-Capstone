@@ -678,7 +678,7 @@ class Commands:
 
 
             return test_run_result(
-                result["test_run"],
+                result.get("test_run"),
                 rules_processed=len(input_rules),
                 workflows_generated=len(
                     result.get("integration_tests", [])

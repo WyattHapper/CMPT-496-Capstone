@@ -6,6 +6,7 @@
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from agent.UT_agent import ValidatedRule
+from typing import Literal
 
 class Explanation(BaseModel):
     """
@@ -63,3 +64,23 @@ class IntegrationTest(BaseModel):
 
         return cleaned
     integration_test: str = Field(...,description="Executable integration test method for the workflow.")
+
+class AdaptorOutput(BaseModel):
+    """
+    @brief Represents adaptor_node output that's one of three decisions
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["simple", "moderate", "complex"] = Field(
+        ...,
+        description = "Decision based on the complexity of the query")
+    reasoning: str = Field(..., description = "LLM reasoning behind the decision")
+
+class WebQueries(BaseModel):
+    """
+    @brief Represents the queries used to search the web
+    """
+    model_config = ConfigDict(extra = "forbid")
+    queries: list[str] = Field(
+        description="1-3 concise web search queries for information missing from the codebase context "
+                    "(e.g. library docs, framework behaviour, API signatures)."
+    )

@@ -64,6 +64,7 @@ class ITGraphState(TypedDict):
     integration_tests: list[IntegrationTest]
     workflow_contexts: dict[int, dict]
     workflow_groups: list[WorkflowGroup]
+    decision: str
     test_imports: set
     test_path: str
     codebase_k: int

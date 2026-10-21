@@ -5,6 +5,7 @@
 """
 
 from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
 
 class Explanation(BaseModel):
     """
@@ -36,3 +37,23 @@ class UnitTest(BaseModel):
     source_directory: str = Field(..., description="The directory this test pertains to.")
     source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")
+
+class AdaptorOutput(BaseModel):
+    """
+    @brief Represents adaptor_node output that's one of three decisions
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["simple", "moderate", "complex"] = Field(
+        ...,
+        description = "Decision based on the complexity of the query")
+    reasoning: str = Field(..., description = "LLM reasoning behind the decision")
+
+class WebQueries(BaseModel):
+    """
+    @brief Represents the queries used to search the web
+    """
+    model_config = ConfigDict(extra = "forbid")
+    queries: list[str] = Field(
+        description="1-3 concise web search queries for information missing from the codebase context "
+                    "(e.g. library docs, framework behaviour, API signatures)."
+    )
