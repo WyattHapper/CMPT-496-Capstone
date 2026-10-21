@@ -8,9 +8,10 @@ import logging
 logger = logging.getLogger(__name__)
 from agent.states.UT_agent_state import UTGraphState
 from agent.structured_output.UT_output import (
-    ValidatedRule, UnitTest
+    ValidatedRule, UnitTest, CorrectorOutput, WebQueries
 )
 from langgraph.graph import StateGraph, START, END
+from langchain_community.tools import DuckDuckGoSearchResults
 from agent.llm import make_llm
 import os
 import sys
@@ -32,6 +33,12 @@ DEFAULT_CODEBASE_K = 15
 DEFAULT_FILE_SUMMARY_K = 5
 MAX_CODEBASE_K = 30
 MAX_FILE_SUMMARY_K = 10
+MAX_GRADE_CONTEXT_CHARS = 12000
+MAX_WEB_QUERIES = 3
+MAX_WEB_RESULTS = 3
+MAX_WEB_CHARS = 1000
+WEB_QUERY_DELAY = 1.0
+KEEP_CONTEXT_ON_INCORRECT = False
 
 
 class UTAgent:
@@ -78,13 +85,19 @@ class UTAgent:
 
         # Set nodes
         builder.add_node("retriever", self.retriever_node)
+        builder.add_node("corrector", self.corrective_node)
+        builder.add_node("web_searcher", self.web_searcher_node)
         builder.add_node("test_generator", self.test_generator_node)
         builder.add_node("writer", self.writer_node)
         builder.add_node("runner", self.runner_node)
 
         # Set edges
         builder.set_entry_point("retriever")
-        builder.add_edge("retriever", "test_generator")
+        builder.add_edge("retriever", "corrector")
+        builder.add_conditional_edges(
+            "corrector",
+            lambda state: self.route_after_correction)
+        builder.add_edge("web_searcher", "test_generator")
         builder.add_edge("test_generator", "writer")
         builder.add_edge("writer", END)
         #builder.add_edge("writer", "runner")
@@ -262,6 +275,43 @@ class UTAgent:
         return {
             "rule_contexts": updated_contexts,
         }
+
+    def corrective_node(self, state: UTGraphState) -> UTGraphState:
+        progress("Grading retrieved context...", 52)
+        rule_contexts = state.get("rule_contexts", {})
+        structured_llm = self.llm.with_structured_output(CorrectorOutput)
+
+        async def run_batch():
+            sem = asyncio.Semaphore(MAX_CONCURRENCY)
+            async def guarded(rule: ValidatedRule):
+                async with sem:
+                    context = rule_contexts.get(str(rule.id), {"code_context": [], "summary_context": []})
+                    return await _grade_single_context(
+                        structured_llm, rule, context["code_context"], context["summary_context"]
+                    )
+            return await asyncio.gather(*(guarded(rule) for rule in state["validated_rules"]))
+
+        start_time = time.perf_counter()
+        results = self._loop.run_until_complete(run_batch())
+        self.llm_call_time += time.perf_counter() - start_time
+
+        decisions = {}
+        for rule, grade, err in results:
+            key = str(rule.id)
+            if err is not None or grade is None:
+                logger.info(f"Grading failed for rule {rule.id}: {err}; treating as ambiguous")
+                decisions[key] = "ambiguous"      # safe fallback: keep context and add web results
+            else:
+                decisions[key] = grade.decision
+                logger.info(f"Rule {rule.id}: {grade.decision} - {grade.reasoning}")
+
+        return {"corrective_decisions": decisions}
+
+    def route_after_correction(self, state: UTGraphState) -> str:
+        decisions = state.get("corrective_decisions", {})
+        if any(d != "correct" for d in decisions.values()):
+            return "web_searcher"
+        return "test_generator"
 
     def test_generator_node(self, state: UTGraphState) -> UTGraphState:
         """
@@ -502,6 +552,41 @@ class UTAgent:
             f"Parent: {meta.get('parent', 'N/A')}\n"
             f"Content:\n{doc}"
         )
+
+async def _grade_single_context(structured_llm, rule, code_context, summary_context):
+    if not code_context and not summary_context:
+        return rule, CorrectorOutput(reasoning="No context was retrieved.", decision="incorrect"), None
+    try:
+        code_text = "\n\n".join(code_context)
+        summary_text = "\n\n".join(summary_context)
+
+        system_message = ("You are a Senior Software Architect and expert Automated Test Engineer."
+                          "Your sole objective is to determine whether the provided context is sufficient enough for a LLM"
+                          "to evaluate and generate a unit test off of")
+        prompt = f"""
+    Business rule: {rule.rule}
+    Source directory: {rule.source_directory}
+    Source files: {rule.source_file_paths}
+    
+    Code context:
+    {code_text}
+    
+    Summary context:
+    {summary_text}
+    
+    Grade the context:
+    - correct: contains the code and details needed to write an accurate unit test for this rule.
+    - ambiguous: partly relevant, or the right code is present but key details (dependencies, signatures, behaviour) are missing.
+    - incorrect: unrelated to the rule or does not contain the code under test.
+    
+    Important:
+    - Do not assume the LLM model's internal knowledge. Only look at the given context to determine if it is sufficient enough
+    """
+        messages = [("system", system_message), ("user", prompt)]
+        output = await structured_llm.ainvoke(messages)
+        return rule, output, None
+    except Exception as e:
+        return rule, None, e
 
 async def _generate_single_test(
     structured_llm,

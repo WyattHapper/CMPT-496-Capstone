@@ -36,3 +36,14 @@ class UnitTest(BaseModel):
     source_directory: str = Field(..., description="The directory this test pertains to.")
     source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")
+
+class CorrectorOutput(BaseModel):
+    """
+    @brief Represents Output from the corrective node
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["correct", "ambiguous", "incorrect"] = Field(..., description = "correct: sufficient to write the test. ambiguous: partly relevant or missing key pieces. incorrect: irrelevant or does not contain the code under test.")
+    reasoning: str = Field(..., description = "Reasoning behind the decision selected")
+
+class WebQueries(BaseModel):
+    queries: list[str] = Field(description="1-3 concise web search queries.")
