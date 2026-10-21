@@ -150,7 +150,7 @@ class UTVAgent:
             "validated_tests": [],
             "discarded_tests": [],
             "imports": imports,
-            "report": Report,
+            "report": Report(return_code=1, output="", errors =""),
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,
@@ -188,7 +188,14 @@ class UTVAgent:
         }
 
         #detect language to find the correct runner
-        runner = RunnerRegistry.create_runner(RunnerRegistry)
+        language = RunnerRegistry.detect_language(runner_state)
+
+        if language is None:
+            raise ValueError(
+                f"Could not detect language for codebase: "
+                f"{runner_state['codebase_path']}"
+            )
+        runner = RunnerRegistry.create_runner(language)
 
         runner_state = runner.run(runner_state)
         
@@ -199,12 +206,15 @@ class UTVAgent:
                 result["returncode"]
                 if result["returncode"] is not None
                 else 1
-                ),
-            output="result".get("stdout", ""),
-            errors="result".get("stderr", "")
+            ),
+            output=result.get("stdout", ""),
+            errors=result.get("stderr", "")
         )
 
         progress("Test Execution reports generated...", 43)
+        return {"report": report}
+
+        
 
 
     def validator_node(self, state: UTVGraphState) -> UTVGraphState:
