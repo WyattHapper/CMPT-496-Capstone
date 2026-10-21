@@ -24,6 +24,9 @@ from collections import defaultdict
 import subprocess
 from backend.progress_logging import progress
 
+from lsp.manager import LSPManager
+
+
 MAX_CONCURRENCY = 10
 DEFAULT_CODEBASE_K = 30
 DEFAULT_FILE_SUMMARY_K = 15
@@ -58,6 +61,7 @@ class ITAgent:
         else:
             self.llm = model
         self.graph = self.build_graph()
+        self._lsp_manager = None
 
     def build_graph(self) -> StateGraph:
         """
@@ -143,12 +147,39 @@ class ITAgent:
             "output_directory": "./agent/IT_agent_output",
         }
 
-        self._loop = asyncio.new_event_loop()
+        return asyncio.run(self._run_with_lsp(initial_state))
+
+
+    async def _run_with_lsp(self, initial_state: dict) -> dict:
+        
+        """
+        @brief Executes the unit test generation graph with LSP support.
+
+        @details
+        Initializes an LSPManager for the target codebase and enters its
+        asynchronous context before invoking the compiled graph. The manager
+        is closed when execution finishes, and the stored manager reference
+        is reset even if an exception occurs.
+
+        @param initial_state Dictionary containing the initial workflow state,
+            including validated rules, database collections, and codebase
+            information.
+
+        @return Final workflow state produced by the asynchronous graph.
+
+        @raises Exception Propagates exceptions raised during LSP initialization
+                or graph execution after cleaning up the manager reference.
+        """
+
+
+        self._lsp_manager = LSPManager(Path(initial_state["codebase_path"]))
+
         try:
-            return self.graph.invoke(initial_state)
+            async with self._lsp_manager:
+                return await self.graph.ainvoke(initial_state)
         finally:
-            self._loop.close()
-            self._loop = None
+            self._lsp_manager = None
+        
 
     def workflow_grouper_node(self, state: ITGraphState) -> ITGraphState:
         """
@@ -338,7 +369,7 @@ class ITAgent:
         }
             
     
-    def retriever_node(self, state: ITGraphState) -> ITGraphState:
+    async def retriever_node(self, state: ITGraphState) -> ITGraphState:
         """
         @brief Retrieves relevant code snippets and file summaries for each business workflow.
 
@@ -566,7 +597,8 @@ class ITAgent:
                 if item not in existing_summary:
                     new_summary.append(item)
 
-            updated_contexts[workflow_key] = {"code_context": new_code,"summary_context": new_summary}
+            lsp_context = await self._get_lsp_context(source_file_paths,state["codebase_path"])
+            updated_contexts[workflow_key] = {"code_context": new_code,"summary_context": new_summary, "lsp_context": lsp_context}
 
 
         progress(
@@ -580,7 +612,7 @@ class ITAgent:
         }
     
     
-    def test_generator_node(self, state: ITGraphState) -> ITGraphState:
+    async def test_generator_node(self, state: ITGraphState) -> ITGraphState:
         """
         @brief Generates integration tests for validated business rules.
 
@@ -610,11 +642,11 @@ class ITAgent:
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
             async def guarded(workflow):
                 async with sem:
-                    ctx = workflow_contexts.get(workflow.workflow_name, {"code_context": [], "summary_context": []})
-                    return await _generate_single_test(structured_llm, workflow, workflow.rules, ctx["code_context"], ctx["summary_context"])
+                    ctx = workflow_contexts.get(workflow.workflow_name, {"code_context": [], "summary_context": [], "lsp_context": []})
+                    return await _generate_single_test(structured_llm, workflow, workflow.rules, ctx["code_context"], ctx["summary_context"], ctx.get("lsp_context", []))
             return await asyncio.gather(*(guarded(workflow) for workflow in workflow_groups))
 
-        results = self._loop.run_until_complete(run_batch())
+        results = await run_batch()
 
         progress(
             f"Generated {len(results)} integration test candidates.",
@@ -778,6 +810,68 @@ class ITAgent:
     
     # Helper methods
 
+    async def _get_lsp_context(self, source_file_paths: list[str], codebase_path: str) -> list[str]:
+        
+        """
+        @brief Retrieves LSP semantic context for the rule's source files.
+
+        @details
+        Resolves source-file paths relative to the target codebase, skips
+        paths that do not identify existing files, and requests semantic
+        context from the active LSPManager. Available symbols, definitions,
+        and references are serialized into JSON-formatted context strings.
+        Errors retrieving individual files are logged without stopping
+        the remaining retrieval process. Returns an empty list when no
+        LSP manager is active.
+
+        @param source_file_paths List of source-file paths associated with
+            the business rule.
+        @param codebase_path Root directory of the target codebase, used to
+            resolve relative source-file paths.
+
+        @return List of formatted LSP context strings, one for each file
+                whose semantic context was successfully retrieved.
+        """
+
+        
+        if self._lsp_manager is None:
+            return []
+        
+        root = Path(codebase_path).resolve()
+        contexts = []
+
+        for source_path in source_file_paths:
+            path = Path(source_path)
+
+            if not path.is_absolute():
+                path = root / path
+
+            path = path.resolve()
+
+            if not path.is_file():
+                logger.warning(f"Source file path {path} does not exist or is not a file.")
+                continue
+
+            try:
+                file_context = await self._lsp_manager.get_file_context(path)
+
+                if file_context is None:
+                    continue
+
+                context_data = {
+                    "file_path": str(getattr(file_context, "file_path", path)),
+                    "language": getattr(file_context, "language", "unknown"),
+                    "symbols": getattr(file_context, "symbols", []),
+                    "definitions": getattr(file_context, "definitions", []),
+                    "references": getattr(file_context, "references", []),
+                }
+                contexts.append("LSP CONTEXT:\n" + json.dumps(context_data, indent=2, default=str))
+            except Exception as e:
+                logger.error(f"Error retrieving LSP context for {path}: {e}")
+                
+        return contexts
+      
+
     def _normalize_path(self, path_value: str) -> str:
         """
         @brief Normalizes a filesystem path to POSIX format.
@@ -870,10 +964,12 @@ async def _generate_single_test(
     workflow_rules,
     code_context: list[str],
     summary_context: list[str],
+    lsp_context: list[str]
 ) -> tuple:
     try:
         code_text = "\n\n".join(code_context) if code_context else "NO CONTEXT PROVIDED"
         summary_text = "\n\n".join(summary_context) if summary_context else "NO CONTEXT PROVIDED"
+        lsp_text = "\n\n".join(lsp_context) if lsp_context else "NO CONTEXT PROVIDED"
 
 
         workflow_rules_text = ""
@@ -932,7 +1028,13 @@ async def _generate_single_test(
 
         {summary_text}
 
+        ### LANGUAGE SERVER CONTEXT
 
+        {lsp_text}
+
+        Use this context to verify symbol names, definitions, and references.
+        Prefer relationships supported by the LSP context. Do not invent
+        classes, methods, properties, or cross-file relationships.
 
         ### REQUIRED TASK
 

@@ -578,7 +578,7 @@ class UTAgent:
                     "symbols": getattr(file_context, "symbols", []),
                     "definitions": getattr(file_context, "definitions", []),
                     "references": getattr(file_context, "references", []),
-                },
+                }
                 contexts.append("LSP CONTEXT:\n" + json.dumps(context_data, indent=2, default=str))
             except Exception as e:
                 logger.error(f"Error retrieving LSP context for {path}: {e}")
