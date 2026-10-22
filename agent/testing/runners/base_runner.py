@@ -18,7 +18,30 @@ class base_runner(ABC):
     @details holds all of the shared functionality that all of the runners need to use
     """
 
-    TIMEOUT = 600
+    @abstractmethod
+    def run(self, state):
+
+        pass
+
+    @staticmethod
+    def _prepare_directory(directory):
+        directory.mkdir(parents = True, exist_ok=True)
+
+        return directory
+    
+    def _execute_command(self, command: list[str], cwd: Path, log_path:Path, report_path: Path | None = None, timeout: int = 600):
+        """"
+        @brief runs a test command and gets its output
+
+        @param command The command and arguments to execute.
+        @param cwd The working directory for the command.
+        @param log_path The path where execution logs are written.
+        @param report_path Optional path to the generated test report.
+        @param test_file Optional path to the generated test file.
+        @param timeout Maximum execution time in seconds.
+        @return A dictionary containing execution status, output, and paths.
+
+        """
 
    
 
