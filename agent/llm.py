@@ -53,6 +53,7 @@ PROVIDER_NAMES = {
     "deepseek": "DeepSeek",
     "xai": "xAI",
     "openrouter": "OpenRouter",
+    "ollama": "Ollama",
 }
 
 OLLAMA_URL = "http://127.0.0.1:11434"
@@ -400,6 +401,11 @@ def make_llm(max_output_tokens=None):
     """
     return build_chat_model(get_active_config(), max_output_tokens)
 
+def structured(llm, schema):
+    """with_structured_output, using function calling on OpenAI so dict fields are allowed."""
+    if get_active_config().provider in ("openai", "openrouter"):
+        return llm.with_structured_output(schema, method="function_calling")
+    return llm.with_structured_output(schema)
 
 # ---------------------------------------------------------
 # Key verification
