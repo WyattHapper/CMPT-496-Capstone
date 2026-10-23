@@ -6,6 +6,7 @@
 
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from agent.UT_agent import ValidatedRule
+from typing import Literal
 
 class Explanation(BaseModel):
     """
@@ -63,3 +64,14 @@ class IntegrationTest(BaseModel):
 
         return cleaned
     integration_test: str = Field(...,description="Executable integration test method for the workflow.")
+
+class CorrectorOutput(BaseModel):
+    """
+    @brief Represents Output from the corrective node
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["correct", "ambiguous", "incorrect"] = Field(..., description = "correct: sufficient to write the test. ambiguous: partly relevant or missing key pieces. incorrect: irrelevant or does not contain the code under test.")
+    reasoning: str = Field(..., description = "Reasoning behind the decision selected")
+
+class WebQueries(BaseModel):
+    queries: list[str] = Field(description="1-3 concise web search queries.")

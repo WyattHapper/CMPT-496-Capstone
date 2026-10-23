@@ -5,6 +5,7 @@
 """
 
 from pydantic import BaseModel, Field, ConfigDict
+from typing import Literal
 
 class Explanation(BaseModel):
     """
