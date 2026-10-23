@@ -72,7 +72,8 @@ const PROVIDER_LABELS = {
     groq: "Groq",
     deepseek: "DeepSeek",
     xai: "xAI (Grok)",
-    openrouter: "OpenRouter"
+    openrouter: "OpenRouter",
+    ollama: "Ollama (local)"
 };
 
 // Suggestions for the model box. Any model name can still be typed in.
@@ -85,7 +86,8 @@ const PROVIDER_MODELS = {
     groq: [],
     deepseek: [],
     xai: [],
-    openrouter: []
+    openrouter: [],
+    ollama: []
 };
 
 let cachedKeys = [];
@@ -97,6 +99,12 @@ function fillModelSuggestions(provider) {
     (PROVIDER_MODELS[provider] || []).forEach(m => list.appendChild(new Option(m, m)));
 }
 
+function updateProviderFields(provider) {
+    const isLocal = provider === "ollama";
+    document.getElementById("apiKeyField").classList.toggle("hidden", isLocal);
+    document.getElementById("baseUrlField").classList.toggle("hidden", !isLocal);
+}
+
 function initProviderSelect() {
     const sel = document.getElementById("providerSelect");
     if (sel.options.length) return;
@@ -105,8 +113,12 @@ function initProviderSelect() {
         sel.add(new Option(text, value));
     });
 
-    sel.addEventListener("change", () => fillModelSuggestions(sel.value));
+    sel.addEventListener("change", () => {
+        fillModelSuggestions(sel.value);
+        updateProviderFields(sel.value);
+    });
     fillModelSuggestions(sel.value);
+    updateProviderFields(sel.value);
 }
 
 async function refreshApiKeyList() {
@@ -180,28 +192,34 @@ document.getElementById('apiBtn').addEventListener('click', async () => {
 
 document.getElementById('submitApiKeyBtn').addEventListener('click', async () => {
 
-    const apiKey = document.getElementById('apiKeyInput').value.trim();
+    const provider = document.getElementById('providerSelect').value;
+    const isLocal = provider === "ollama";
+
+    const apiKey = isLocal ? "" : document.getElementById('apiKeyInput').value.trim();
+    const baseUrl = isLocal
+        ? (document.getElementById('newBaseUrlInput').value.trim() || "http://127.0.0.1:11434")
+        : "";
     const model = document.getElementById('newModelInput').value.trim();
 
-    if (!apiKey) { showApiKeyError("Please enter an API key."); return; }
+    if (!isLocal && !apiKey) { showApiKeyError("Please enter an API key."); return; }
     if (!model)  { showApiKeyError("Please enter a model name."); return; }
 
     pendingKey = {
-        provider: document.getElementById('providerSelect').value,
+        provider,
         label: document.getElementById('apiKeyLabel').value.trim() || "default",
         model,
-        apiKey
+        apiKey,
+        baseUrl
     };
 
     hideApiKeyError();
     setApiKeyPending(true);
 
-    // Resolves when the command is *sent*; the verdict arrives in
-    // onBackendResponse (the verify_api_key block you already pasted).
     await runBackendCommand("verify_api_key", {
-        provider: pendingKey.provider,
-        model: pendingKey.model,
-        api_key: pendingKey.apiKey
+        provider,
+        model,
+        api_key: apiKey,
+        base_url: baseUrl
     });
 });
 

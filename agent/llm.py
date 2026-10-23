@@ -55,6 +55,12 @@ PROVIDER_NAMES = {
     "openrouter": "OpenRouter",
 }
 
+OLLAMA_URL = "http://127.0.0.1:11434"
+
+# Ollama's default context is only a few thousand tokens and silently truncates
+# prompts. Keep this the same everywhere: changing num_ctx forces a model reload.
+OLLAMA_NUM_CTX = 16384
+
 OPENROUTER_URL = "https://openrouter.ai/api/v1"
 
 # Anthropic requires an explicit output cap on every call.
@@ -101,6 +107,7 @@ class LLMConfig:
     provider: str
     model: str
     api_key: str
+    base_url: str = ""
 
 
 def get_active_config() -> LLMConfig:
@@ -113,6 +120,7 @@ def get_active_config() -> LLMConfig:
     key = (env.get("ACTIVE_LLM_API_KEY") or "").strip()
     provider = (env.get("ACTIVE_LLM_PROVIDER") or "").strip().lower()
     model = (env.get("ACTIVE_LLM_MODEL") or "").strip()
+    base_url = (env.get("ACTIVE_LLM_BASE_URL") or "").strip()
 
     if not key:
         # An old .env that main.js has not migrated yet.
@@ -133,7 +141,7 @@ def get_active_config() -> LLMConfig:
             "Manage API Keys."
         )
 
-    return LLMConfig(provider, model, key)
+    return LLMConfig(provider, model, key, base_url)
 
 
 # ---------------------------------------------------------
@@ -359,11 +367,26 @@ def build_chat_model(config: LLMConfig, max_output_tokens=None, retry=True):
         if limit:
             kwargs["max_tokens"] = limit
 
+    elif provider == "ollama":
+        from langchain_ollama import ChatOllama as model_class
+        kwargs = dict(
+            base_url=config.base_url or OLLAMA_URL,
+            num_ctx=OLLAMA_NUM_CTX,
+            temperature=0,
+        )
+        if limit:
+            kwargs["num_predict"] = limit
+
     else:
         raise ValueError(f"Unsupported provider: {provider}")
 
-    if retry:
+    if retry and provider != "ollama":
         model_class = _retrying(model_class, label)
+
+    if provider != "ollama":
+        kwargs["api_key"] = config.api_key
+
+    return model_class(model=config.model, **kwargs)
 
     return model_class(model=config.model, api_key=config.api_key, **kwargs)
 
@@ -382,7 +405,7 @@ def make_llm(max_output_tokens=None):
 # Key verification
 # ---------------------------------------------------------
 
-def verify_llm_key(provider, model, api_key):
+def verify_llm_key(provider, model, api_key, base_url=""):
     """
     Check a key by making one tiny real call with the exact provider and model
     the pipeline will use, so a key with no access to that model is caught now
@@ -398,10 +421,7 @@ def verify_llm_key(provider, model, api_key):
         raise ValueError(f"Unsupported provider: '{provider}'.")
 
     label = PROVIDER_NAMES[provider]
-    config = LLMConfig(provider, model, api_key)
-
-    # Not inside the try: a missing package should surface as an error, not
-    # be mistaken for an unverifiable key.
+    config = LLMConfig(provider, model, api_key or "ollama", (base_url or "").strip())
     llm = build_chat_model(config, max_output_tokens=32, retry=False)
 
     try:
@@ -411,13 +431,20 @@ def verify_llm_key(provider, model, api_key):
         code = status_code(exc)
         detail = str(exc).strip()[:300] or type(exc).__name__
 
-        if code is None or code in (408, 429) or code >= 500:
-            return {
-                "status": "unverified",
-                "message": f"Key saved, but not verified. Could not confirm with {label} ({detail}).",
-                "model": None,
-                "tokens": None,
-            }
+        if provider == "ollama":
+            if code == 404:
+                return {
+                    "status": "rejected",
+                    "message": f"Ollama doesn't have '{model}'. Run: ollama pull {model}",
+                    "model": None, "tokens": None,
+                }
+            if code is None:
+                return {
+                    "status": "unverified",
+                    "message": "Saved, but couldn't reach Ollama. Is it running (ollama serve) "
+                               f"at {config.base_url or OLLAMA_URL}?",
+                    "model": None, "tokens": None,
+                }
 
         return {
             "status": "rejected",

@@ -37,7 +37,15 @@
         <select class="input-glass" id="providerSelect"></select>
         <input class="input-glass" id="apiKeyLabel" type="text" placeholder="Label (e.g. work, personal)" autocomplete="off" />
         <input class="input-glass" id="newModelInput" list="modelSuggestions" placeholder="Model name" autocomplete="off" />
-        <input class="input-glass" id="apiKeyInput" type="password" placeholder="Enter API Key" autocomplete="off" />
+
+        <div id="apiKeyField">
+            <input class="input-glass" id="apiKeyInput" type="password" placeholder="Enter API Key" autocomplete="off" />
+        </div>
+
+        <div id="baseUrlField" class="hidden">
+            <input class="input-glass" id="newBaseUrlInput" type="text" placeholder="Ollama URL (default http://127.0.0.1:11434)" autocomplete="off" />
+        </div>
+
         <datalist id="modelSuggestions"></datalist>
 
         <h3 id="apiKeyErrorMsg" class="api-key-error hidden"></h3>

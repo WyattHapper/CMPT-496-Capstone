@@ -835,7 +835,7 @@ class Commands:
     # up part-way through a run.
     VALIDATION_TIMEOUT_SECONDS = 15
 
-    def verify_api_key(self, provider: str = "", model: str = "", api_key: str = ""):
+    def verify_api_key(self, provider: str = "", model: str = "", api_key: str = "", base_url: str = ""):
         """
         Check an API key with one tiny real call.
 
@@ -844,15 +844,16 @@ class Commands:
         that file and saves the key once this reports it is usable.
         """
         base = {"command": "verify_api_key", "individualStep": True}
+        is_local = (provider or "").strip().lower() == "ollama"
 
-        if not (api_key or "").strip():
+        if not is_local and not (api_key or "").strip():
             return {**base, "success": False, "error": "No API key provided."}
 
         if not (model or "").strip():
             return {**base, "success": False, "error": "No model name provided."}
 
         try:
-            check = verify_llm_key(provider, model.strip(), api_key.strip())
+            check = verify_llm_key(provider, model.strip(), (api_key or "").strip(), base_url)
         except Exception as exc:
             return {**base, "success": False, "error": str(exc)}
 
