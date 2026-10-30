@@ -86,9 +86,8 @@ class UTAgent:
         builder.set_entry_point("retriever")
         builder.add_edge("retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", END)
-        #builder.add_edge("writer", "runner")
-        #builder.add_edge("runner", END)
+        builder.add_edge("writer", "runner")
+        builder.add_edge("runner", END)
 
         return builder.compile()
 
@@ -345,19 +344,14 @@ class UTAgent:
             with open(unit_tests_path_json, "w", encoding="utf-8") as f:
                 json.dump([u.model_dump() for u in unit_tests], f, indent=2)
             with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
+
                 for test in unit_tests:
+                    # Write imports first (if any), then the unit test method
                     if getattr(test, "imports", None):
                         try:
                             file.write("\n".join(test.imports) + "\n\n")
                         except Exception:
                             pass
-                for test in unit_tests:
-                    # Write imports first (if any), then the unit test method
-                    '''if getattr(test, "imports", None):
-                        try:
-                            file.write("\n".join(test.imports) + "\n\n")
-                        except Exception:
-                            pass'''
                     file.write(test.unit_test + "\n\n")
             progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
         return {}

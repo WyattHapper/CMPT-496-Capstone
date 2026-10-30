@@ -87,9 +87,8 @@ class ITAgent:
         builder.add_edge("workflow_grouper", "retriever")
         builder.add_edge("retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", END)
-        #builder.add_edge("writer", "runner")
-        #builder.add_edge("runner", END)
+        builder.add_edge("writer", "runner")
+        builder.add_edge("runner", END)
 
         return builder.compile()
 
