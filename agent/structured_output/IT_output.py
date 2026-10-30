@@ -75,12 +75,10 @@ class AdaptorOutput(BaseModel):
         description = "Decision based on the complexity of the query")
     reasoning: str = Field(..., description = "LLM reasoning behind the decision")
 
-class WebQueries(BaseModel):
+class MultiRetrievalOutput(BaseModel):
     """
-    @brief Represents the queries used to search the web
+    @brief Represents the multi-retrieval step output
     """
-    model_config = ConfigDict(extra = "forbid")
-    queries: list[str] = Field(
-        description="1-3 concise web search queries for information missing from the codebase context "
-                    "(e.g. library docs, framework behaviour, API signatures)."
-    )
+    sufficient: bool = Field(description="True if the retrieved context is enough to write the unit test")
+    missing: str = Field(description="What is still missing, or an empty string")
+    queries: list[str] = Field(description="Short follow-up search queries, one per missing piece; empty if sufficient")

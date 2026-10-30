@@ -8,10 +8,9 @@ import logging
 logger = logging.getLogger(__name__)
 from agent.states.IT_agent_state import ITGraphState
 from agent.structured_output.IT_output import (
-    ValidatedRule, IntegrationTest, WorkflowGroup, WorkflowGroups, AdaptorOutput, WebQueries
+    ValidatedRule, IntegrationTest, WorkflowGroup, WorkflowGroups, AdaptorOutput, MultiRetrievalOutput
 )
 from langgraph.graph import StateGraph, START, END
-from langchain_community.tools import DuckDuckGoSearchResults
 from agent.llm import make_llm
 import os
 import sys
@@ -33,10 +32,10 @@ DEFAULT_CODEBASE_K = 30
 DEFAULT_FILE_SUMMARY_K = 15
 MAX_CODEBASE_K = 30
 MAX_FILE_SUMMARY_K = 10
-MAX_WEB_QUERIES = 3
-MAX_WEB_RESULTS = 3
-MAX_WEB_CHARS = 1000
-WEB_QUERY_DELAY = 1.0
+MAX_RETRIEVAL_STEPS = 1
+MAX_FOLLOWUP_QUERIES = 1
+FOLLOWUP_CODE_K = 8
+FOLLOWUP_SUMMARY_K = 3
 
 class ITAgent:
     """
@@ -58,10 +57,6 @@ class ITAgent:
         """
         progress("Intializing integration test agent...", 5)
         self.llm_call_time = 0.0
-        self.web_search = DuckDuckGoSearchResults(
-            max_results=MAX_WEB_RESULTS,
-            output_format="list",   # returns [{"snippet":..., "title":..., "link":...}, ...]
-        )
         if model is None:
             self.llm = make_llm(max_output_tokens=MAX_TEST_OUTPUT_TOKENS)
         else:
@@ -86,7 +81,7 @@ class ITAgent:
 
         builder.add_node("adaptor", self.adaptor_node)
         builder.add_node("workflow_grouper", self.workflow_grouper_node)
-        builder.add_node("web_searcher", self.web_search_node)
+        builder.add_node("multi_step_retriever", self.multi_step_retriever_node)
         builder.add_node("retriever", self.retriever_node)
         builder.add_node("test_generator", self.test_generator_node)
         builder.add_node("writer", self.writer_node)
@@ -101,8 +96,8 @@ class ITAgent:
             lambda state: "retriever" if state.get("decision") != "simple" else "test_generator")
         builder.add_conditional_edges(
             "retriever",
-            lambda  state: "web_searcher" if state.get("decision") == "complex" else "test_generator")
-        builder.add_edge("web_searcher", "test_generator")
+            lambda  state: "multi_step_retriever" if state.get("decision") == "complex" else "test_generator")
+        builder.add_edge("multi_step_retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
         builder.add_edge("writer", END)
         #builder.add_edge("writer", "runner")
@@ -588,152 +583,7 @@ Prompt: {temp_prompt}
             {source_directory}
             """
 
-
-            safe_code_k = min(
-                code_k,
-                code_collection.count()
-            ) or 1
-
-            safe_summary_k = min(
-                summary_k,
-                summary_collection.count()
-            ) or 1
-
-
-            code_results = code_collection.query(query_texts=[query_text],n_results=safe_code_k)
-            summary_results = summary_collection.query(query_texts=[query_text],n_results=safe_summary_k)
-
-
-            # Workflow-level context storage
-            workflow_key = workflow.workflow_name
-
-
-            workflow_ctx = updated_contexts.get(
-                workflow_key,
-                {
-                    "code_context": [],
-                    "summary_context": []
-                }
-            )
-
-            existing_code = set(workflow_ctx["code_context"])
-            existing_summary = set(workflow_ctx["summary_context"])
-
-            # -------------------------
-            # Process code results
-            # -------------------------
-
-            code_docs = code_results.get("documents",[[]])[0]
-
-            code_metas = code_results.get("metadatas",[[]])[0]
-
-            source_file_code = []
-            directory_code = []
-            fallback_code = []
-
-
-            for doc, meta in zip(code_docs, code_metas):
-
-                file_path = self._normalize_path(
-                    meta.get("file", "")
-                )
-
-                formatted = self._format_code_result(
-                    doc,
-                    meta,
-                    source_directory
-                )
-
-
-                if self._is_from_source_file(
-                    file_path,
-                    source_file_paths
-                ):
-                    source_file_code.append(formatted)
-
-
-                elif self._is_in_directory(
-                    file_path,
-                    source_directory
-                ):
-                    directory_code.append(formatted)
-
-                else:
-                    fallback_code.append(formatted)
-
-            # -------------------------
-            # Process summary results
-            # -------------------------
-            summary_docs = summary_results.get(
-                "documents",
-                [[]]
-            )[0]
-
-            summary_metas = summary_results.get(
-                "metadatas",
-                [[]]
-            )[0]
-
-            source_file_summary = []
-            directory_summary = []
-            fallback_summary = []
-
-
-            for doc, meta in zip(summary_docs, summary_metas):
-
-                summary_path = self._normalize_path(
-                    meta.get("path", "")
-                )
-
-
-                formatted = self._format_summary_result(
-                    doc,
-                    meta,
-                    source_directory
-                )
-
-
-                if self._is_from_source_file(
-                    summary_path,
-                    source_file_paths
-                ):
-                    source_file_summary.append(formatted)
-                elif self._is_in_directory(
-                    summary_path,
-                    source_directory
-                ):
-                    directory_summary.append(formatted)
-                else:
-                    fallback_summary.append(formatted)
-
-            # -------------------------
-            # Merge contexts
-            # -------------------------
-
-            new_code = list(
-                workflow_ctx["code_context"]
-            )
-
-            for item in (
-                source_file_code
-                + directory_code
-                + fallback_code
-            ):
-                if item not in existing_code:
-                    new_code.append(item)
-
-            new_summary = list(workflow_ctx["summary_context"])
-
-            for item in (
-                source_file_summary
-                + directory_summary
-                + fallback_summary
-            ):
-                if item not in existing_summary:
-                    new_summary.append(item)
-
-            updated_contexts[workflow_key] = {"code_context": new_code,"summary_context": new_summary}
-
+            self._retrieve_for_workflow(workflow, query_text, updated_contexts, code_collection, summary_collection, code_k, summary_k)
 
         progress(
             "Workflow context retrieval complete.",
@@ -744,6 +594,48 @@ Prompt: {temp_prompt}
         return {
             "workflow_contexts": updated_contexts
         }
+
+    def multi_step_retriever_node(self, state: ITGraphState) -> ITGraphState:
+        progress("Running multi-step retrieval...", 55)
+        workflow_contexts = dict(state.get("workflow_contexts", {}))
+        planner = self.llm.with_structured_output(MultiRetrievalOutput)
+
+        for workflow in state.get("workflow_groups", []):
+            key = workflow.workflow_name
+            ctx = workflow_contexts.get(key, {"code_context": [], "summary_context": []})
+            rules_text = "\n".join(f"- {r.rule}" for r in workflow.rules)
+
+            for step in range(MAX_RETRIEVAL_STEPS):
+                prompt = (
+                    f"Workflow: {workflow.workflow_name}\nDescription: {workflow.workflow_description}\n"
+                    f"Business rules:\n{rules_text}\n\n"
+                    f"Context retrieved so far:\n{chr(10).join(ctx['code_context'] + ctx['summary_context'])[:6000]}\n\n"
+                    "Is this enough to write one end-to-end integration test (every component in the workflow, "
+                    "public signatures, how dependencies are constructed, how the components call each other)? "
+                    "If not, say what is missing and write short search queries for the codebase, one per missing piece."
+                )
+                try:
+                    start_time = time.perf_counter()
+                    plan = planner.invoke([("user", prompt)])
+                    self.llm_call_time += time.perf_counter() - start_time
+                except Exception as e:
+                    logger.warning(f"Retrieval planning failed for workflow {key}: {e}")
+                    break
+                logger.info(f"Workflow {key} step {step + 1}: {plan}")
+                if plan.sufficient or not plan.queries:
+                    break
+
+                added = 0
+                for query in plan.queries[:MAX_FOLLOWUP_QUERIES]:
+                    ctx, n = self._retrieve_for_workflow(
+                        workflow, query, {key: ctx}, state["code_collection"], state["summary_collection"],
+                        FOLLOWUP_CODE_K, FOLLOWUP_SUMMARY_K)
+                    added += n
+                if added == 0:          # nothing new found, stop looping
+                    break
+
+            workflow_contexts[key] = ctx
+        return {"workflow_contexts": workflow_contexts}
 
     def web_search_node(self, state: ITGraphState) -> ITGraphState:
         progress("Searching the web for additional context...", 55)
@@ -1077,7 +969,80 @@ Prompt: {temp_prompt}
             f"Parent: {meta.get('parent', 'N/A')}\n"
             f"Content:\n{doc}"
         )
+    def _retrieve_for_workflow(self, workflow, query_text, updated_contexts, code_collection, summary_collection,
+                           code_k, summary_k) -> tuple[dict, int]:
+        source_directories, source_file_paths = set(), []
+        for r in workflow.rules:
+            source_directories.add(r.source_directory)
+            source_file_paths.extend(r.source_file_paths)
+        source_directory = ", ".join(sorted(source_directories))
 
+        safe_code_k = min(code_k, code_collection.count()) or 1
+        safe_summary_k = min(summary_k, summary_collection.count()) or 1
+
+        code_results = code_collection.query(
+            query_texts=[query_text],
+            n_results=safe_code_k
+        )
+        summary_results = summary_collection.query(
+            query_texts=[query_text],
+            n_results=safe_summary_k
+        )
+
+        # Get existing per-rule context for deduplication (str key for JSON serialization safety)
+        workflow_key = workflow.workflow_name                      # was: rule_key = str(rule.id)
+        rule_ctx = updated_contexts.get(workflow_key, {"code_context": [], "summary_context": []})
+        existing_code = set(rule_ctx["code_context"])
+        existing_summary = set(rule_ctx["summary_context"])
+
+        # Process code results with three-tier prioritization
+        code_docs = code_results.get("documents", [[]])[0]
+        code_metas = code_results.get("metadatas", [[]])[0]
+
+        source_file_code, directory_code, fallback_code = [], [], []
+        for doc, meta in zip(code_docs, code_metas):
+            file_path = self._normalize_path(meta.get("file", ""))
+            formatted = self._format_code_result(doc, meta, source_directory)
+            if self._is_from_source_file(file_path, source_file_paths):
+                source_file_code.append(formatted)
+            elif self._is_in_directory(file_path, source_directory):
+                directory_code.append(formatted)
+            else:
+                fallback_code.append(formatted)
+
+        # Process summary results with three-tier prioritization
+        summary_docs = summary_results.get("documents", [[]])[0]
+        summary_metas = summary_results.get("metadatas", [[]])[0]
+
+        source_file_summary, directory_summary, fallback_summary = [], [], []
+        for doc, meta in zip(summary_docs, summary_metas):
+            summary_path = self._normalize_path(meta.get("path", ""))
+            formatted = self._format_summary_result(doc, meta, source_directory)
+            if self._is_from_source_file(summary_path, source_file_paths):
+                source_file_summary.append(formatted)
+            elif self._is_in_directory(summary_path, source_directory):
+                directory_summary.append(formatted)
+            else:
+                fallback_summary.append(formatted)
+
+        # Track initial sizes to count newly added items
+        initial_code_len = len(existing_code)
+        initial_summary_len = len(existing_summary)
+
+        # Append new results (prioritized order, no duplicates)
+        new_code = list(rule_ctx["code_context"])
+        for item in source_file_code + directory_code + fallback_code:
+            if item not in existing_code:
+                new_code.append(item)
+
+        new_summary = list(rule_ctx["summary_context"])
+        for item in source_file_summary + directory_summary + fallback_summary:
+            if item not in existing_summary:
+                new_summary.append(item)
+        added = (len(new_code) - initial_code_len) + (len(new_summary) - initial_summary_len)
+
+        updated_contexts[workflow_key] = {**rule_ctx, "code_context": new_code, "summary_context": new_summary}
+        return updated_contexts[workflow_key], added
 
 async def _generate_single_test(
     structured_llm,
