@@ -99,9 +99,8 @@ class ITAgent:
             lambda  state: "multi_step_retriever" if state.get("decision") == "complex" else "test_generator")
         builder.add_edge("multi_step_retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", END)
-        #builder.add_edge("writer", "runner")
-        #builder.add_edge("runner", END)
+        builder.add_edge("writer", "runner")
+        builder.add_edge("runner", END)
 
         return builder.compile()
 
@@ -772,6 +771,12 @@ Prompt: {temp_prompt}
 
             with open(integration_tests_path_txt, "w", encoding="utf-8") as file:
                 for test in integration_tests:
+
+                    file.write(f"// Workflow: {test.workflow_name}\n")
+                    file.write(f"// Description: {test.workflow_description}\n")
+                    file.write(f"// Covered Business Rules: {test.rule_ids}\n\n")
+
+                    # Write imports first
                     if getattr(test, "imports", None):
                         for imp in test.imports:
                             imp = imp.strip()
@@ -791,32 +796,6 @@ Prompt: {temp_prompt}
                             file.write(imp + "\n")
 
                         file.write("\n")
-                for test in integration_tests:
-
-                    file.write(f"// Workflow: {test.workflow_name}\n")
-                    file.write(f"// Description: {test.workflow_description}\n")
-                    file.write(f"// Covered Business Rules: {test.rule_ids}\n\n")
-
-                    # Write imports first
-                    '''if getattr(test, "imports", None):
-                        for imp in test.imports:
-                            imp = imp.strip()
-
-                            # Skip invalid imports
-                            if not imp:
-                                continue
-
-                            # Add using automatically
-                            if not imp.startswith("using "):
-                                imp = f"using {imp}"
-
-                            # Add semicolon automatically
-                            if not imp.endswith(";"):
-                                imp += ";"
-
-                            file.write(imp + "\n")
-
-                        file.write("\n")'''
 
                     # Write test method
                     file.write(

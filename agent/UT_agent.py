@@ -98,9 +98,8 @@ class UTAgent:
             lambda  state: "multi_step_retriever" if state.get("decision") == "complex" else "test_generator")
         builder.add_edge("multi_step_retriever", "test_generator")
         builder.add_edge("test_generator", "writer")
-        builder.add_edge("writer", END)
-        #builder.add_edge("writer", "runner")
-        #builder.add_edge("runner", END)
+        builder.add_edge("writer", "runner")
+        builder.add_edge("runner", END)
 
         return builder.compile()
 
@@ -281,70 +280,6 @@ Prompt: {temp_prompt}
         for rule in validated_rules:
             query_text = f"{rule.rule} {rule.source_directory}"
             self._retrieve_for_rule(rule, query_text, updated_contexts, code_collection, summary_collection, code_k, summary_k)
-            '''source_directory = rule.source_directory
-            source_file_paths = rule.source_file_paths
-            query_text = f"{rule.rule} {source_directory}"
-
-            safe_code_k = min(code_k, code_collection.count()) or 1
-            safe_summary_k = min(summary_k, summary_collection.count()) or 1
-
-            code_results = code_collection.query(
-                query_texts=[query_text],
-                n_results=safe_code_k
-            )
-            summary_results = summary_collection.query(
-                query_texts=[query_text],
-                n_results=safe_summary_k
-            )
-
-            # Get existing per-rule context for deduplication (str key for JSON serialization safety)
-            rule_key = str(rule.id)
-            rule_ctx = updated_contexts.get(rule_key, {"code_context": [], "summary_context": []})
-            existing_code = set(rule_ctx["code_context"])
-            existing_summary = set(rule_ctx["summary_context"])
-
-            # Process code results with three-tier prioritization
-            code_docs = code_results.get("documents", [[]])[0]
-            code_metas = code_results.get("metadatas", [[]])[0]
-
-            source_file_code, directory_code, fallback_code = [], [], []
-            for doc, meta in zip(code_docs, code_metas):
-                file_path = self._normalize_path(meta.get("file", ""))
-                formatted = self._format_code_result(doc, meta, source_directory)
-                if self._is_from_source_file(file_path, source_file_paths):
-                    source_file_code.append(formatted)
-                elif self._is_in_directory(file_path, source_directory):
-                    directory_code.append(formatted)
-                else:
-                    fallback_code.append(formatted)
-
-            # Process summary results with three-tier prioritization
-            summary_docs = summary_results.get("documents", [[]])[0]
-            summary_metas = summary_results.get("metadatas", [[]])[0]
-
-            source_file_summary, directory_summary, fallback_summary = [], [], []
-            for doc, meta in zip(summary_docs, summary_metas):
-                summary_path = self._normalize_path(meta.get("path", ""))
-                formatted = self._format_summary_result(doc, meta, source_directory)
-                if self._is_from_source_file(summary_path, source_file_paths):
-                    source_file_summary.append(formatted)
-                elif self._is_in_directory(summary_path, source_directory):
-                    directory_summary.append(formatted)
-                else:
-                    fallback_summary.append(formatted)
-
-            # Append new results (prioritized order, no duplicates)
-            new_code = list(rule_ctx["code_context"])
-            for item in source_file_code + directory_code + fallback_code:
-                if item not in existing_code:
-                    new_code.append(item)
-
-            new_summary = list(rule_ctx["summary_context"])
-            for item in source_file_summary + directory_summary + fallback_summary:
-                if item not in existing_summary:
-                    new_summary.append(item)
-
-            updated_contexts[rule_key] = {"code_context": new_code, "summary_context": new_summary}'''
 
         progress(
             "Business rule context retrieval complete.",
@@ -475,18 +410,12 @@ Prompt: {temp_prompt}
                 json.dump([u.model_dump() for u in unit_tests], f, indent=2)
             with open(unit_tests_path_txt, "w", encoding="utf-8") as file:
                 for test in unit_tests:
+                    # Write imports first (if any), then the unit test method
                     if getattr(test, "imports", None):
                         try:
                             file.write("\n".join(test.imports) + "\n\n")
                         except Exception:
                             pass
-                for test in unit_tests:
-                    # Write imports first (if any), then the unit test method
-                    '''if getattr(test, "imports", None):
-                        try:
-                            file.write("\n".join(test.imports) + "\n\n")
-                        except Exception:
-                            pass'''
                     file.write(test.unit_test + "\n\n")
             progress(f"Wrote {len(unit_tests)} unit tests to {unit_tests_path_json} and {unit_tests_path_txt}", 98)
         return {}
