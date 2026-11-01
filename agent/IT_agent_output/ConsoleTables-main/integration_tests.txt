@@ -36,7 +36,7 @@ public void TableInitializationAndDataPopulation_IntegrationTest()
     Assert.Equal("RowAlpha", dictTable.Rows[0][0]);
 
     // 3. Verify Rule 9: Table generation from Object Arrays and DataTables
-    Object[][] arrayData = 
+    Object[][] arrayData =
     [
         ["HeaderA", "HeaderB"],
         ["ValueA1", "ValueB1"]
@@ -95,7 +95,7 @@ public void VisualLayoutAndAlignment_FullWorkflow_ShouldMaintainVisualIntegrity(
 
     // Configure alignment and wrapping parameters
     // Rule 7 & 8: Support specific right-alignment for numeric data types
-    table.Configure(options => 
+    table.Configure(options =>
     {
         options.NumberAlignment = Alignment.Right;
         options.EnableCount = true;
@@ -114,11 +114,11 @@ public void VisualLayoutAndAlignment_FullWorkflow_ShouldMaintainVisualIntegrity(
     // "User 哈哈" has a visual width of 9 (5 English + 2*2 CJK).
     // Verify Rule 7: Numeric alignment logic (padded on the left for right alignment)
 
-    // The Age column width should be 4 (based on "1234"). 
+    // The Age column width should be 4 (based on "1234").
     // Format for numeric right alignment in ToString is " | {i, length}"
     // For Age 30: " |   30 |" (1 space from format template + 2 spaces padding 30 to width 4)
     // For Age 1234: " | 1234 |" (1 space from format template + 0 spaces padding 1234 to width 4)
-    
+
     Assert.Contains("| User 哈哈", result);
     Assert.Contains("|   30 |", result);
     Assert.Contains("| 1234 |", result);

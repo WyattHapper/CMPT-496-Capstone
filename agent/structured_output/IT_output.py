@@ -75,3 +75,21 @@ class CorrectorOutput(BaseModel):
 
 class WebQueries(BaseModel):
     queries: list[str] = Field(description="1-3 concise web search queries.")
+
+class AdaptorOutput(BaseModel):
+    """
+    @brief Represents adaptor_node output that's one of three decisions
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["simple", "moderate", "complex"] = Field(
+        ...,
+        description = "Decision based on the complexity of the query")
+    reasoning: str = Field(..., description = "LLM reasoning behind the decision")
+
+class MultiRetrievalOutput(BaseModel):
+    """
+    @brief Represents the multi-retrieval step output
+    """
+    sufficient: bool = Field(description="True if the retrieved context is enough to write the unit test")
+    missing: str = Field(description="What is still missing, or an empty string")
+    queries: list[str] = Field(description="Short follow-up search queries, one per missing piece; empty if sufficient")

@@ -64,6 +64,7 @@ class UTGraphState(TypedDict):
     unit_tests: list[UnitTest]
     rule_contexts: dict[int, dict]
     test_imports: set
+    decision: str
     test_path: str
     corrective_decisions: dict[str, CorrectorOutput]
     codebase_k: int

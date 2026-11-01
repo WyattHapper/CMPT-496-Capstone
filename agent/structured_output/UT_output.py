@@ -38,6 +38,24 @@ class UnitTest(BaseModel):
     source_file_paths: list[str] = Field(default_factory=list, description="File paths from which this test was originally derived.")
     unit_test: str = Field(..., description = "Corresponding Unit Test generated for a validated business rule")
 
+class AdaptorOutput(BaseModel):
+    """
+    @brief Represents adaptor_node output that's one of three decisions
+    """
+    model_config = ConfigDict(extra="forbid")
+    decision: Literal["simple", "moderate", "complex"] = Field(
+        ...,
+        description = "Decision based on the complexity of the query")
+    reasoning: str = Field(..., description = "LLM reasoning behind the decision")
+
+class MultiRetrievalOutput(BaseModel):
+    """
+    @brief Represents the multi-retrieval step output
+    """
+    sufficient: bool = Field(description="True if the retrieved context is enough to write the unit test")
+    missing: str = Field(description="What is still missing, or an empty string")
+    queries: list[str] = Field(description="Short follow-up search queries, one per missing piece; empty if sufficient")
+
 class CorrectorOutput(BaseModel):
     """
     @brief Represents Output from the corrective node
