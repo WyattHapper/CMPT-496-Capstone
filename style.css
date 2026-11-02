@@ -446,7 +446,84 @@ h2{
 
 }
 
+.radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 360px;
+}
 
+.radio-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+
+.radio-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+}
+
+.radio-card input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.radio-dot {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--text-secondary);
+  transition: all var(--transition);
+}
+
+.radio-dot::after {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: scale(0);
+  transition: transform var(--transition);
+}
+
+.radio-card:has(input:checked) {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.radio-card input:checked + .radio-dot {
+  border-color: var(--accent);
+}
+
+.radio-card input:checked + .radio-dot::after {
+  transform: scale(1);
+}
+
+.radio-card input:focus-visible + .radio-dot {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 #analysisOptions,
 

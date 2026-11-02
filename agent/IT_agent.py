@@ -12,6 +12,7 @@ from agent.structured_output.IT_output import (
 )
 from langgraph.graph import StateGraph, START, END
 from langchain_community.tools import DuckDuckGoSearchResults
+from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 from agent.llm import make_llm
 import os
 import sys
@@ -49,6 +50,14 @@ def route_after_correction(state: ITGraphState) -> str:
         return "web_searcher"
     return "test_generator"
 
+def route_after_retrieval(state: ITGraphState) -> str:
+    pipeline = state.get("rag_pipeline")
+    if pipeline == "corrective":
+        return "corrector"
+    if pipeline == "adaptive" and state.get("adaptive_decision").decision == "complex":
+        return "multi_step_retriever"
+    return "test_generator"
+
 class ITAgent:
     """
     @brief LangGraph-based agent for generating integration tests based on business rules.
@@ -68,15 +77,19 @@ class ITAgent:
         @param model An optional language model to use. If not provided, defaults to gemini-3-flash-preview.
         """
         progress("Intializing integration test agent...", 5)
+        self.graph = None
         self.llm_call_time = 0.0
-        self.web_search = DuckDuckGoSearchResults(max_results=MAX_WEB_RESULTS, output_format="list")
+        self.web_search = DuckDuckGoSearchResults(
+            api_wrapper=DuckDuckGoSearchAPIWrapper(region="us-en", max_results=MAX_WEB_RESULTS),
+            max_results=MAX_WEB_RESULTS,
+            output_format="list",
+        )
         if model is None:
             self.llm = make_llm(max_output_tokens=MAX_TEST_OUTPUT_TOKENS)
         else:
             self.llm = model
-        self.graph = self.build_graph()
 
-    def build_graph(self) -> StateGraph:
+    def build_graph(self, pipeline: str) -> StateGraph:
         """
         @brief Constructs the StateGraph that defines the ITAgent workflow.
         @return A compiled StateGraph object.
@@ -105,15 +118,16 @@ class ITAgent:
 
         builder.set_entry_point("workflow_grouper")
 
-        builder.add_edge("workflow_grouper", "adaptor")
+        builder.add_conditional_edges(
+            "workflow_grouper",
+            lambda state: "adaptor" if pipeline == "adaptive" else "retriever")
         builder.add_conditional_edges(
             "adaptor",
-            lambda state: "retriever" if state.get("decision") != "simple" else "test_generator")
+            lambda state: "retriever" if state.get("adaptive_decision").decision != "simple" else "test_generator")
         builder.add_conditional_edges(
             "retriever",
-            lambda  state: "multi_step_retriever" if state.get("decision") == "complex" else "test_generator")
+            route_after_retrieval)
         builder.add_edge("multi_step_retriever", "test_generator")
-        builder.add_edge("retriever", "corrector")
         builder.add_conditional_edges(
             "corrector",
             route_after_correction)
@@ -124,7 +138,7 @@ class ITAgent:
 
         return builder.compile()
 
-    def run(self, validated_rules: list[ValidatedRule], codebase_name: str, codebase_path: str):
+    def run(self, validated_rules: list[ValidatedRule], codebase_name: str, codebase_path: str, rag_pipeline: str):
         """
         @brief Executes the ITAgent workflow.
         @param input_rules Dictionary of validated business rules from BR_agent output. Keys are file or directory paths,
@@ -136,6 +150,7 @@ class ITAgent:
             "Running integration test generation pipeline...",
             10
         )
+        self.graph = self.build_graph(rag_pipeline)
         if getattr(sys, 'frozen', False):
             base_dir = Path(sys.executable).parent
         else:
@@ -166,6 +181,9 @@ class ITAgent:
             "integration_tests": [],
             "workflow_contexts": {},
             "test_imports": set(),
+            "rag_pipeline": rag_pipeline,
+            "adaptive_decision": "",
+            "corrective_decisions": {},
             "codebase_k": DEFAULT_CODEBASE_K,
             "file_summary_k": DEFAULT_FILE_SUMMARY_K,
             "code_collection": code_collection,
@@ -515,7 +533,7 @@ Prompt: {temp_prompt}
         output = structured_llm.invoke(messages)
         self.llm_call_time += time.perf_counter() - start_time
         logger.info(f"Decision: {output.decision}\nReasoning: {output.reasoning}")
-        return {"decision": output.decision}
+        return {"adaptive_decision": output}
 
     def retriever_node(self, state: ITGraphState) -> ITGraphState:
         """
@@ -664,6 +682,10 @@ Prompt: {temp_prompt}
                     f"Business rules:\n{rules_text}\n{known}\nReasoning for decision: {reasoning}"
                     "Write search queries for anything still needed to write a correct integration test "
                     "(library/framework docs, API behaviour). Do not search for things already in the context."
+                    "Only write queries about EXTERNAL libraries, frameworks or language features (documentation, API behaviour,"
+                    "usage examples). Do NOT search for this projects own files, classes or methods, and do not include"
+                    "file names, method names from the code under test, or the word 'implementation' in queries."
+                    "Write each query as 3-6 keywords, like a search engine query, not a full sentence."
                 )
                 start_time = time.perf_counter()
                 queries = query_llm.invoke([("user", prompt)]).queries[:MAX_WEB_QUERIES]

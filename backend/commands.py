@@ -459,6 +459,7 @@ class Commands:
         self,
         codebase: str,
         selected_rules: list,
+        rag_pipeline: str,
         validated_rules_path: str = None,
         individualStep = True
     ):
@@ -519,7 +520,8 @@ class Commands:
             final_state = UTAgent().run(
                 input_rules,
                 codebase_name,
-                str(codebase_path)
+                str(codebase_path),
+                rag_pipeline
             )
 
             return test_run_result(final_state.get("test_run"))
@@ -604,6 +606,7 @@ class Commands:
         self,
         codebase: str,
         selected_rules: list,
+        rag_pipeline: str,
         validated_rules_path: str = None,
         individualStep=True
     ):
@@ -673,7 +676,8 @@ class Commands:
             result = ITAgent().run(
                 input_rules,
                 codebase_name,
-                str(codebase_path)
+                str(codebase_path),
+                rag_pipeline
             )
 
 

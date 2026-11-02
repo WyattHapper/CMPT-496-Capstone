@@ -34,6 +34,7 @@ let currentStepProgress = 0;
 
 
 let selectedValidatedRule = null;
+let selectedPipeline = "simple";
 
 let activeFileListView = {
     includePdfs: false,
@@ -2039,10 +2040,19 @@ document.getElementById('chooseBusinessRuleBackBtn')
 
 document.getElementById('runUnitTestGenerationOnlyBtn')
     .addEventListener('click', () => {
-        
-        
 
-        showPage('unitTestPage');
+        showPage('unitTestPage')
+    });
+
+document.getElementById('choosePipelinePageEnterBtn')
+    .addEventListener('click', () => {
+        selectedPipeline = document.querySelector('input[name="pipeline"]:checked').value;
+        showPage('analysisPage')
+    });
+
+document.getElementById('choosePipelinePageBackBtn')
+    .addEventListener('click', () => {
+        showPage('codebasePipelinePage')
     });
 
 document.getElementById('allValidatedRulesBtn')
@@ -2053,12 +2063,13 @@ document.getElementById('allValidatedRulesBtn')
             "Unit Test Generation",
             "Preparing..."
         );
-
+        showPage
         runBackendCommand(
             "generate_unit_tests",
             {
                 codebase:selectedCodebasePath,
-                selected_rules: []
+                selected_rules: [],
+                rag_pipeline: selectedPipeline
             }
         );
     })
@@ -2089,12 +2100,12 @@ document.getElementById('chooseUnitTestPageSelectBtn')
             "Unit Test Generation",
             "Preparing..."
         );
-
         runBackendCommand(
             "generate_unit_tests",
             {
                 codebase:selectedCodebasePath,
-                selected_rules: selectedRules
+                selected_rules: selectedRules,
+                rag_pipeline: selectedPipeline
             }
         );
     });
@@ -2139,7 +2150,8 @@ document.getElementById('runIntegrationTestGenerationOnlyBtn')
             "generate_integration_tests",
             {
                 codebase:selectedCodebasePath,
-                selected_rules: []
+                selected_rules: [],
+                rag_pipeline: selectedPipeline
             }
         );
     });
@@ -2258,7 +2270,7 @@ document.getElementById('submitPathBtn')
     
 
 
-    showPage('analysisPage');
+    showPage('choosePipelinePage');
 
 
     selectedCodebasePath =

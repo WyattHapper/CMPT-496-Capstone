@@ -146,6 +146,34 @@
         
     </div>
 
+    <!-- RAG PIPELINE SELECTION PAGE -->
+    <div id="choosePipelinePage" class="page hidden">
+
+        <h1>Retrieval Augmented Generation Pipeline</h1>
+        <h2>Select RAG Pipeline to Use for Generation</h2>
+
+        <div class="radio-group" role="radiogroup" aria-label="RAG pipeline">
+            <label class="radio-card" for="simple">
+                <input type="radio" id="simple" name="pipeline" value="simple" checked>
+                <span class="radio-dot"></span>
+                <span class="radio-label">Simple</span>
+            </label>
+            <label class="radio-card" for="adaptive">
+                <input type="radio" id="adaptive" name="pipeline" value="adaptive">
+                <span class="radio-dot"></span>
+                <span class="radio-label">Adaptive</span>
+            </label>
+            <label class="radio-card" for="corrective">
+                <input type="radio" id="corrective" name="pipeline" value="corrective">
+                <span class="radio-dot"></span>
+                <span class="radio-label">Corrective</span>
+            </label>
+        </div>
+        <button class="btn-primary" id="choosePipelinePageEnterBtn">Enter</button>
+        <button class="btn-primary back-btn" id="choosePipelinePageBackBtn">Back</button>
+
+    </div>
+
 
     <!--  -->
     <!--VIEW PAGES -->
