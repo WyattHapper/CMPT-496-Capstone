@@ -324,6 +324,7 @@ function resetTokenMeter() {
         .textContent = "";
 
     showLoadingWarning(null);
+    clearCoverage();
 
 }
 
@@ -343,6 +344,125 @@ function showLoadingWarning(text) {
 
 }
 
+// ============================================
+// Test coverage (Complete screen)
+// ============================================
+
+function clearCoverage() {
+    const panel = document.getElementById("loadingCoverage");
+    if (panel) {
+        panel.innerHTML = "";
+        panel.classList.add("hidden");
+    }
+}
+
+// Coverage sits at result.tests.coverage for a single test step, or at
+// result.steps[i].result.tests.coverage inside the full pipeline.
+function collectCoverage(response) {
+    const found = [];
+
+    const add = (command, result) => {
+        const coverage = result?.tests?.coverage;
+        if (coverage && coverage.lines_valid) {
+            found.push({
+                label: command === "generate_integration_tests"
+                    ? "Integration tests"
+                    : "Unit tests",
+                coverage
+            });
+        }
+    };
+
+    add(response.command, response.result);
+
+    (response.result?.steps || []).forEach(step => add(step.command, step.result));
+
+    return found;
+}
+
+function showCoverage(response) {
+    const warning = document.getElementById("loadingWarning");
+    if (!warning) return;
+
+    let panel = document.getElementById("loadingCoverage");
+
+    if (!panel) {
+        panel = document.createElement("div");
+        panel.id = "loadingCoverage";
+        panel.className = "hidden";
+        warning.insertAdjacentElement("afterend", panel);
+    }
+
+    panel.innerHTML = "";
+
+    const sections = collectCoverage(response);
+
+    if (!sections.length) {
+        panel.classList.add("hidden");
+        return;
+    }
+
+    sections.forEach(({ label, coverage }) => {
+        const block = document.createElement("div");
+        block.className = "coverage-block";
+
+        const title = document.createElement("div");
+        title.className = "coverage-title";
+        title.textContent =
+            `${label}: ${coverage.line_percent}% line coverage` +
+            (coverage.branch_percent ? `, ${coverage.branch_percent}% branch` : "");
+        block.appendChild(title);
+
+        const bar = document.createElement("div");
+        bar.className = "coverage-bar";
+        const fill = document.createElement("div");
+        fill.className = "coverage-bar-fill";
+        fill.style.width = `${Math.min(100, coverage.line_percent)}%`;
+        bar.appendChild(fill);
+        block.appendChild(bar);
+
+        const detail = document.createElement("div");
+        detail.className = "coverage-detail";
+        detail.textContent =
+            `${coverage.lines_covered.toLocaleString()} of ` +
+            `${coverage.lines_valid.toLocaleString()} lines covered`;
+        block.appendChild(detail);
+
+        const files = coverage.files || [];
+        if (files.length) {
+            const table = usageTable(
+                ["File", "Lines", "Coverage"],
+                files.slice(0, 8).map(file => {
+                    const name = document.createElement("span");
+                    name.textContent = file.file.split(/[\\/]/).pop();
+                    name.title = file.file;
+                    return [
+                        name,
+                        `${file.lines_covered}/${file.lines_valid}`,
+                        `${file.line_percent}%`
+                    ];
+                })
+            );
+            const scroller = document.createElement("div");
+            scroller.className = "coverage-files";
+            scroller.appendChild(table);
+            block.appendChild(scroller);
+
+            if (files.length > 8) {
+                const more = document.createElement("div");
+                more.className = "coverage-detail";
+                more.textContent =
+                    `Least covered 8 of ${files.length} files. ` +
+                    "The full list is in test_report.json.";
+                block.appendChild(more);
+            }
+        }
+
+        panel.appendChild(block);
+    });
+
+    panel.classList.remove("hidden");
+}
 
 function updateTokenMeter(response) {
 
@@ -2616,6 +2736,7 @@ window.electronAPI.onBackendResponse(async (response) => {
             );
 
             showLoadingWarning(response.result?.warning);
+            showCoverage(response);
 
             activeCommand = null;
         }

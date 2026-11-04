@@ -35,6 +35,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+import xml.etree.ElementTree as ET
 
 from agent.crawl_config import mark_generated
 from agent.llm import DailyLimitError, RateLimitTimeoutError, structured
@@ -130,6 +131,7 @@ class TestRun:
     removed_stale: list[str] = field(default_factory=list)
     project_error: str = ""
     report_path: str = ""
+    coverage: dict = field(default_factory=dict)
 
     @property
     def repaired(self):
@@ -151,6 +153,7 @@ class TestRun:
             "removed_stale_files": self.removed_stale,
             "project_error": self.project_error,
             "html_report": self.report_path,
+            "coverage": self.coverage,
         }
 
     def message(self):
@@ -179,6 +182,8 @@ class TestRun:
 
         if kept:
             parts.append(f"{self.passed} passed, {self.failed} failed")
+            if self.coverage:
+                parts.append(f"{self.coverage['line_percent']}% line coverage")
 
         return ". ".join(parts) + "."
 
@@ -423,6 +428,11 @@ def ensure_test_project(test_dir, codebase_name):
 
     mark_generated(test_dir)  # keep the crawlers out of our own tests
 
+    csproj = Path(test_dir) / f"{codebase_name}.Tests.csproj"
+    if csproj.exists() and "coverlet.collector" not in csproj.read_text(encoding="utf-8"):
+        subprocess.run(["dotnet", "add", str(csproj), "package", "coverlet.collector"],
+                    capture_output=True, text=True)
+
 
 def render_test(case, namespace):
     usings = "\n".join(case.imports)
@@ -568,6 +578,7 @@ def run_tests(test_dir, namespace, prefix, results_dir, report_name):
                 "dotnet", "test", test_dir,
                 "--no-build",
                 "--filter", f"FullyQualifiedName~{namespace}.{prefix}_",
+                "--collect:XPlat Code Coverage",
                 "--logger", f"html;LogFileName={report_name}",
                 "--logger", "console;verbosity=normal",
                 "--results-directory", scratch,
@@ -591,6 +602,12 @@ def run_tests(test_dir, namespace, prefix, results_dir, report_name):
     scratch_report = os.path.join(scratch, report_name)
     if os.path.exists(scratch_report):
         shutil.move(scratch_report, report_path)
+
+    coverage = {}
+    reports = sorted(Path(scratch).rglob("coverage.cobertura.xml"), key=os.path.getmtime)
+    if reports:
+        coverage = parse_coverage(reports[-1])
+    
     shutil.rmtree(scratch, ignore_errors=True)
 
     passed, failed, skipped, failed_tests = parse_test_output(output)
@@ -601,8 +618,56 @@ def run_tests(test_dir, namespace, prefix, results_dir, report_name):
         skipped,
         failed_tests,
         report_path if os.path.exists(report_path) else "",
+        coverage
     )
 
+def parse_coverage(path):
+    """Line and branch coverage from a Cobertura file, plus a per-file breakdown."""
+    try:
+        root = ET.parse(path).getroot()
+    except (OSError, ET.ParseError):
+        return {}
+
+    # Per file: line number -> highest hit count. Deduplicates the class-level
+    # and method-level <line> entries Coverlet writes for the same line.
+    files = {}
+    for cls in root.iter("class"):
+        filename = cls.get("filename", "")
+        if GENERATED_FILE.match(Path(filename).stem):
+            continue  # our own UT_/IT_ files are not code under test
+        lines = files.setdefault(filename, {})
+        for line in cls.iter("line"):
+            number = int(line.get("number"))
+            lines[number] = max(lines.get(number, 0), int(line.get("hits", 0)))
+
+    per_file = []
+    total_valid = total_covered = 0
+    for filename, lines in files.items():
+        valid = len(lines)
+        covered = sum(1 for hits in lines.values() if hits > 0)
+        if not valid:
+            continue
+        total_valid += valid
+        total_covered += covered
+        per_file.append({
+            "file": filename,
+            "lines_covered": covered,
+            "lines_valid": valid,
+            "line_percent": round(100 * covered / valid, 1),
+        })
+
+    if not total_valid:
+        return {}
+
+    per_file.sort(key=lambda item: item["line_percent"])  # least covered first
+
+    return {
+        "line_percent": round(100 * total_covered / total_valid, 1),
+        "branch_percent": round(100 * float(root.get("branch-rate", 0) or 0), 1),
+        "lines_covered": total_covered,
+        "lines_valid": total_valid,
+        "files": per_file,
+    }
 
 # ---------------------------------------------------------------------------
 # Repair (AI)
@@ -840,6 +905,7 @@ def check_tests(
             run.skipped,
             run.failed_tests,
             run.report_path,
+            run.coverage,
         ) = run_tests(
             test_dir,
             namespace,
