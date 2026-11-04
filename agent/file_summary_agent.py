@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 from agent.states.file_summary_agent_state import FileGraphState
 from langgraph.graph import StateGraph, START, END
 from agent.structured_output.file_summary_output import FileSummaryOutput
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 from langchain_core.messages import AIMessage
 import os
 import sys
@@ -56,11 +56,11 @@ class FileSummaryAgent:
         progress("Initializing file summary agent...", 5)
         if llm is not None:
             self.llm = llm
-            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
+            self.structured_llm = structured(self.llm, FileSummaryOutput)
             self.graph = self.build_graph()
         else:
             self.llm = make_llm()
-            self.structured_llm = self.llm.with_structured_output(FileSummaryOutput)
+            self.structured_llm = structured(self.llm, FileSummaryOutput)
             self.graph = self.build_graph()
 
 

@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from agent.crawl_config import mark_generated
-from agent.llm import DailyLimitError, RateLimitTimeoutError
+from agent.llm import DailyLimitError, RateLimitTimeoutError, structured
 from agent.structured_output.UTV_output import TestRepair
 from backend.progress_logging import progress
 
@@ -620,7 +620,7 @@ def make_fixer(llm, context_for=None):
     Returns None when the AI gives up or the call fails, so the test is
     dropped. Running out of daily quota stops the step instead.
     """
-    structured_llm = llm.with_structured_output(TestRepair)
+    structured_llm = structured(llm, TestRepair)
 
     async def fix(case, namespace):
         context = context_for(case) if context_for else ""

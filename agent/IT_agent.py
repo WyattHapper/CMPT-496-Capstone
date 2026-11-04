@@ -11,7 +11,7 @@ from agent.structured_output.IT_output import (
     ValidatedRule, IntegrationTest, WorkflowGroup, WorkflowGroups
 )
 from langgraph.graph import StateGraph, START, END
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 import os
 import sys
 import json
@@ -172,7 +172,7 @@ class ITAgent:
         if not validated_rules:
             raise ValueError("No validated business rules provided.")
 
-        structured_llm = self.llm.with_structured_output(WorkflowGroups)
+        structured_llm = structured(self.llm, WorkflowGroups)
         rules_text = ""
 
         for rule in validated_rules:
@@ -602,7 +602,7 @@ class ITAgent:
         
         workflow_contexts = state.get("workflow_contexts", {})  
         
-        structured_llm = self.llm.with_structured_output(IntegrationTest)
+        structured_llm = structured(self.llm, IntegrationTest)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)

@@ -11,7 +11,7 @@ from agent.structured_output.UT_output import (
     ValidatedRule, UnitTest
 )
 from langgraph.graph import StateGraph, START, END
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 import os
 import sys
 import json
@@ -276,7 +276,7 @@ class UTAgent:
             return {"unit_tests": []}
 
         rule_contexts = state.get("rule_contexts", {})
-        structured_llm = self.llm.with_structured_output(UnitTest)
+        structured_llm = structured(self.llm, UnitTest)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)

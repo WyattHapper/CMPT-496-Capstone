@@ -31,6 +31,7 @@ from dotenv import dotenv_values
 from backend.progress_logging import progress
 from backend.token_usage import record_wait, status_code
 
+from langchain_core.runnables import RunnableLambda
 
 # Kept so older imports keep working, and used as the model for a legacy
 # GOOGLE_API_KEY that has not been migrated yet.
@@ -402,10 +403,26 @@ def make_llm(max_output_tokens=None):
     return build_chat_model(get_active_config(), max_output_tokens)
 
 def structured(llm, schema):
-    """with_structured_output, using function calling on OpenAI so dict fields are allowed."""
-    if get_active_config().provider in ("openai", "openrouter"):
-        return llm.with_structured_output(schema, method="function_calling")
-    return llm.with_structured_output(schema)
+    provider = get_active_config().provider
+
+    if provider in ("openai", "openrouter", "xai"):
+        chain = llm.with_structured_output(schema, method="function_calling")
+    elif provider == "anthropic":
+        chain = llm.with_structured_output(schema, method="json_schema")
+    else:
+        chain = llm.with_structured_output(schema)
+
+    return (chain | RunnableLambda(_require_output)).with_retry(
+        retry_if_exception_type=(ValueError,),
+        stop_after_attempt=3,
+    )
+
+def _require_output(result):
+    if result is None:
+        raise ValueError(
+            "The AI returned no structured answer (empty, refused or cut off)."
+        )
+    return result
 
 # ---------------------------------------------------------
 # Key verification
