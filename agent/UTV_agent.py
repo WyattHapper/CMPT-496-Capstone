@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from agent.states.UTV_agent_state import UTVGraphState
 from agent.structured_output.UTV_output import UnitTest
 from langgraph.graph import StateGraph, START, END
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 from agent.test_harness import check_tests, make_cases, make_fixer, write_results
 import os
 import sys

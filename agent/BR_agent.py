@@ -14,7 +14,7 @@ from agent.structured_output.BR_output import (
 )
 from agent.structured_output.file_summary_output import BusinessRule
 from langgraph.graph import StateGraph, START, END
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 import os
 import sys
 import json
@@ -226,7 +226,7 @@ class BRAgent:
                 multi_rule_groups[dir_name] = group
 
         # Batch async LLM calls for multi-rule groups
-        structured_llm = self.llm.with_structured_output(CondenserOutput)
+        structured_llm = structured(self.llm, CondenserOutput)
         sorted_multi_dirs = sorted(multi_rule_groups.keys())
 
         async def run_batch():
@@ -440,7 +440,7 @@ class BRAgent:
         codebase_k = state["codebase_k"]
         is_final_pass = codebase_k >= MAX_CODEBASE_K
 
-        structured_llm = self.llm.with_structured_output(ValidatorOutput)
+        structured_llm = structured(self.llm, ValidatorOutput)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)

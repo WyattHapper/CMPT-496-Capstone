@@ -17,7 +17,8 @@ let backendOutputDir = __dirname;
 // with its model in           APIMODEL__<PROVIDER>__<label>=<model>
 // The selected one is mirrored into ACTIVE_LLM_* for the Python backend.
 
-const PROVIDERS = ["google", "openai", "anthropic", "mistral", "groq", "deepseek", "xai", "openrouter"];
+const PROVIDERS = ["google", "openai", "anthropic", "mistral", "groq", "deepseek", "xai", "openrouter", "ollama"];
+const OLLAMA_DEFAULT_URL = "http://127.0.0.1:11434";
 
 function getEnvPath() {
     const backendDir = app.isPackaged
@@ -68,6 +69,7 @@ function applyActive(env, id) {
         delete env.ACTIVE_LLM_PROVIDER;
         delete env.ACTIVE_LLM_MODEL;
         delete env.ACTIVE_LLM_API_KEY;
+        delete env.ACTIVE_LLM_BASE_URL;
         return;
     }
 
@@ -75,6 +77,7 @@ function applyActive(env, id) {
     env.ACTIVE_LLM_PROVIDER = id.split("__")[0].toLowerCase();
     env.ACTIVE_LLM_MODEL = env[`APIMODEL__${id}`] || "";
     env.ACTIVE_LLM_API_KEY = key;
+    env.ACTIVE_LLM_BASE_URL = env[`APIURL__${id}`] || "";
 }
 
 // Moves an old single GOOGLE_API_KEY into the new format. Returns true if it changed anything.
@@ -99,12 +102,14 @@ function listKeys(env) {
         .map(k => {
             const id = k.slice("APIKEY__".length);
             const [provider, label] = id.split("__");
+            const isLocal = provider.toLowerCase() === "ollama";
             return {
                 id,
                 provider: provider.toLowerCase(),
                 label,
                 model: env[`APIMODEL__${id}`] || "",
-                masked: "…" + String(env[k]).slice(-4),
+                baseUrl: env[`APIURL__${id}`] || "",
+                masked: isLocal ? "local" : "…" + String(env[k]).slice(-4),
                 active: env.ACTIVE_LLM_KEY === id
             };
         });
@@ -493,11 +498,14 @@ ipcMain.handle("list-api-keys", () => {
     return { success: true, keys: listKeys(env) };
 });
 
-ipcMain.handle("save-api-key", (event, { provider, label, apiKey, model, makeActive = true }) => {
+ipcMain.handle("save-api-key", (event, { provider, label, apiKey, model, baseUrl, makeActive = true }) => {
     provider = String(provider || "").toLowerCase();
     if (!PROVIDERS.includes(provider)) return { success: false, error: "Unknown provider." };
 
+    const isLocal = provider === "ollama";
+
     apiKey = String(apiKey || "").trim();
+    if (isLocal && !apiKey) apiKey = "ollama";   // placeholder: local models need no key
     if (!apiKey) return { success: false, error: "API key is empty." };
 
     label = String(label || "default").replace(/[^A-Za-z0-9-]/g, "-").slice(0, 32) || "default";
@@ -508,6 +516,10 @@ ipcMain.handle("save-api-key", (event, { provider, label, apiKey, model, makeAct
 
     env[`APIKEY__${id}`] = apiKey;
     env[`APIMODEL__${id}`] = String(model || "").trim();
+
+    const url = String(baseUrl || "").trim() || (isLocal ? OLLAMA_DEFAULT_URL : "");
+    if (url) env[`APIURL__${id}`] = url;
+    else delete env[`APIURL__${id}`];
 
     if (makeActive || !env.ACTIVE_LLM_KEY || env.ACTIVE_LLM_KEY === id) applyActive(env, id);
 
@@ -540,6 +552,7 @@ ipcMain.handle("delete-api-key", (event, { id }) => {
     const env = readEnv();
     delete env[`APIKEY__${id}`];
     delete env[`APIMODEL__${id}`];
+    delete env[`APIURL__${id}`];
 
     if (env.ACTIVE_LLM_KEY === id) {
         const next = listKeys(env)[0];

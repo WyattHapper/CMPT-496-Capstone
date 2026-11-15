@@ -3,7 +3,7 @@ logger = logging.getLogger(__name__)
 from agent.states.directory_agent_state import DirectoryGraphState
 from agent.structured_output.directory_output import DirectoryOutput, ContextAnalysisOutput, JudgementOutput, BusinessRulesOutput
 from langgraph.graph import StateGraph, START, END
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 from agent.crawl_config import prune
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 import os
@@ -383,7 +383,7 @@ class DirectoryAgent:
                 "file_summary_k": min(state["file_summary_k"] + 2, max_file_summary_k),
             }
 
-        structured_llm = self.llm.with_structured_output(ContextAnalysisOutput)
+        structured_llm = structured(self.llm, ContextAnalysisOutput)
 
         messages = [("system", "You are a Senior Software Architect. You are deciding whether enough retrieval context has been gathered to write a directory-level summary."),
         ("user",f"""
@@ -472,7 +472,7 @@ class DirectoryAgent:
         
         try:
             # Structure LLM output
-            structured_llm = self.llm.with_structured_output(DirectoryOutput)
+            structured_llm = structured(self.llm, DirectoryOutput)
 
             # Gather all relevant context for summarization
             current_dir = state["current_directory"]
@@ -545,7 +545,7 @@ class DirectoryAgent:
         }
 
         try:
-            structured_llm = self.llm.with_structured_output(DirectoryOutput)
+            structured_llm = structured(self.llm, DirectoryOutput)
             # Gather all relevant context for summarization
             current_dir = state["current_directory"]
             child_summaries = self._get_child_directory_summaries(current_dir, state["child_summaries"])
@@ -653,7 +653,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             }
 
         try:
-            structured_llm = self.llm.with_structured_output(BusinessRulesOutput)
+            structured_llm = structured(self.llm, BusinessRulesOutput)
 
             summary_collection = state["summary_collection"]
             directory_summary = state["directory_summary"]
@@ -798,7 +798,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             raise ValueError("No directory summary available for judgement.")
         
         # get context for judgement
-        structured_llm = self.llm.with_structured_output(JudgementOutput)
+        structured_llm = structured(self.llm, JudgementOutput)
         child_summaries = self._get_child_directory_summaries(current_directory, state["child_summaries"])
         formatted_child_summaries = self._format_child_summaries(child_summaries)
         summary_context = "\n\n".join(state.get("summary_context", []))
@@ -881,7 +881,7 @@ Show how the parts connect and the overall shape of the system, not just what ea
             summary_context = "\n\n".join(state["summary_context"])
             code_context = "\n\n".join(state["code_context"])
 
-            structured_llm = self.llm.with_structured_output(DirectoryOutput)
+            structured_llm = structured(self.llm, DirectoryOutput)
             messages = [
                 ("system", """You are a Senior Software Architect. 
                 Your task is to refine a previously generated directory summary based on specific feedback that identifies weaknesses in the original summary."""),

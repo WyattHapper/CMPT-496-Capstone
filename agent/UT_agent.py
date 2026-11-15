@@ -13,7 +13,7 @@ from agent.structured_output.UT_output import (
 from langgraph.graph import StateGraph, START, END
 from langchain_community.tools import DuckDuckGoSearchResults
 from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
-from agent.llm import make_llm
+from agent.llm import make_llm, structured
 import os
 import sys
 import json
@@ -475,7 +475,7 @@ Prompt: {temp_prompt}
             return {"unit_tests": []}
 
         rule_contexts = state.get("rule_contexts", {})
-        structured_llm = self.llm.with_structured_output(UnitTest)
+        structured_llm = structured(self.llm, UnitTest)
 
         async def run_batch():
             sem = asyncio.Semaphore(MAX_CONCURRENCY)
