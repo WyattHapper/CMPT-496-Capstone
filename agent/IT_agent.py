@@ -717,7 +717,7 @@ Prompt: {temp_prompt}
                 else:
                     workflow_contexts[key] = {**context, "web_context": web_chunks}
             except Exception as e:
-                logger.warning(f"Web context failed for rule {rule.id}: {e}")
+                logger.warning(f"Web context failed for workflow {key}: {e}")
                 workflow_contexts[key] = context   # fall back to codebase context only
 
         return {"workflow_contexts": workflow_contexts}

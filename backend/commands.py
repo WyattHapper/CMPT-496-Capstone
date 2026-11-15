@@ -952,7 +952,7 @@ class Commands:
     # Pipeline Command
     # -----------------------------------------------------
 
-    def full_pipeline(self, codebase: str):
+    def full_pipeline(self, codebase: str, rag_pipeline: str = "simple"):
 
         
         """
@@ -1030,10 +1030,10 @@ class Commands:
             steps.append( self._require_success(self.validate_business_rules(str(codebase_path), individualStep=False)))
 
             pipeline_progress("Generating unit tests...", 85)
-            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), [], individualStep=False)))
+            steps.append( self._require_success(self.generate_unit_tests(str(codebase_path), [], rag_pipeline, individualStep=False)))
 
             pipeline_progress("Generating integration tests...", 90)
-            steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],individualStep=False)))
+            steps.append(self._require_success(self.generate_integration_tests(str(codebase_path),[],rag_pipeline,individualStep=False)))
 
             pipeline_progress("Generating UML report...", 95)
             steps.append( self._require_success(self.generate_all_uml(str(summary_directory), individualStep=False)))
